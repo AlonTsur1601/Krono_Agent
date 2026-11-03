@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["./src/renderer/*"],
+      "@/components": ["./src/renderer/components"],
+      "@/features": ["./src/renderer/features"],
+      "@/lib": ["./src/renderer/lib"],
+      "@/stores": ["./src/renderer/stores"],
+      "@/hooks": ["./src/renderer/hooks"],
+      "@/agent": ["./src/agent"],
+      "@/games": ["./src/games"],
+      "@/shared": ["./src/shared"]
+    }
+  },
+  "include": ["src/renderer", "src/shared", "src/agent", "src/games", "src/preload"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "commonjs",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "outDir": "dist/main",
+    "paths": {
+      "@/shared": ["./src/shared"]
+    }
+  },
+  "include": ["src/main", "src/shared", "src/sidecar"],
+  "exclude": ["node_modules"]
+}
