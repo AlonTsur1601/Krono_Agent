@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  code,
+  pre {
+    font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+  }
+}
+
+/* Theme CSS Variables */
+:root {
+  /* Dark Theme (default) */
+  --bg-primary: #111316;
+  --bg-sidebar: #15181D;
+  --bg-surface: #1B2027;
+  --border: #2B323C;
+  --text-primary: #F1F3F5;
+  --text-muted: #A5ADB8;
+  --accent: #8FD7C7;
+  --accent-hover: #A0E5D5;
+}
+
+.theme-light {
+  --bg-primary: #F6F7F9;
+  --bg-surface: #FFFFFF;
+  --bg-hover: #EBEDF0;
+  --border: #D1D5DB;
+  --text-primary: #171B22;
+  --text-muted: #6B7280;
+  --accent: #237D70;
+  --accent-hover: #2A9685;
+}
+
+.theme-halloween {
+  --bg-primary: #15101D;
+  --bg-surface: #21182C;
+  --bg-hover: #2C1F3A;
+  --border: #3D2F4F;
+  --text-primary: #F7F0E7;
+  --text-muted: #C4B8A8;
+  --accent: #FF9B50;
+  --accent-hover: #FFB070;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
