@@ -1,5 +1,6 @@
-import { TerminalPanel } from '../features/terminal/TerminalPanel'
-import { useState, useEffect } from 'react'
+import { Approvals } from '../features/chat/Approvals'
+import { BrowserPanel } from '../features/browser/BrowserPanel'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
 import { useChatStore } from '../stores/chatStore'
@@ -14,12 +15,14 @@ import { Pong } from '../features/games/Pong'
 import { ChatView } from '../features/chat/ChatView'
 import { SettingsView } from '../features/settings/SettingsView'
 
+const TerminalDrawer = lazy(() => import('../features/terminal/TerminalDrawer').then(module => ({ default: module.TerminalDrawer })))
+
 type GameId = 'snake' | 'tic-tac-toe' | '2048' | 'minesweeper' | 'connect-four' | 'breakout' | 'memory-match' | 'pong'
 
 export function MainLayout() {
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [terminalMounted, setTerminalMounted] = useState(false)
-  const [activeView, setActiveView] = useState<'chat' | 'games' | 'settings'>('chat')
+  const [activeView, setActiveView] = useState<'chat' | 'games' | 'settings' | 'browser'>('chat')
   const [selectedGame, setSelectedGame] = useState<GameId>('snake')
   const { user, logout } = useAuthStore()
   const { theme, setTheme } = useThemeStore()
@@ -86,6 +89,7 @@ export function MainLayout() {
         )}
 
         <nav style={{ flex: 1, marginBottom: '1rem' }}>
+          <button onClick={() => setActiveView('browser')} style={{ width: '100%', padding: 12, color: 'var(--text-primary)', background: activeView === 'browser' ? 'var(--bg-surface)' : 'transparent', border: 'none', textAlign: 'left' }}>Browser</button>
           <div style={{ marginBottom: '1rem' }}>
             <button
               onClick={() => setActiveView('chat')}
@@ -260,7 +264,9 @@ export function MainLayout() {
 
       {/* Main Content */}
       <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <Approvals />
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        {activeView === 'browser' && <BrowserPanel />}
         {activeView === 'chat' && <ChatView />}
         {activeView === 'games' && selectedGame === 'snake' && <Snake />}
         {activeView === 'games' && selectedGame === 'tic-tac-toe' && <TicTacToe />}
@@ -273,7 +279,7 @@ export function MainLayout() {
         {activeView === 'settings' && <SettingsView />}
       </div>
       <button onClick={() => { setTerminalMounted(true); setTerminalOpen(!terminalOpen) }} aria-expanded={terminalOpen} style={{ textAlign: 'left', padding: '8px 16px', color: 'var(--text-primary)', background: 'var(--bg-sidebar)', border: '1px solid var(--border)' }}>Terminal {terminalOpen ? '−' : '+'}</button>
-      <div style={{ display: terminalOpen ? 'block' : 'none' }}>{terminalMounted && <TerminalPanel />}</div>
+      <div style={{ display: terminalOpen ? 'block' : 'none' }}>{terminalMounted && <Suspense fallback={<p>Opening terminal…</p>}><TerminalDrawer /></Suspense>}</div>
       </div>
     </div>
   )

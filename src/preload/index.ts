@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 const channels = new Set([
+  'chat:cancel',
+  'chat:approve',
+  'browser:show', 'browser:bounds', 'browser:action',
   'terminal:create', 'terminal:write', 'terminal:resize', 'terminal:close',
   'auth:login', 'auth:register', 'auth:logout',
   'chat:create', 'chat:list', 'chat:get', 'chat:send-message', 'chat:delete',
@@ -13,7 +16,7 @@ contextBridge.exposeInMainWorld('api', {
     return ipcRenderer.invoke(channel, data)
   },
   on: (channel: string, callback: Listener) => {
-    if (!['chat:stream-chunk', 'terminal:data'].includes(channel)) throw new Error('Unsupported event')
+    if (!['chat:stream-chunk', 'terminal:data', 'browser:state', 'chat:approval'].includes(channel)) throw new Error('Unsupported event')
     const listener = (_event: unknown, ...args: unknown[]) => callback(...args)
     listeners.set(callback, listener)
     ipcRenderer.on(channel, listener)

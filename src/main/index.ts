@@ -1,8 +1,10 @@
+import { setupApprovalHandlers } from './approvals'
+import { setupBrowserHandlers, closeBrowser } from './ipc/browser'
 import { setupTerminalHandlers, closeAllTerminals } from './ipc/terminal'
 import { app, BrowserWindow } from 'electron'
 import path from 'path'
 import { setupAuthHandlers } from './ipc/auth'
-import { setupChatHandlers } from './ipc/chat'
+import { setupChatHandlers, cancelAllRuns } from './ipc/chat'
 import { setupSettingsHandlers } from './ipc/settings'
 
 let mainWindow: BrowserWindow | null = null
@@ -48,6 +50,8 @@ app.whenReady().then(() => {
   setupChatHandlers()
   setupSettingsHandlers()
   setupTerminalHandlers()
+  setupBrowserHandlers()
+  setupApprovalHandlers()
   
   createWindow()
 
@@ -58,7 +62,7 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('before-quit', closeAllTerminals)
+app.on('before-quit', () => { cancelAllRuns(); closeAllTerminals(); closeBrowser() })
 app.on('window-all-closed', () => {
   closeAllTerminals()
   if (process.platform !== 'darwin') {

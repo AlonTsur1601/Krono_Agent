@@ -85,6 +85,7 @@ export class AgentRuntime {
     }
 
     let calls = 0
+    const failures = new Map<string, number>()
     const deadline = Date.now() + 30 * 60 * 1000
     while (true) {
       if (config.signal?.aborted) throw new Error('Run cancelled')
@@ -118,6 +119,11 @@ export class AgentRuntime {
         }
         yield { type: 'tool_call', toolCall: call }
         const result = await tool.execute(parsed, context)
+        const step = call.name + JSON.stringify(call.arguments, Object.keys(call.arguments).sort())
+        if (!result.success) {
+          const count = (failures.get(step) ?? 0) + 1; failures.set(step, count)
+          if (count >= 3) throw new Error('Stopped after three failures of the same tool action')
+        } else failures.delete(step)
         request.messages.push({ role: 'assistant', content: '', toolCalls: [call] })
         request.messages.push({ role: 'tool', content: JSON.stringify(result), toolCallId: call.id })
       }

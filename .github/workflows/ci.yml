@@ -38,3 +38,7 @@ jobs:
       
       - name: Build
         run: npm run build
+
+      - name: Windows desktop smoke
+        if: runner.os == 'Windows'
+        run: npx playwright test

@@ -36,7 +36,7 @@ export function TerminalPanel() {
       if (id) window.api.invoke('terminal:close', id).catch(() => {})
     }
   }, [])
-  return <section aria-label="Integrated terminal" style={{ height: 250, display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)', padding: 12 }}>
+  return <section aria-label="Integrated terminal" style={{ height: '100%', width: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)', padding: 12 }}>
     <div style={{ fontSize: 12, marginBottom: 8 }}>User terminal · {navigator.platform.includes('Win') ? 'PowerShell' : 'Shell'}</div>
     {error && <p role="alert">{error}</p>}
     <div ref={container} style={{ flex: 1, minHeight: 0 }} />

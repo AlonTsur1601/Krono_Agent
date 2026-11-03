@@ -1,3 +1,4 @@
+import { closeBrowser } from './browser'
 import { closeAllTerminals } from './terminal'
 import { app } from 'electron'
 import { readFileSync, existsSync } from 'fs'
@@ -47,6 +48,7 @@ export function setupAuthHandlers() {
   ipcMain.handle('auth:logout', async () => {
     cancelAllRuns()
     closeAllTerminals()
+    closeBrowser()
     try { await client?.auth.signOut({ scope: 'local' }) }
     finally { dbManager.close() }
     return { success: true }

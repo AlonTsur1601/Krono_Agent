@@ -1,3 +1,4 @@
+import { requestApproval } from '../approvals'
 import { loadCredential } from '../credentials'
 import { ipcMain, BrowserWindow } from 'electron'
 import { SendMessageSchema, CreateChatSchema } from '../../shared/schemas'
@@ -9,6 +10,7 @@ const activeRuns = new Map<string, AbortController>()
 export function cancelAllRuns() { for (const run of activeRuns.values()) run.abort(); activeRuns.clear() }
 
 export function setupChatHandlers() {
+  ipcMain.handle('chat:cancel', (_event, id) => { activeRuns.get(String(id))?.abort(); return { success: true } })
   ipcMain.handle('chat:create', async (_event, data) => {
     try {
       const { projectId, name } = CreateChatSchema.parse(data)
@@ -102,6 +104,9 @@ export function setupChatHandlers() {
 
       const controller = new AbortController()
       activeRuns.set(chatId, controller)
+      const abort = () => controller.abort()
+      event.sender.once('destroyed', abort)
+      const deadline = setTimeout(abort, 30 * 60 * 1000)
       // Start streaming response
       const assistantMessageId = randomBytes(16).toString('hex')
       let fullContent = ''
@@ -114,6 +119,7 @@ export function setupChatHandlers() {
           modelId,
           providerId,
           signal: controller.signal,
+          requestApproval: request => requestApproval(event.sender, chatId, request, controller.signal),
         })) {
           // Send chunk to renderer
           const window = BrowserWindow.fromWebContents(event.sender)
@@ -173,7 +179,7 @@ export function setupChatHandlers() {
             createdAt: Date.now(),
           },
         }
-      } finally { activeRuns.delete(chatId) }
+      } finally { clearTimeout(deadline); event.sender.removeListener('destroyed', abort); activeRuns.delete(chatId) }
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : 'Failed to send message')
     }
@@ -184,6 +190,7 @@ export function setupChatHandlers() {
       const db = dbManager.getDb()
       const now = Date.now()
 
+      activeRuns.get(chatId)?.abort()
       db.prepare('UPDATE chats SET deleted_at = ? WHERE id = ?').run(now, chatId)
 
       return { success: true }
