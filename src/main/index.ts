@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
 import { setupAuthHandlers } from './ipc/auth'
+import { setupChatHandlers } from './ipc/chat'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -38,6 +39,7 @@ function createWindow() {
 app.whenReady().then(() => {
   // Setup IPC handlers
   setupAuthHandlers()
+  setupChatHandlers()
   
   // Settings handler
   ipcMain.handle('settings:set', async (_event, { key, value }) => {

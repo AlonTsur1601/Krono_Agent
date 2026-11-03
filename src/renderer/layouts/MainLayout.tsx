@@ -1,12 +1,19 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
+import { useChatStore } from '../stores/chatStore'
 import { Snake } from '../features/games/Snake'
+import { ChatView } from '../features/chat/ChatView'
 
 export function MainLayout() {
   const [activeView, setActiveView] = useState<'chat' | 'games'>('chat')
   const { user, logout } = useAuthStore()
   const { theme, setTheme } = useThemeStore()
+  const { chats, currentChatId, loadChats, createChat, selectChat, deleteChat } = useChatStore()
+
+  useEffect(() => {
+    loadChats()
+  }, [loadChats])
 
   return (
     <div style={{
@@ -24,46 +31,122 @@ export function MainLayout() {
         display: 'flex',
         flexDirection: 'column',
         padding: '1rem',
+        overflowY: 'auto',
       }}>
-        <div style={{ marginBottom: '2rem' }}>
+        <div style={{ marginBottom: '1.5rem' }}>
           <h1 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Krono Agent</h1>
           <p style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '0.25rem' }}>
             {user?.email}
           </p>
         </div>
 
-        <nav style={{ flex: 1 }}>
-          <button
-            onClick={() => setActiveView('chat')}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              marginBottom: '0.5rem',
-              borderRadius: '0.375rem',
-              border: 'none',
-              backgroundColor: activeView === 'chat' ? 'var(--bg-surface)' : 'transparent',
-              color: 'var(--text-primary)',
-              textAlign: 'left',
-              cursor: 'pointer',
-            }}
-          >
-            Chat
-          </button>
-          <button
-            onClick={() => setActiveView('games')}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              borderRadius: '0.375rem',
-              border: 'none',
-              backgroundColor: activeView === 'games' ? 'var(--bg-surface)' : 'transparent',
-              color: 'var(--text-primary)',
-              textAlign: 'left',
-              cursor: 'pointer',
-            }}
-          >
-            Games
-          </button>
+        {activeView === 'chat' && (
+          <div style={{ marginBottom: '1rem' }}>
+            <button
+              onClick={() => createChat()}
+              style={{
+                width: '100%',
+                padding: '0.5rem',
+                borderRadius: '0.375rem',
+                border: '1px solid var(--border)',
+                backgroundColor: 'var(--accent)',
+                color: 'var(--bg-primary)',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              + New Chat
+            </button>
+          </div>
+        )}
+
+        <nav style={{ flex: 1, marginBottom: '1rem' }}>
+          <div style={{ marginBottom: '1rem' }}>
+            <button
+              onClick={() => setActiveView('chat')}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                marginBottom: '0.5rem',
+                borderRadius: '0.375rem',
+                border: 'none',
+                backgroundColor: activeView === 'chat' ? 'var(--bg-surface)' : 'transparent',
+                color: 'var(--text-primary)',
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              Chat
+            </button>
+            <button
+              onClick={() => setActiveView('games')}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                borderRadius: '0.375rem',
+                border: 'none',
+                backgroundColor: activeView === 'games' ? 'var(--bg-surface)' : 'transparent',
+                color: 'var(--text-primary)',
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              Games
+            </button>
+          </div>
+
+          {activeView === 'chat' && chats.length > 0 && (
+            <div>
+              <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '0.5rem' }}>
+                Recent Chats
+              </div>
+              {chats.map((chat) => (
+                <div
+                  key={chat.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    marginBottom: '0.25rem',
+                  }}
+                >
+                  <button
+                    onClick={() => selectChat(chat.id)}
+                    style={{
+                      flex: 1,
+                      padding: '0.5rem',
+                      borderRadius: '0.375rem',
+                      border: 'none',
+                      backgroundColor: currentChatId === chat.id ? 'var(--bg-surface)' : 'transparent',
+                      color: 'var(--text-primary)',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {chat.name}
+                  </button>
+                  <button
+                    onClick={() => deleteChat(chat.id)}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: '0.375rem',
+                      border: 'none',
+                      backgroundColor: 'transparent',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      fontSize: '0.75rem',
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </nav>
 
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
@@ -107,21 +190,8 @@ export function MainLayout() {
       </div>
 
       {/* Main Content */}
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        {activeView === 'chat' && (
-          <div style={{
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexDirection: 'column',
-          }}>
-            <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Chat Coming Soon</h2>
-            <p style={{ opacity: 0.7 }}>
-              Model providers and chat interface in development
-            </p>
-          </div>
-        )}
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+        {activeView === 'chat' && <ChatView />}
         {activeView === 'games' && <Snake />}
       </div>
     </div>
