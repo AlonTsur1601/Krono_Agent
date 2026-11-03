@@ -25,10 +25,11 @@ npm run lint
 Launch the built desktop application using `npx electron .`.
 For Vite development, build the main/preload first, then run `npm run dev`.
 
-Authentication requires a real Supabase project. Set SUPABASE_URL and
-SUPABASE_ANON_KEY in the launching process; .env.example documents names.
-The application does not currently load .env automatically. Never use a
-service-role key. Missing configuration produces an explicit error.
+Authentication requires a real Supabase project. Follow the
+[Supabase setup guide](docs/SUPABASE_SETUP.md), which covers the SQL migration,
+private Storage policies, email setup and local account-service.json config.
+Environment configuration remains supported. Never use a service-role key.
+Missing configuration produces an explicit error.
 Provider credentials are entered in app settings after authentication and
 stored encrypted using the OS. Live authentication and provider acceptance
 require external configuration and remain unverified.

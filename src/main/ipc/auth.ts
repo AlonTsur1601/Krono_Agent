@@ -1,3 +1,7 @@
+import { app } from 'electron'
+import { readFileSync, existsSync } from 'fs'
+import path from 'path'
+import { parseAccountConfig } from '../account-config'
 import { cancelAllRuns } from './chat'
 import { ipcMain } from 'electron'
 import { createClient, SupabaseClient, User } from '@supabase/supabase-js'
@@ -6,10 +10,16 @@ import { dbManager } from '../db'
 
 let client: SupabaseClient | undefined
 function authClient() {
-  const url = process.env.SUPABASE_URL
-  const key = process.env.SUPABASE_ANON_KEY
-  if (!url || !key) throw new Error('Account service is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY before launching Krono.')
-  client ??= createClient(url, key, { auth: { persistSession: false, autoRefreshToken: true } })
+  const configFile = path.join(app.getPath('userData'), 'account-service.json')
+  let input: unknown
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
+    input = { url: process.env.SUPABASE_URL, anonKey: process.env.SUPABASE_ANON_KEY }
+  } else if (existsSync(configFile)) {
+    try { input = JSON.parse(readFileSync(configFile, 'utf8')) }
+    catch { throw new Error('Cannot read account-service.json. Check the account setup guide.') }
+  } else throw new Error('Account service is not configured. Follow the Supabase setup guide to create account-service.json or set SUPABASE_URL and SUPABASE_ANON_KEY.')
+  const config = parseAccountConfig(input)
+  client ??= createClient(config.url, config.anonKey, { auth: { persistSession: false, autoRefreshToken: true } })
   return client
 }
 function openAccount(user: User) {
