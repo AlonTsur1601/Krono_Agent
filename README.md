@@ -12,7 +12,7 @@ See [audited implementation status](IMPLEMENTATION_STATUS.md) and the
 
 ## Development
 
-Node.js 20+ and native build tooling may be required for Electron modules.
+Node.js 22.12+ (CI uses Node.js 24) and native build tooling may be required for Electron modules.
 
 ```powershell
 npm ci

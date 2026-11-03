@@ -1,3 +1,4 @@
+import { setupTerminalHandlers, closeAllTerminals } from './ipc/terminal'
 import { app, BrowserWindow } from 'electron'
 import path from 'path'
 import { setupAuthHandlers } from './ipc/auth'
@@ -46,6 +47,7 @@ app.whenReady().then(() => {
   setupAuthHandlers()
   setupChatHandlers()
   setupSettingsHandlers()
+  setupTerminalHandlers()
   
   createWindow()
 
@@ -56,7 +58,9 @@ app.whenReady().then(() => {
   })
 })
 
+app.on('before-quit', closeAllTerminals)
 app.on('window-all-closed', () => {
+  closeAllTerminals()
   if (process.platform !== 'darwin') {
     app.quit()
   }

@@ -74,3 +74,6 @@ $RECYCLE.BIN/
 ehthumbs.db
 
 # Do not ignore .kiro - it should be tracked
+
+# Temporary dependency checkpoint during major upgrades
+node_modules.previous/

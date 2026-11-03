@@ -1,3 +1,4 @@
+import { TerminalPanel } from '../features/terminal/TerminalPanel'
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
@@ -16,6 +17,8 @@ import { SettingsView } from '../features/settings/SettingsView'
 type GameId = 'snake' | 'tic-tac-toe' | '2048' | 'minesweeper' | 'connect-four' | 'breakout' | 'memory-match' | 'pong'
 
 export function MainLayout() {
+  const [terminalOpen, setTerminalOpen] = useState(false)
+  const [terminalMounted, setTerminalMounted] = useState(false)
   const [activeView, setActiveView] = useState<'chat' | 'games' | 'settings'>('chat')
   const [selectedGame, setSelectedGame] = useState<GameId>('snake')
   const { user, logout } = useAuthStore()
@@ -256,7 +259,8 @@ export function MainLayout() {
       </div>
 
       {/* Main Content */}
-      <div style={{ flex: 1, overflow: 'hidden' }}>
+      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         {activeView === 'chat' && <ChatView />}
         {activeView === 'games' && selectedGame === 'snake' && <Snake />}
         {activeView === 'games' && selectedGame === 'tic-tac-toe' && <TicTacToe />}
@@ -267,6 +271,9 @@ export function MainLayout() {
         {activeView === 'games' && selectedGame === 'memory-match' && <MemoryMatch />}
         {activeView === 'games' && selectedGame === 'pong' && <Pong />}
         {activeView === 'settings' && <SettingsView />}
+      </div>
+      <button onClick={() => { setTerminalMounted(true); setTerminalOpen(!terminalOpen) }} aria-expanded={terminalOpen} style={{ textAlign: 'left', padding: '8px 16px', color: 'var(--text-primary)', background: 'var(--bg-sidebar)', border: '1px solid var(--border)' }}>Terminal {terminalOpen ? '−' : '+'}</button>
+      <div style={{ display: terminalOpen ? 'block' : 'none' }}>{terminalMounted && <TerminalPanel />}</div>
       </div>
     </div>
   )

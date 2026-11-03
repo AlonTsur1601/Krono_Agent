@@ -1,3 +1,4 @@
+npmRebuild: false
 appId: com.krono.agent
 productName: Krono Agent
 copyright: Copyright © 2026 Alon Tsur

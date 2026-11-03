@@ -90,7 +90,7 @@ export function ChatView() {
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                 }}>
-                  <ReactMarkdown>{message.content || (message.streaming ? 'Working…' : '')}</ReactMarkdown>
+                  <ReactMarkdown>{message.content || (message.streaming ? 'Workingâ€¦' : '')}</ReactMarkdown>
                   {message.streaming && (
                     <span style={{
                       display: 'inline-block',

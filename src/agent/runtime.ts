@@ -1,4 +1,4 @@
-import { zodToJsonSchema } from 'zod-to-json-schema'
+import { z } from 'zod'
 import type { ZodTypeAny } from 'zod'
 import type { ExecutionContext, ToolCall } from './types'
 import type {
@@ -197,7 +197,7 @@ export class AgentRuntime {
     return tools.map((tool) => ({
       name: tool.name,
       description: tool.description,
-      inputSchema: (zodToJsonSchema as (schema: unknown, options: unknown) => Record<string, unknown>)(tool.inputSchema, { target: 'jsonSchema7' })
+      inputSchema: z.toJSONSchema(tool.inputSchema as ZodTypeAny, { target: 'draft-7' })
     }))
   }
 }

@@ -1,3 +1,5 @@
+> Continued 2026-11-04: see review-2026-11-04.md for dependency upgrades, user terminal implementation and actual verification. Full milestones remain incomplete.
+
 > Supabase preparation 2026-11-03: migration, ownership policies, private bucket and setup guide implemented; embedded PostgreSQL isolation tests pass. Cloud deployment and live account/sync acceptance remain pending user project creation.
 
 > Takeover review 2026-11-03: checklist entries below are not proof of acceptance. See review-2026-11-03.md and IMPLEMENTATION_STATUS.md for audited status. Product remains incomplete.

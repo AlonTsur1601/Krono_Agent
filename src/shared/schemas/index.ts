@@ -40,7 +40,7 @@ export const TerminalCommandSchema = z.object({
 export const GameActionSchema = z.object({
   gameId: z.string(),
   action: z.enum(['launch', 'pause', 'resume', 'restart', 'save', 'load']),
-  data: z.record(z.unknown()).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
 })
 
 // Type exports
