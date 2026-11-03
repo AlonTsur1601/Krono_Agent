@@ -3,10 +3,16 @@ import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
 import { useChatStore } from '../stores/chatStore'
 import { Snake } from '../features/games/Snake'
+import { TicTacToe } from '../features/games/TicTacToe'
+import { TwentyFortyEight } from '../features/games/TwentyFortyEight'
+import { Minesweeper } from '../features/games/Minesweeper'
 import { ChatView } from '../features/chat/ChatView'
+
+type GameId = 'snake' | 'tic-tac-toe' | '2048' | 'minesweeper'
 
 export function MainLayout() {
   const [activeView, setActiveView] = useState<'chat' | 'games'>('chat')
+  const [selectedGame, setSelectedGame] = useState<GameId>('snake')
   const { user, logout } = useAuthStore()
   const { theme, setTheme } = useThemeStore()
   const { chats, currentChatId, loadChats, createChat, selectChat, deleteChat } = useChatStore()
@@ -14,6 +20,13 @@ export function MainLayout() {
   useEffect(() => {
     loadChats()
   }, [loadChats])
+
+  const games = [
+    { id: 'snake' as const, name: 'Snake' },
+    { id: 'tic-tac-toe' as const, name: 'Tic-Tac-Toe' },
+    { id: '2048' as const, name: '2048' },
+    { id: 'minesweeper' as const, name: 'Minesweeper' },
+  ]
 
   return (
     <div style={{
@@ -147,6 +160,34 @@ export function MainLayout() {
               ))}
             </div>
           )}
+
+          {activeView === 'games' && (
+            <div>
+              <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '0.5rem' }}>
+                Available Games (4/24)
+              </div>
+              {games.map((game) => (
+                <button
+                  key={game.id}
+                  onClick={() => setSelectedGame(game.id)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    marginBottom: '0.25rem',
+                    borderRadius: '0.375rem',
+                    border: 'none',
+                    backgroundColor: selectedGame === game.id ? 'var(--bg-surface)' : 'transparent',
+                    color: 'var(--text-primary)',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  {game.name}
+                </button>
+              ))}
+            </div>
+          )}
         </nav>
 
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
@@ -192,7 +233,10 @@ export function MainLayout() {
       {/* Main Content */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
         {activeView === 'chat' && <ChatView />}
-        {activeView === 'games' && <Snake />}
+        {activeView === 'games' && selectedGame === 'snake' && <Snake />}
+        {activeView === 'games' && selectedGame === 'tic-tac-toe' && <TicTacToe />}
+        {activeView === 'games' && selectedGame === '2048' && <TwentyFortyEight />}
+        {activeView === 'games' && selectedGame === 'minesweeper' && <Minesweeper />}
       </div>
     </div>
   )
