@@ -2,7 +2,7 @@
 
 ## Completed ✓
 
-### Foundation (Milestone A - Partial)
+### Foundation (Milestone A - Complete)
 - [x] Repository structure with .kiro documentation
 - [x] Complete .kiro/steering/ documents (product.md, tech.md, structure.md)
 - [x] Complete .kiro/specs/ documents (requirements.md, design.md, tasks.md)
@@ -13,12 +13,15 @@
 - [x] electron-builder configuration
 - [x] .gitignore
 - [x] README.md with project overview
+- [x] QUICKSTART.md
+- [x] docs/DEVELOPMENT.md
+- [x] GitHub Actions CI/CD (ci.yml, release.yml)
 
 ### Logo and Branding
 - [x] Original SVG logo (hourglass/K negative space + pixel accent)
 - [x] Monochrome variant
 - [x] Wordmark design
-- [ ] App icons (ICO, ICNS, PNG 16-1024px) - Needs generation
+- [ ] App icons (ICO, ICNS, PNG 16-1024px) - Needs generation from SVG
 
 ### Theme System
 - [x] Dark theme (complete with CSS variables)
@@ -28,7 +31,7 @@
 - [x] Theme persistence
 - [x] Theme store (Zustand)
 
-### Authentication (Basic)
+### Authentication
 - [x] SQLite database manager
 - [x] Database schema with migrations
 - [x] Auth IPC handlers (login, register, logout)
@@ -38,7 +41,6 @@
 - [ ] Supabase integration - TODO
 - [ ] OAuth (Google, GitHub) - TODO
 - [ ] Password reset - TODO
-- [ ] Offline access after auth - TODO
 
 ### Database
 - [x] SQLite setup with better-sqlite3
@@ -49,188 +51,106 @@
 - [ ] Supabase schema with RLS - TODO
 - [ ] Sync worker - TODO
 
-### UI Layout
-- [x] Basic MainLayout with sidebar
-- [x] Navigation (Chat, Games)
-- [x] Theme selector
-- [x] Sign out button
-- [ ] Resizable sidebar - TODO
-- [ ] Right panel - TODO
-- [ ] Terminal drawer - TODO
-- [ ] Layout persistence - TODO
+### Chat System (Milestone B - Partial)
+- [x] Chat store (Zustand)
+- [x] Chat IPC handlers (create, list, get, send, delete)
+- [x] ChatView component with composer
+- [x] Message storage and display
+- [x] Chat list in sidebar
+- [x] Mode selector (Chat/Plan/Agent/Goal)
+- [x] Permission selector (Ask/Project/Full)
+- [ ] Real model integration (placeholder response now)
+- [ ] Streaming responses
+- [ ] Activity monitoring
+- [ ] Approval UI
 
-### Games (1 of 24)
-- [x] Snake game (complete with rules, controls, scoring)
-  - Grid movement
-  - Food spawning
-  - Collision detection
-  - Speed progression
-  - Pause/Resume
-  - High score tracking
-- [ ] 23 remaining games - TODO
-
-## Not Started / TODO
-
-### Milestone B: Models and Chat
-- [ ] Provider adapter interface
-- [ ] OpenAI adapter
+### Model Providers (Milestone B - Partial)
+- [x] ProviderAdapter interface
+- [x] OpenAI provider implementation
+- [x] Model capabilities detection
+- [x] Streaming support structure
+- [ ] Provider configuration UI
 - [ ] Anthropic adapter
 - [ ] Google Gemini adapter
 - [ ] Azure, xAI, OpenRouter, Groq, Mistral adapters
 - [ ] Ollama / LM Studio support
-- [ ] Custom endpoint support
 - [ ] llama.cpp sidecar for local models
-- [ ] Model download UI with progress
-- [ ] Chat UI with message list
-- [ ] Composer with model/mode/permission selectors
-- [ ] Streaming response rendering
-- [ ] Execution modes (Chat, Plan, Agent, Goal)
-- [ ] Activity stream
+- [ ] Integration with chat system
 
-### Milestone C: Tools
-- [ ] File operations (read, write, edit, move, delete)
-- [ ] Diff generation and snapshot restore
+### Tools (Milestone C - Partial)
+- [x] ToolDefinition interface
+- [x] File read tool (with permission checks)
+- [x] File write tool (with approval flow)
+- [x] File list tool (with recursion)
+- [ ] Edit tool with diffs
 - [ ] Terminal (xterm.js + node-pty)
 - [ ] Browser (internal WebContentsView)
-- [ ] Browser automation
-- [ ] External browser connection
-- [ ] Desktop control (Windows UI Automation)
-- [ ] macOS/Linux desktop control
-- [ ] Whisper dictation
-- [ ] Media generation (OpenAI, Google, xAI)
+- [ ] Desktop control
+- [ ] Media generation
 
-### Milestone D: Projects, Memory, Sync
-- [ ] Project management
-- [ ] Multiple directory mapping
-- [ ] Global and project memory
-- [ ] Memory proposals and acceptance
-- [ ] Supabase sync worker
-- [ ] Optimistic concurrency
-- [ ] Conflict resolution UI
-- [ ] Side chats with 24h expiry
-- [ ] Automation system
+### UI Layout
+- [x] MainLayout with sidebar
+- [x] Navigation (Chat, Games)
+- [x] Chat list with create/delete
+- [x] Game selector
+- [x] Theme selector
+- [x] Sign out button
+- [ ] Resizable sidebar
+- [ ] Right panel
+- [ ] Terminal drawer
 
-### Milestone E: Plugins and Connections
-- [ ] Plugin manifest and registry
-- [ ] MCP stdio/HTTP support
-- [ ] Plugin import (folder, archive, Git)
-- [ ] Codex/Claude Code/Antigravity adapters
-- [ ] GitHub connection
-- [ ] Git operations
-- [ ] Google Drive connection
-- [ ] Google Calendar connection
-- [ ] Discord webhook connection
+### Games (4 of 24)
+- [x] **Snake** (complete with rules, controls, scoring, speed progression)
+- [x] **Tic-Tac-Toe** (complete with minimax AI, perfect play)
+- [x] **2048** (complete with merge logic, win detection)
+- [x] **Minesweeper** (complete with safe first click, flood fill)
+- [ ] 20 remaining games
 
-### Milestone F: Games (23 Remaining)
-- [ ] Minesweeper
-- [ ] Tic-Tac-Toe
-- [ ] Maze Chase
-- [ ] Pong
-- [ ] Block Fit
-- [ ] Falling Blocks
-- [ ] Sand Blocks
-- [ ] Flap
-- [ ] Darts
-- [ ] Jigsaw
-- [ ] Stack
-- [ ] Orbit
-- [ ] Color Gauntlet
-- [ ] Odd Color
-- [ ] 2048
-- [ ] Breakout
-- [ ] Memory Match
-- [ ] Sudoku
-- [ ] Solitaire
-- [ ] Connect Four
-- [ ] Reversi
-- [ ] Simon
-- [ ] Lights Out
-- [ ] Game catalog page
-- [ ] Game artwork (original for all 24)
-- [ ] Game sound effects
-- [ ] Task strip during gameplay
+## Current Status
 
-### Milestone G: Packaging and Testing
-- [ ] Unit tests (Vitest)
-- [ ] Integration tests (Playwright Electron)
-- [ ] Windows installer (NSIS)
-- [ ] Windows portable build
-- [ ] macOS DMG
-- [ ] Linux AppImage
-- [ ] GitHub Actions CI/CD
-- [ ] Manual verification checklist
-- [ ] Accessibility testing
-- [ ] Performance testing
-- [ ] Documentation site (GitHub Pages)
-- [ ] Third-party notices
-- [ ] Release preparation
+**What Works Now (After `npm install && npm run dev`):**
+1. ✅ Register/Login/Logout (SQLite)
+2. ✅ Create chats, switch between chats
+3. ✅ Send messages (stored in database, placeholder responses)
+4. ✅ Switch themes (Dark/Light/Halloween)
+5. ✅ Play 4 complete games (Snake, Tic-Tac-Toe, 2048, Minesweeper)
+6. ✅ Game selection from sidebar
 
-## Current Vertical Slice Status
+**What's Functional But Incomplete:**
+- Chat UI works but responses are placeholders (need model integration)
+- OpenAI provider implemented but not wired to chat
+- File tools implemented but not accessible from chat
+- Permission system structured but not enforced in chat flow
 
-**What Works Now:**
-1. Launch the app (after `npm install`)
-2. Register a new account (mock auth, stored in SQLite)
-3. Login with that account
-4. Switch themes (Dark/Light/Halloween)
-5. Play Snake game (complete with scoring, pause, game over)
-6. Sign out
+**Estimated Completion: ~15% complete**
 
-**What This Proves:**
-- Electron architecture works
-- React + Vite + TypeScript compile
-- SQLite database operations
-- Zustand state management
-- Theme system functional
-- Canvas rendering for games
-- IPC communication between main and renderer
+## Next Critical Steps
 
-## Next Steps for Completion
+### Immediate (to make chat functional):
+1. Wire OpenAI provider to chat system
+2. Implement tool execution in chat flow
+3. Add streaming response rendering
+4. Connect permission checks to approvals
 
-### Immediate (Week 1-2):
-1. Add remaining 23 games
-2. Implement at least one model provider (OpenAI)
-3. Build basic chat UI with streaming
-4. Add one tool (file read)
+### Short-term (core usability):
+1. Add provider configuration UI
+2. Implement activity monitoring
+3. Add 3-5 more games
+4. Terminal integration
 
-### Short-term (Week 3-4):
-1. Complete all model provider adapters
-2. Implement full tool suite
-3. Build permission system
-4. Add Supabase sync
-
-### Medium-term (Week 5-8):
-1. Projects and memory system
-2. Side chats
-3. Automations
-4. Plugin system
-
-### Long-term (Week 9-12):
-1. All connection integrations
-2. Complete testing suite
-3. Packaging for all platforms
-4. Documentation and polish
-
-## Estimated Completion
-
-Based on specification requirements (no placeholders, all features real), full implementation requires approximately **12-16 weeks** of focused development by an experienced developer.
-
-Current status: **~5% complete** (foundation + 1 game)
+### Medium-term (full agent):
+1. Complete remaining 15-16 games
+2. All provider adapters
+3. Full tool suite
+4. Supabase sync
 
 ## How to Continue
 
-1. **Install dependencies:** `npm install`
-2. **Run dev mode:** `npm run dev`
-3. **Build:** `npm run build`
-4. **Package:** `npm run package:win`
+The foundation is complete and solid. Next work should focus on:
 
-The architecture is sound and ready to extend. Each milestone in tasks.md has specific acceptance criteria. Start with Milestone B (models and chat) to make the agent functionality work, then add remaining games incrementally.
+1. **Make chat actually work** - Connect OpenAI provider to chat, enable real conversations
+2. **Add games incrementally** - Each game is self-contained, add one at a time
+3. **Build out tools** - Terminal, browser, desktop control (big features)
+4. **Add providers** - Copy OpenAI pattern for other providers
 
-## Notes
-
-- All .kiro documentation is complete and authoritative
-- Database schema supports full sync architecture
-- Logo and theme system are production-ready
-- Snake game demonstrates game module pattern
-- Auth demonstrates IPC + store pattern
-
-This is a solid foundation for a production application, but completing all 24 games + full agent capabilities is a substantial ongoing project.
+See `.kiro/specs/krono-agent/tasks.md` for the full task breakdown.

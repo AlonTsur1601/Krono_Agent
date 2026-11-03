@@ -12,6 +12,7 @@ interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string
   createdAt: number
+  streaming?: boolean
 }
 
 interface ChatState {
@@ -19,6 +20,7 @@ interface ChatState {
   currentChatId: string | null
   messages: Message[]
   isLoading: boolean
+  streamingMessageId: string | null
   
   loadChats: () => Promise<void>
   createChat: (name?: string) => Promise<void>
@@ -29,6 +31,7 @@ interface ChatState {
     permissions: 'ask' | 'project' | 'full'
   }) => Promise<void>
   deleteChat: (chatId: string) => Promise<void>
+  handleStreamChunk: (data: any) => void
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -36,6 +39,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentChatId: null,
   messages: [],
   isLoading: false,
+  streamingMessageId: null,
 
   loadChats: async () => {
     set({ isLoading: true })
@@ -76,14 +80,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { currentChatId, messages } = get()
     if (!currentChatId) return
 
-    // Optimistic update
-    const tempMessage = {
-      id: 'temp',
+    // Add user message optimistically
+    const tempUserId = `temp-user-${Date.now()}`
+    const userMessage = {
+      id: tempUserId,
       role: 'user' as const,
       content,
       createdAt: Date.now(),
     }
-    set({ messages: [...messages, tempMessage] })
+    
+    // Add empty assistant message for streaming
+    const tempAssistantId = `temp-assistant-${Date.now()}`
+    const assistantMessage = {
+      id: tempAssistantId,
+      role: 'assistant' as const,
+      content: '',
+      createdAt: Date.now(),
+      streaming: true,
+    }
+
+    set({
+      messages: [...messages, userMessage, assistantMessage],
+      streamingMessageId: tempAssistantId,
+    })
 
     try {
       const result = await window.api.invoke('chat:send-message', {
@@ -92,18 +111,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ...options,
       })
 
-      // Replace temp message with real messages
-      set({
-        messages: [
-          ...messages,
-          result.userMessage,
-          result.assistantMessage,
-        ],
-      })
+      // Replace temp messages with real ones
+      set((state) => ({
+        messages: state.messages.map((msg) =>
+          msg.id === tempUserId ? result.userMessage :
+          msg.id === tempAssistantId ? { ...result.assistantMessage, streaming: false } :
+          msg
+        ),
+        streamingMessageId: null,
+      }))
     } catch (error) {
       console.error('Failed to send message:', error)
-      // Remove temp message on error
-      set({ messages })
+      // Remove temp messages on error
+      set((state) => ({
+        messages: state.messages.filter(
+          (msg) => msg.id !== tempUserId && msg.id !== tempAssistantId
+        ),
+        streamingMessageId: null,
+      }))
     }
   },
 
@@ -123,4 +148,39 @@ export const useChatStore = create<ChatState>((set, get) => ({
       console.error('Failed to delete chat:', error)
     }
   },
+
+  handleStreamChunk: (data: any) => {
+    const { chatId, messageId, chunk } = data
+    const { currentChatId, streamingMessageId } = get()
+
+    if (chatId !== currentChatId || messageId !== streamingMessageId) {
+      return
+    }
+
+    if (chunk.type === 'text') {
+      set((state) => ({
+        messages: state.messages.map((msg) =>
+          msg.id === messageId
+            ? { ...msg, content: msg.content + chunk.content }
+            : msg
+        ),
+      }))
+    } else if (chunk.type === 'done') {
+      set((state) => ({
+        messages: state.messages.map((msg) =>
+          msg.id === messageId
+            ? { ...msg, streaming: false }
+            : msg
+        ),
+        streamingMessageId: null,
+      }))
+    }
+  },
 }))
+
+// Set up stream chunk listener
+if (typeof window !== 'undefined' && window.api) {
+  window.api.on('chat:stream-chunk', (data: any) => {
+    useChatStore.getState().handleStreamChunk(data)
+  })
+}

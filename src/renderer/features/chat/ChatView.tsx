@@ -85,7 +85,17 @@ export function ChatView() {
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                 }}>
-                  {message.content}
+                  {message.content || (message.streaming ? '...' : '')}
+                  {message.streaming && (
+                    <span style={{
+                      display: 'inline-block',
+                      width: '8px',
+                      height: '14px',
+                      marginLeft: '2px',
+                      backgroundColor: 'var(--accent)',
+                      animation: 'blink 1s infinite',
+                    }}></span>
+                  )}
                 </div>
               </div>
             ))}

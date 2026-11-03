@@ -7,8 +7,11 @@ contextBridge.exposeInMainWorld('api', {
   send: (channel: string, data: unknown) => {
     ipcRenderer.send(channel, data)
   },
-  receive: (channel: string, func: (...args: unknown[]) => void) => {
+  on: (channel: string, func: (...args: unknown[]) => void) => {
     ipcRenderer.on(channel, (_event, ...args) => func(...args))
+  },
+  off: (channel: string, func: (...args: unknown[]) => void) => {
+    ipcRenderer.off(channel, func as any)
   },
   invoke: (channel: string, data?: unknown) => {
     return ipcRenderer.invoke(channel, data)
@@ -20,7 +23,8 @@ declare global {
   interface Window {
     api: {
       send: (channel: string, data: unknown) => void
-      receive: (channel: string, func: (...args: unknown[]) => void) => void
+      on: (channel: string, func: (...args: unknown[]) => void) => void
+      off: (channel: string, func: (...args: unknown[]) => void) => void
       invoke: (channel: string, data?: unknown) => Promise<unknown>
     }
   }

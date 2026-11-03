@@ -1,7 +1,9 @@
-import { ipcMain } from 'electron'
+import { ipcMain, BrowserWindow } from 'electron'
 import { SendMessageSchema, CreateChatSchema } from '../../shared/schemas'
 import { dbManager } from '../db'
 import { randomBytes } from 'crypto'
+import { agentRuntime } from '../../agent/runtime'
+import type { CompletionChunk } from '../../agent/types'
 
 export function setupChatHandlers() {
   ipcMain.handle('chat:create', async (_event, data) => {
@@ -64,7 +66,7 @@ export function setupChatHandlers() {
     }
   })
 
-  ipcMain.handle('chat:send-message', async (_event, data) => {
+  ipcMain.handle('chat:send-message', async (event, data) => {
     try {
       const { chatId, content, mode, modelId, permissions } = SendMessageSchema.parse(data)
       const db = dbManager.getDb()
@@ -80,28 +82,86 @@ export function setupChatHandlers() {
       // Update chat timestamp
       db.prepare('UPDATE chats SET updated_at = ? WHERE id = ?').run(now, chatId)
 
-      // TODO: Integrate with agent runtime
-      // For now, return a placeholder response
+      // Get chat history
+      const messages = db
+        .prepare('SELECT role, content FROM messages WHERE chat_id = ? ORDER BY created_at ASC')
+        .all(chatId) as Array<{ role: string; content: string }>
+
+      // Configure OpenAI provider (in production, get API key from settings)
+      const apiKey = process.env.OPENAI_API_KEY || ''
+      if (apiKey) {
+        await agentRuntime.configureProvider('openai', apiKey)
+      }
+
+      // Start streaming response
       const assistantMessageId = randomBytes(16).toString('hex')
-      const assistantContent = `[Agent response in ${mode} mode with ${permissions} permissions using ${modelId}]\n\nThis is a placeholder. Agent integration coming soon.`
+      let fullContent = ''
 
-      db.prepare(
-        'INSERT INTO messages (id, chat_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)'
-      ).run(assistantMessageId, chatId, 'assistant', assistantContent, now + 1000)
+      try {
+        // Execute agent
+        for await (const chunk of agentRuntime.execute(messages as any, {
+          mode,
+          permissions,
+          modelId,
+          providerId: 'openai',
+        })) {
+          // Send chunk to renderer
+          const window = BrowserWindow.fromWebContents(event.sender)
+          if (window) {
+            window.webContents.send('chat:stream-chunk', {
+              chatId,
+              messageId: assistantMessageId,
+              chunk,
+            })
+          }
 
-      return {
-        userMessage: {
-          id: messageId,
-          role: 'user',
-          content,
-          createdAt: now,
-        },
-        assistantMessage: {
-          id: assistantMessageId,
-          role: 'assistant',
-          content: assistantContent,
-          createdAt: now + 1000,
-        },
+          // Accumulate text content
+          if (chunk.type === 'text') {
+            fullContent += chunk.content
+          }
+        }
+
+        // Store complete assistant message
+        db.prepare(
+          'INSERT INTO messages (id, chat_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)'
+        ).run(assistantMessageId, chatId, 'assistant', fullContent, Date.now())
+
+        return {
+          userMessage: {
+            id: messageId,
+            role: 'user',
+            content,
+            createdAt: now,
+          },
+          assistantMessage: {
+            id: assistantMessageId,
+            role: 'assistant',
+            content: fullContent,
+            createdAt: Date.now(),
+          },
+        }
+      } catch (error) {
+        const errorContent = `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+        
+        // Store error message
+        db.prepare(
+          'INSERT INTO messages (id, chat_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)'
+        ).run(assistantMessageId, chatId, 'assistant', errorContent, Date.now())
+
+        return {
+          userMessage: {
+            id: messageId,
+            role: 'user',
+            content,
+            createdAt: now,
+          },
+          assistantMessage: {
+            id: assistantMessageId,
+            role: 'assistant',
+            content: errorContent,
+            createdAt: Date.now(),
+          },
+        }
       }
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : 'Failed to send message')
