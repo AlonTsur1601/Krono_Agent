@@ -7,11 +7,12 @@ import { TicTacToe } from '../features/games/TicTacToe'
 import { TwentyFortyEight } from '../features/games/TwentyFortyEight'
 import { Minesweeper } from '../features/games/Minesweeper'
 import { ChatView } from '../features/chat/ChatView'
+import { SettingsView } from '../features/settings/SettingsView'
 
 type GameId = 'snake' | 'tic-tac-toe' | '2048' | 'minesweeper'
 
 export function MainLayout() {
-  const [activeView, setActiveView] = useState<'chat' | 'games'>('chat')
+  const [activeView, setActiveView] = useState<'chat' | 'games' | 'settings'>('chat')
   const [selectedGame, setSelectedGame] = useState<GameId>('snake')
   const { user, logout } = useAuthStore()
   const { theme, setTheme } = useThemeStore()
@@ -96,6 +97,7 @@ export function MainLayout() {
               style={{
                 width: '100%',
                 padding: '0.75rem',
+                marginBottom: '0.5rem',
                 borderRadius: '0.375rem',
                 border: 'none',
                 backgroundColor: activeView === 'games' ? 'var(--bg-surface)' : 'transparent',
@@ -105,6 +107,21 @@ export function MainLayout() {
               }}
             >
               Games
+            </button>
+            <button
+              onClick={() => setActiveView('settings')}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                borderRadius: '0.375rem',
+                border: 'none',
+                backgroundColor: activeView === 'settings' ? 'var(--bg-surface)' : 'transparent',
+                color: 'var(--text-primary)',
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              Settings
             </button>
           </div>
 
@@ -237,6 +254,7 @@ export function MainLayout() {
         {activeView === 'games' && selectedGame === 'tic-tac-toe' && <TicTacToe />}
         {activeView === 'games' && selectedGame === '2048' && <TwentyFortyEight />}
         {activeView === 'games' && selectedGame === 'minesweeper' && <Minesweeper />}
+        {activeView === 'settings' && <SettingsView />}
       </div>
     </div>
   )
