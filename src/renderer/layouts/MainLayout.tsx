@@ -6,10 +6,14 @@ import { Snake } from '../features/games/Snake'
 import { TicTacToe } from '../features/games/TicTacToe'
 import { TwentyFortyEight } from '../features/games/TwentyFortyEight'
 import { Minesweeper } from '../features/games/Minesweeper'
+import { ConnectFour } from '../features/games/ConnectFour'
+import { Breakout } from '../features/games/Breakout'
+import { MemoryMatch } from '../features/games/MemoryMatch'
+import { Pong } from '../features/games/Pong'
 import { ChatView } from '../features/chat/ChatView'
 import { SettingsView } from '../features/settings/SettingsView'
 
-type GameId = 'snake' | 'tic-tac-toe' | '2048' | 'minesweeper'
+type GameId = 'snake' | 'tic-tac-toe' | '2048' | 'minesweeper' | 'connect-four' | 'breakout' | 'memory-match' | 'pong'
 
 export function MainLayout() {
   const [activeView, setActiveView] = useState<'chat' | 'games' | 'settings'>('chat')
@@ -27,6 +31,10 @@ export function MainLayout() {
     { id: 'tic-tac-toe' as const, name: 'Tic-Tac-Toe' },
     { id: '2048' as const, name: '2048' },
     { id: 'minesweeper' as const, name: 'Minesweeper' },
+    { id: 'connect-four' as const, name: 'Connect Four' },
+    { id: 'breakout' as const, name: 'Breakout' },
+    { id: 'memory-match' as const, name: 'Memory Match' },
+    { id: 'pong' as const, name: 'Pong' },
   ]
 
   return (
@@ -181,7 +189,7 @@ export function MainLayout() {
           {activeView === 'games' && (
             <div>
               <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '0.5rem' }}>
-                Available Games (4/24)
+                Available Games (8/24)
               </div>
               {games.map((game) => (
                 <button
@@ -254,6 +262,10 @@ export function MainLayout() {
         {activeView === 'games' && selectedGame === 'tic-tac-toe' && <TicTacToe />}
         {activeView === 'games' && selectedGame === '2048' && <TwentyFortyEight />}
         {activeView === 'games' && selectedGame === 'minesweeper' && <Minesweeper />}
+        {activeView === 'games' && selectedGame === 'connect-four' && <ConnectFour />}
+        {activeView === 'games' && selectedGame === 'breakout' && <Breakout />}
+        {activeView === 'games' && selectedGame === 'memory-match' && <MemoryMatch />}
+        {activeView === 'games' && selectedGame === 'pong' && <Pong />}
         {activeView === 'settings' && <SettingsView />}
       </div>
     </div>
