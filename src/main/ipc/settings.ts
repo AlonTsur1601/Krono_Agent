@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { agentRuntime } from '../../agent/runtime'
 import { AnthropicProvider } from '../../agent/providers/anthropic'
+import { GoogleProvider } from '../../agent/providers/google'
 
 // Track configured providers
 const configuredProviders = new Set<string>()
@@ -8,6 +9,7 @@ const configuredProviders = new Set<string>()
 export function setupSettingsHandlers() {
   // Register additional providers
   agentRuntime.registerProvider(new AnthropicProvider())
+  agentRuntime.registerProvider(new GoogleProvider())
 
   ipcMain.handle('settings:get-providers', async () => {
     return [
@@ -20,6 +22,11 @@ export function setupSettingsHandlers() {
         id: 'anthropic',
         name: 'Anthropic',
         configured: process.env.ANTHROPIC_API_KEY !== undefined || configuredProviders.has('anthropic'),
+      },
+      {
+        id: 'google',
+        name: 'Google (Gemini)',
+        configured: process.env.GOOGLE_API_KEY !== undefined || configuredProviders.has('google'),
       },
     ]
   })
