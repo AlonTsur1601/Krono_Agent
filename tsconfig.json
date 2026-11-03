@@ -22,7 +22,8 @@
       "@/hooks": ["./src/renderer/hooks"],
       "@/agent": ["./src/agent"],
       "@/games": ["./src/games"],
-      "@/shared": ["./src/shared"]
+      "@/shared": ["./src/shared"],
+      "@/shared/*": ["./src/shared/*"]
     }
   },
   "include": ["src/renderer", "src/shared", "src/agent", "src/games", "src/preload"],

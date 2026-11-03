@@ -1,3 +1,4 @@
+import * as fs from 'fs'
 import Database from 'better-sqlite3'
 import { app } from 'electron'
 import path from 'path'
@@ -22,7 +23,6 @@ export class DatabaseManager {
     }
 
     const dbPath = this.getDbPath(accountId)
-    const fs = require('fs')
     const dir = path.dirname(dbPath)
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true })
@@ -33,6 +33,7 @@ export class DatabaseManager {
 
     // Enable WAL mode for better concurrency
     this.db.pragma('journal_mode = WAL')
+    this.db.pragma('foreign_keys = ON')
     
     // Run migrations
     this.runMigrations()

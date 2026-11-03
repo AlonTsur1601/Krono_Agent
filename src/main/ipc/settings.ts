@@ -1,3 +1,5 @@
+import { z } from 'zod'
+import { saveCredential, loadCredential } from '../credentials'
 import { ipcMain } from 'electron'
 import { agentRuntime } from '../../agent/runtime'
 import { AnthropicProvider } from '../../agent/providers/anthropic'
@@ -16,24 +18,24 @@ export function setupSettingsHandlers() {
       {
         id: 'openai',
         name: 'OpenAI',
-        configured: process.env.OPENAI_API_KEY !== undefined || configuredProviders.has('openai'),
+        configured: !!loadCredential('openai'),
       },
       {
         id: 'anthropic',
         name: 'Anthropic',
-        configured: process.env.ANTHROPIC_API_KEY !== undefined || configuredProviders.has('anthropic'),
+        configured: !!loadCredential('anthropic'),
       },
       {
         id: 'google',
         name: 'Google (Gemini)',
-        configured: process.env.GOOGLE_API_KEY !== undefined || configuredProviders.has('google'),
+        configured: !!loadCredential('google'),
       },
     ]
   })
 
   ipcMain.handle('settings:configure-provider', async (_event, data: { providerId: string; apiKey: string }) => {
     try {
-      const { providerId, apiKey } = data
+      const { providerId, apiKey } = z.object({ providerId: z.enum(['openai', 'anthropic', 'google']), apiKey: z.string().trim().min(1) }).parse(data)
 
       // Configure provider in agent runtime
       await agentRuntime.configureProvider(providerId, apiKey)
@@ -41,8 +43,7 @@ export function setupSettingsHandlers() {
       // Mark as configured
       configuredProviders.add(providerId)
 
-      // TODO: Store API key securely in OS keychain instead of environment variable
-      process.env[`${providerId.toUpperCase()}_API_KEY`] = apiKey
+      saveCredential(providerId, apiKey)
 
       return { success: true }
     } catch (error) {
@@ -52,7 +53,9 @@ export function setupSettingsHandlers() {
 
   ipcMain.handle('settings:get-models', async (_event, providerId: string) => {
     try {
-      const provider = (agentRuntime as any).providers.get(providerId)
+      const provider = agentRuntime.getProvider(providerId)
+      const credential = loadCredential(providerId)
+      if (credential) await agentRuntime.configureProvider(providerId, credential)
       if (!provider) {
         throw new Error(`Provider ${providerId} not found`)
       }

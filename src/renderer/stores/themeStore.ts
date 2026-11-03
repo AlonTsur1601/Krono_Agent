@@ -12,14 +12,14 @@ const getSystemTheme = (): 'dark' | 'light' => {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-export const useThemeStore = create<ThemeState>((set, get) => ({
+export const useThemeStore = create<ThemeState>((set) => ({
   theme: 'dark',
   
   setTheme: (theme: Theme) => {
     set({ theme })
     
     // Persist theme preference
-    window.api.invoke('settings:set', { key: 'theme', value: theme })
+    localStorage.setItem('krono-theme', theme)
     
     // Update effective theme
     const effectiveTheme = theme === 'system' ? getSystemTheme() : theme

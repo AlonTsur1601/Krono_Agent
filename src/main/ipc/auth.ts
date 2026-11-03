@@ -1,67 +1,42 @@
+import { cancelAllRuns } from './chat'
 import { ipcMain } from 'electron'
+import { createClient, SupabaseClient, User } from '@supabase/supabase-js'
 import { AuthLoginSchema, AuthRegisterSchema } from '../../shared/schemas'
 import { dbManager } from '../db'
-import { randomBytes } from 'crypto'
 
+let client: SupabaseClient | undefined
+function authClient() {
+  const url = process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_ANON_KEY
+  if (!url || !key) throw new Error('Account service is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY before launching Krono.')
+  client ??= createClient(url, key, { auth: { persistSession: false, autoRefreshToken: true } })
+  return client
+}
+function openAccount(user: User) {
+  const db = dbManager.open(user.id)
+  db.prepare('INSERT INTO accounts (id, email, created_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET email = excluded.email')
+    .run(user.id, user.email, Date.now())
+  return { user: { id: user.id, email: user.email } }
+}
 export function setupAuthHandlers() {
-  ipcMain.handle('auth:login', async (_event, data) => {
-    try {
-      const { email, password } = AuthLoginSchema.parse(data)
-      
-      // TODO: Implement actual Supabase authentication
-      // For now, create a mock user for development
-      const userId = randomBytes(16).toString('hex')
-      
-      // Open database for this user
-      const db = dbManager.open(userId)
-      
-      // Check if account exists
-      const existingAccount = db.prepare('SELECT * FROM accounts WHERE email = ?').get(email)
-      
-      if (!existingAccount) {
-        throw new Error('Account not found')
-      }
-      
-      return {
-        user: {
-          id: (existingAccount as any).id,
-          email: (existingAccount as any).email,
-        },
-      }
-    } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Login failed')
-    }
+  ipcMain.handle('auth:login', async (_event, input) => {
+    const credentials = AuthLoginSchema.parse(input)
+    const { data, error } = await authClient().auth.signInWithPassword(credentials)
+    if (error) throw new Error(error.message)
+    if (!data.user || !data.session) throw new Error('Sign-in did not establish an authenticated session.')
+    return openAccount(data.user)
   })
-
-  ipcMain.handle('auth:register', async (_event, data) => {
-    try {
-      const { email, password } = AuthRegisterSchema.parse(data)
-      
-      // TODO: Implement actual Supabase authentication
-      // For now, create a mock user for development
-      const userId = randomBytes(16).toString('hex')
-      
-      // Open database for this user
-      const db = dbManager.open(userId)
-      
-      // Create account
-      const now = Date.now()
-      db.prepare('INSERT INTO accounts (id, email, created_at) VALUES (?, ?, ?)')
-        .run(userId, email, now)
-      
-      return {
-        user: {
-          id: userId,
-          email,
-        },
-      }
-    } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Registration failed')
-    }
+  ipcMain.handle('auth:register', async (_event, input) => {
+    const credentials = AuthRegisterSchema.parse(input)
+    const { data, error } = await authClient().auth.signUp(credentials)
+    if (error) throw new Error(error.message)
+    if (!data.user || !data.session) throw new Error('Check your email to confirm your account, then sign in.')
+    return openAccount(data.user)
   })
-
   ipcMain.handle('auth:logout', async () => {
-    dbManager.close()
+    cancelAllRuns()
+    try { await client?.auth.signOut({ scope: 'local' }) }
+    finally { dbManager.close() }
     return { success: true }
   })
 }

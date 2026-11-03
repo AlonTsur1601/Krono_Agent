@@ -1,3 +1,5 @@
+> Takeover review 2026-11-03: checklist entries below are not proof of acceptance. See review-2026-11-03.md and IMPLEMENTATION_STATUS.md for audited status. Product remains incomplete.
+
 # Krono Agent - Implementation Tasks
 
 ## Milestone A: Foundation and Shell

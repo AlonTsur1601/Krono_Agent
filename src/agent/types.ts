@@ -53,12 +53,15 @@ export interface CompletionRequest {
   temperature?: number
   maxTokens?: number
   reasoningEffort?: 'low' | 'medium' | 'high'
+  signal?: AbortSignal
   stream?: boolean
 }
 
 export interface Message {
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
+  toolCallId?: string
+  toolCalls?: ToolCall[]
 }
 
 export interface Tool {

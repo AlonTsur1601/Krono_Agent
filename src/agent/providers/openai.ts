@@ -119,78 +119,31 @@ export class OpenAIProvider implements ProviderAdapter {
   async *createCompletion(request: CompletionRequest): AsyncIterable<CompletionChunk> {
     if (!this.client) throw new Error('Not configured')
 
-    try {
-      const stream = await this.client.chat.completions.create({
-        model: request.model,
-        messages: request.messages as any,
-        tools: request.tools ? this.convertTools(request.tools) : undefined,
-        temperature: request.temperature,
-        max_tokens: request.maxTokens,
-        stream: request.stream !== false,
-      })
-
-      if (request.stream === false) {
-        // Non-streaming response
-        const response = stream as any
-        yield {
-          type: 'text',
-          content: response.choices[0]?.message?.content || '',
-        }
-        yield {
-          type: 'done',
-          usage: {
-            promptTokens: response.usage?.prompt_tokens || 0,
-            completionTokens: response.usage?.completion_tokens || 0,
-            totalTokens: response.usage?.total_tokens || 0,
-          },
-        }
-        return
+    const input = request.messages.flatMap((message): any[] => {
+      if (message.role === 'tool') return [{ type: 'function_call_output', call_id: message.toolCallId, output: message.content }]
+      if (message.toolCalls) return message.toolCalls.map(call => ({ type: 'function_call', call_id: call.id, name: call.name, arguments: JSON.stringify(call.arguments) }))
+      return [{ role: message.role, content: message.content }]
+    })
+    const stream = await this.client.responses.create({
+      model: request.model,
+      input,
+      tools: request.tools?.map(tool => ({ type: 'function' as const, name: tool.name, description: tool.description, parameters: tool.inputSchema, strict: false })),
+      ...(request.reasoningEffort ? { reasoning: { effort: request.reasoningEffort } } : {}),
+      ...(request.maxTokens ? { max_output_tokens: request.maxTokens } : {}),
+      stream: true,
+      store: false,
+    }, { signal: request.signal })
+    for await (const event of stream) {
+      if (event.type === 'response.output_text.delta') yield { type: 'text', content: event.delta }
+      if (event.type === 'response.output_item.done' && event.item.type === 'function_call') {
+        yield { type: 'tool_call', toolCall: { id: event.item.call_id, name: event.item.name, arguments: JSON.parse(event.item.arguments) } }
       }
-
-      // Streaming response
-      for await (const chunk of stream as any) {
-        const delta = chunk.choices[0]?.delta
-
-        if (delta?.content) {
-          yield {
-            type: 'text',
-            content: delta.content,
-          }
-        }
-
-        if (delta?.tool_calls) {
-          for (const toolCall of delta.tool_calls) {
-            if (toolCall.function) {
-              yield {
-                type: 'tool_call',
-                toolCall: {
-                  id: toolCall.id || '',
-                  name: toolCall.function.name || '',
-                  arguments: JSON.parse(toolCall.function.arguments || '{}'),
-                },
-              }
-            }
-          }
-        }
-
-        if (chunk.choices[0]?.finish_reason) {
-          yield {
-            type: 'done',
-            usage: chunk.usage
-              ? {
-                  promptTokens: chunk.usage.prompt_tokens || 0,
-                  completionTokens: chunk.usage.completion_tokens || 0,
-                  totalTokens: chunk.usage.total_tokens || 0,
-                }
-              : undefined,
-          }
-        }
+      if (event.type === 'response.completed') {
+        const usage = event.response.usage
+        yield { type: 'done', usage: usage ? { promptTokens: usage.input_tokens, completionTokens: usage.output_tokens, totalTokens: usage.total_tokens } : undefined }
       }
-    } catch (error) {
-      yield {
-        type: 'error',
-        error: error instanceof Error ? error : new Error('Unknown error'),
-      }
+      if (event.type === 'response.failed' || event.type === 'response.incomplete') throw new Error('Provider could not complete the response')
+      if (event.type === 'error') throw new Error(event.message)
     }
   }
 

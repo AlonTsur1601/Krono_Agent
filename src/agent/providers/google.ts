@@ -100,8 +100,7 @@ export class GoogleProvider implements ProviderAdapter {
     ]
   }
 
-  getModelCapabilities(modelId: string): ModelCapabilities {
-    const model = this.listModels().then((models) => models.find((m) => m.id === modelId))
+  getModelCapabilities(_modelId: string): ModelCapabilities {
     return {
       supportsTools: true,
       supportsImages: true,
@@ -119,6 +118,7 @@ export class GoogleProvider implements ProviderAdapter {
     try {
       const model = this.client.getGenerativeModel({
         model: request.model,
+        systemInstruction: request.messages.find(m => m.role === 'system')?.content,
         generationConfig: {
           temperature: request.temperature,
           maxOutputTokens: request.maxTokens,
@@ -132,12 +132,6 @@ export class GoogleProvider implements ProviderAdapter {
           role: m.role === 'assistant' ? 'model' : 'user',
           parts: [{ text: m.content }],
         }))
-
-      // Add system instruction if present
-      const systemMessage = request.messages.find((m) => m.role === 'system')
-      const systemInstruction = systemMessage
-        ? { parts: [{ text: systemMessage.content }] }
-        : undefined
 
       if (request.stream !== false) {
         const chat = model.startChat({

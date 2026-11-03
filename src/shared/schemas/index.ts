@@ -20,7 +20,8 @@ export const SendMessageSchema = z.object({
   chatId: z.string(),
   content: z.string(),
   mode: z.enum(['chat', 'plan', 'agent', 'goal']),
-  modelId: z.string(),
+  modelId: z.string().min(1),
+  providerId: z.enum(['openai', 'anthropic', 'google']).default('openai'),
   permissions: z.enum(['ask', 'project', 'full']),
 })
 

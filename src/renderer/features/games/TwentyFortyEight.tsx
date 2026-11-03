@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type Grid = number[][]
 
@@ -9,7 +9,6 @@ export function TwentyFortyEight() {
   const [score, setScore] = useState(0)
   const [gameOver, setGameOver] = useState(false)
   const [won, setWon] = useState(false)
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
   function initializeGrid(): Grid {
     const newGrid: Grid = Array(SIZE).fill(null).map(() => Array(SIZE).fill(0))

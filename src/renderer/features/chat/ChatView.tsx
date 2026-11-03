@@ -1,8 +1,11 @@
+import { useSettingsStore } from '@/stores/settingsStore'
+import ReactMarkdown from 'react-markdown'
 import { useEffect, useRef, useState } from 'react'
 import { useChatStore } from '@/stores/chatStore'
 
 export function ChatView() {
   const { currentChatId, messages, sendMessage } = useChatStore()
+  const { selectedModel, selectedProvider } = useSettingsStore()
   const [input, setInput] = useState('')
   const [mode, setMode] = useState<'chat' | 'plan' | 'agent' | 'goal'>('chat')
   const [permissions, setPermissions] = useState<'ask' | 'project' | 'full'>('ask')
@@ -15,10 +18,12 @@ export function ChatView() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || !currentChatId) return
+    if (!selectedModel || !selectedProvider) { alert('Choose a provider and model in Settings first.'); return }
 
     await sendMessage(input, {
       mode,
-      modelId: 'gpt-4', // TODO: Make selectable
+      modelId: selectedModel,
+      providerId: selectedProvider,
       permissions,
     })
     setInput('')
@@ -85,7 +90,7 @@ export function ChatView() {
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                 }}>
-                  {message.content || (message.streaming ? '...' : '')}
+                  <ReactMarkdown>{message.content || (message.streaming ? 'Working…' : '')}</ReactMarkdown>
                   {message.streaming && (
                     <span style={{
                       display: 'inline-block',

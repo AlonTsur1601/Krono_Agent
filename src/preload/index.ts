@@ -1,31 +1,34 @@
 import { contextBridge, ipcRenderer } from 'electron'
-
-// Expose protected methods that allow the renderer process to use
-// the ipcRenderer without exposing the entire object
+const channels = new Set([
+  'auth:login', 'auth:register', 'auth:logout',
+  'chat:create', 'chat:list', 'chat:get', 'chat:send-message', 'chat:delete',
+  'settings:get-providers', 'settings:configure-provider', 'settings:get-models',
+])
+type Listener = (...args: any[]) => void
+const listeners = new Map<Listener, (...args: any[]) => void>()
 contextBridge.exposeInMainWorld('api', {
-  // IPC communication
-  send: (channel: string, data: unknown) => {
-    ipcRenderer.send(channel, data)
-  },
-  on: (channel: string, func: (...args: unknown[]) => void) => {
-    ipcRenderer.on(channel, (_event, ...args) => func(...args))
-  },
-  off: (channel: string, func: (...args: unknown[]) => void) => {
-    ipcRenderer.off(channel, func as any)
-  },
   invoke: (channel: string, data?: unknown) => {
+    if (!channels.has(channel)) return Promise.reject(new Error('Unsupported IPC channel'))
     return ipcRenderer.invoke(channel, data)
   },
+  on: (channel: string, callback: Listener) => {
+    if (channel !== 'chat:stream-chunk') throw new Error('Unsupported event')
+    const listener = (_event: unknown, ...args: unknown[]) => callback(...args)
+    listeners.set(callback, listener)
+    ipcRenderer.on(channel, listener)
+  },
+  off: (channel: string, callback: Listener) => {
+    const listener = listeners.get(callback)
+    if (listener) ipcRenderer.off(channel, listener)
+    listeners.delete(callback)
+  },
 })
-
-// Type definitions for window.api
 declare global {
   interface Window {
     api: {
-      send: (channel: string, data: unknown) => void
-      on: (channel: string, func: (...args: unknown[]) => void) => void
-      off: (channel: string, func: (...args: unknown[]) => void) => void
-      invoke: (channel: string, data?: unknown) => Promise<unknown>
+      invoke: (channel: string, data?: unknown) => Promise<any>
+      on: (channel: string, callback: Listener) => void
+      off: (channel: string, callback: Listener) => void
     }
   }
 }

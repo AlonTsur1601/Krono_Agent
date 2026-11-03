@@ -1,3 +1,6 @@
+import { zodToJsonSchema } from 'zod-to-json-schema'
+import type { ZodTypeAny } from 'zod'
+import type { ExecutionContext, ToolCall } from './types'
 import type {
   ProviderAdapter,
   CompletionRequest,
@@ -14,6 +17,9 @@ interface AgentConfig {
   modelId: string
   providerId: string
   projectPath?: string
+  signal?: AbortSignal
+  maxToolCalls?: number
+  requestApproval?: ExecutionContext['requestApproval']
 }
 
 export class AgentRuntime {
@@ -27,6 +33,8 @@ export class AgentRuntime {
     // Register tools
     this.registerTools(FILE_TOOLS)
   }
+
+  getProvider(id: string): ProviderAdapter | undefined { return this.providers.get(id) }
 
   registerProvider(provider: ProviderAdapter): void {
     this.providers.set(provider.id, provider)
@@ -76,9 +84,43 @@ export class AgentRuntime {
       stream: true,
     }
 
-    // Stream response
-    for await (const chunk of provider.createCompletion(request)) {
-      yield chunk
+    let calls = 0
+    const deadline = Date.now() + 30 * 60 * 1000
+    while (true) {
+      if (config.signal?.aborted) throw new Error('Run cancelled')
+      if (Date.now() > deadline) throw new Error('Run time budget exceeded')
+      const pending: ToolCall[] = []
+      for await (const chunk of provider.createCompletion({ ...request, signal: config.signal })) {
+        if (config.signal?.aborted) throw new Error('Run cancelled')
+        if (chunk.type === 'error') throw chunk.error || new Error('Provider request failed')
+        if (chunk.type === 'tool_call' && chunk.toolCall) pending.push(chunk.toolCall)
+        else if (chunk.type !== 'done') yield chunk
+      }
+      if (!pending.length) { yield { type: 'done' }; return }
+      for (const call of pending) {
+        if (++calls > (config.maxToolCalls ?? 100)) throw new Error('Tool-call budget exceeded')
+        if (config.signal?.aborted) throw new Error('Run cancelled')
+        const tool = availableTools.find(candidate => candidate.name === call.name)
+        if (!tool) throw new Error('Model requested a tool unavailable in the current mode')
+        const parsed = (tool.inputSchema as ZodTypeAny).parse(call.arguments)
+        const context: ExecutionContext = {
+          projectDirs: config.projectPath ? [config.projectPath] : [],
+          permissions: config.permissions,
+          requestApproval: config.requestApproval ?? (async () => ({ approved: false })),
+          emitProgress: () => {},
+        }
+        const permission = tool.capabilities.requiresPermission
+        if (permission !== 'none' && permission !== 'read' && config.permissions === 'ask') {
+          const approval = await context.requestApproval({ id: call.id, action: call.name, target: String(call.arguments.path ?? ''), details: call.arguments })
+          if (!approval.approved) throw new Error('Tool execution requires user approval')
+          // Approval is bound to this one action, not future calls.
+          context.requestApproval = async () => ({ approved: true })
+        }
+        yield { type: 'tool_call', toolCall: call }
+        const result = await tool.execute(parsed, context)
+        request.messages.push({ role: 'assistant', content: '', toolCalls: [call] })
+        request.messages.push({ role: 'tool', content: JSON.stringify(result), toolCallId: call.id })
+      }
     }
   }
 
@@ -155,7 +197,7 @@ export class AgentRuntime {
     return tools.map((tool) => ({
       name: tool.name,
       description: tool.description,
-      inputSchema: {}, // Simplified for now
+      inputSchema: (zodToJsonSchema as (schema: unknown, options: unknown) => Record<string, unknown>)(tool.inputSchema, { target: 'jsonSchema7' })
     }))
   }
 }

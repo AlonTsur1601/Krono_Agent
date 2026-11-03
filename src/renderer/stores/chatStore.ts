@@ -28,6 +28,7 @@ interface ChatState {
   sendMessage: (content: string, options: {
     mode: 'chat' | 'plan' | 'agent' | 'goal'
     modelId: string
+    providerId: string
     permissions: 'ask' | 'project' | 'full'
   }) => Promise<void>
   deleteChat: (chatId: string) => Promise<void>
@@ -150,17 +151,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   handleStreamChunk: (data: any) => {
-    const { chatId, messageId, chunk } = data
+    const { chatId, chunk } = data
     const { currentChatId, streamingMessageId } = get()
 
-    if (chatId !== currentChatId || messageId !== streamingMessageId) {
+    if (chatId !== currentChatId || !streamingMessageId) {
       return
     }
 
     if (chunk.type === 'text') {
       set((state) => ({
         messages: state.messages.map((msg) =>
-          msg.id === messageId
+          msg.id === streamingMessageId
             ? { ...msg, content: msg.content + chunk.content }
             : msg
         ),
@@ -168,7 +169,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } else if (chunk.type === 'done') {
       set((state) => ({
         messages: state.messages.map((msg) =>
-          msg.id === messageId
+          msg.id === streamingMessageId
             ? { ...msg, streaming: false }
             : msg
         ),

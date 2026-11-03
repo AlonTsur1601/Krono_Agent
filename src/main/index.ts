@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import path from 'path'
 import { setupAuthHandlers } from './ipc/auth'
 import { setupChatHandlers } from './ipc/chat'
@@ -16,9 +16,13 @@ function createWindow() {
       preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
     },
     show: false,
   })
+
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  mainWindow.webContents.on('will-navigate', (event) => { event.preventDefault() })
 
   // Load the app
   if (process.env.NODE_ENV === 'development') {
@@ -42,12 +46,6 @@ app.whenReady().then(() => {
   setupAuthHandlers()
   setupChatHandlers()
   setupSettingsHandlers()
-  
-  // Settings handler
-  ipcMain.handle('settings:set', async (_event, { key, value }) => {
-    // TODO: Persist to database
-    return { success: true }
-  })
   
   createWindow()
 

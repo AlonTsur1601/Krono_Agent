@@ -121,8 +121,7 @@ export class AnthropicProvider implements ProviderAdapter {
     ]
   }
 
-  getModelCapabilities(modelId: string): ModelCapabilities {
-    const model = this.listModels().then((models) => models.find((m) => m.id === modelId))
+  getModelCapabilities(_modelId: string): ModelCapabilities {
     // Default capabilities
     return {
       supportsTools: true,
@@ -158,7 +157,7 @@ export class AnthropicProvider implements ProviderAdapter {
         stream: true,
       } as any)
 
-      if (!request.stream || !('on' in stream)) {
+      if (!(Symbol.asyncIterator in stream)) {
         // Non-streaming response
         const response = stream as any
         yield {
@@ -216,10 +215,7 @@ export class AnthropicProvider implements ProviderAdapter {
     return tools.map((tool) => ({
       name: tool.name,
       description: tool.description,
-      input_schema: {
-        type: 'object',
-        properties: tool.inputSchema,
-      },
+      input_schema: tool.inputSchema,
     }))
   }
 }

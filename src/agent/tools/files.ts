@@ -1,7 +1,23 @@
-import { readFile, writeFile, readdir, stat } from 'fs/promises'
-import { join, resolve, relative } from 'path'
+import { readFile, writeFile, readdir, stat, realpath } from 'fs/promises'
+import { join, resolve, relative, isAbsolute, dirname, basename } from 'path'
 import type { ToolDefinition, ExecutionContext, ToolResult } from '../types'
 import { z } from 'zod'
+
+async function authorizePath(target: string, context: ExecutionContext, writing = false) {
+  if (context.permissions !== 'project') return
+  let canonical: string
+  try { canonical = await realpath(target) }
+  catch (error) {
+    if (!writing || (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    canonical = join(await realpath(dirname(target)), basename(target))
+  }
+  for (const root of context.projectDirs) {
+    const rel = relative(await realpath(root), canonical)
+    if (rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + requireSeparator()))) return
+  }
+  throw new Error('Path is outside project directories')
+}
+function requireSeparator() { return process.platform === 'win32' ? String.fromCharCode(92) : '/' }
 
 const ReadFileSchema = z.object({
   path: z.string(),
@@ -32,20 +48,7 @@ export const readFileTool: ToolDefinition = {
       const { path } = ReadFileSchema.parse(input)
       const absolutePath = resolve(path)
 
-      // Check if path is within allowed project directories
-      if (context.permissions === 'project') {
-        const isAllowed = context.projectDirs.some((dir) => {
-          const relPath = relative(dir, absolutePath)
-          return !relPath.startsWith('..') && !relPath.startsWith('/')
-        })
-
-        if (!isAllowed) {
-          return {
-            success: false,
-            error: `Path ${path} is outside project directories`,
-          }
-        }
-      }
+      await authorizePath(absolutePath, context, false)
 
       const content = await readFile(absolutePath, 'utf-8')
 
@@ -77,20 +80,7 @@ export const writeFileTool: ToolDefinition = {
       const { path, content } = WriteFileSchema.parse(input)
       const absolutePath = resolve(path)
 
-      // Check permissions
-      if (context.permissions === 'project') {
-        const isAllowed = context.projectDirs.some((dir) => {
-          const relPath = relative(dir, absolutePath)
-          return !relPath.startsWith('..') && !relPath.startsWith('/')
-        })
-
-        if (!isAllowed) {
-          return {
-            success: false,
-            error: `Path ${path} is outside project directories`,
-          }
-        }
-      }
+      await authorizePath(absolutePath, context, true)
 
       // Request approval for write operation
       if (context.permissions === 'ask') {
@@ -139,20 +129,7 @@ export const listFilesTool: ToolDefinition = {
       const { path, recursive = false } = ListFilesSchema.parse(input)
       const absolutePath = resolve(path)
 
-      // Check permissions
-      if (context.permissions === 'project') {
-        const isAllowed = context.projectDirs.some((dir) => {
-          const relPath = relative(dir, absolutePath)
-          return !relPath.startsWith('..') && !relPath.startsWith('/')
-        })
-
-        if (!isAllowed) {
-          return {
-            success: false,
-            error: `Path ${path} is outside project directories`,
-          }
-        }
-      }
+      await authorizePath(absolutePath, context, false)
 
       const files = await listDirectory(absolutePath, recursive)
 

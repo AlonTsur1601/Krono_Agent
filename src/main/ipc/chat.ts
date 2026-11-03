@@ -1,9 +1,12 @@
+import { loadCredential } from '../credentials'
 import { ipcMain, BrowserWindow } from 'electron'
 import { SendMessageSchema, CreateChatSchema } from '../../shared/schemas'
 import { dbManager } from '../db'
 import { randomBytes } from 'crypto'
 import { agentRuntime } from '../../agent/runtime'
-import type { CompletionChunk } from '../../agent/types'
+
+const activeRuns = new Map<string, AbortController>()
+export function cancelAllRuns() { for (const run of activeRuns.values()) run.abort(); activeRuns.clear() }
 
 export function setupChatHandlers() {
   ipcMain.handle('chat:create', async (_event, data) => {
@@ -68,8 +71,11 @@ export function setupChatHandlers() {
 
   ipcMain.handle('chat:send-message', async (event, data) => {
     try {
-      const { chatId, content, mode, modelId, permissions } = SendMessageSchema.parse(data)
+      const { chatId, content, mode, modelId, permissions, providerId } = SendMessageSchema.parse(data)
       const db = dbManager.getDb()
+      if (activeRuns.has(chatId)) throw new Error('This chat already has an active run')
+      const chat = db.prepare('SELECT id FROM chats WHERE id = ? AND deleted_at IS NULL').get(chatId)
+      if (!chat) throw new Error('Chat not found')
 
       const messageId = randomBytes(16).toString('hex')
       const now = Date.now()
@@ -88,11 +94,14 @@ export function setupChatHandlers() {
         .all(chatId) as Array<{ role: string; content: string }>
 
       // Configure OpenAI provider (in production, get API key from settings)
-      const apiKey = process.env.OPENAI_API_KEY || ''
+      const apiKey = loadCredential(providerId) || ''
+      if (!apiKey) throw new Error('Configure this provider in Settings before sending a message.')
       if (apiKey) {
-        await agentRuntime.configureProvider('openai', apiKey)
+        await agentRuntime.configureProvider(providerId, apiKey)
       }
 
+      const controller = new AbortController()
+      activeRuns.set(chatId, controller)
       // Start streaming response
       const assistantMessageId = randomBytes(16).toString('hex')
       let fullContent = ''
@@ -103,7 +112,8 @@ export function setupChatHandlers() {
           mode,
           permissions,
           modelId,
-          providerId: 'openai',
+          providerId,
+          signal: controller.signal,
         })) {
           // Send chunk to renderer
           const window = BrowserWindow.fromWebContents(event.sender)
@@ -141,6 +151,7 @@ export function setupChatHandlers() {
           },
         }
       } catch (error) {
+        if (controller.signal.aborted) throw new Error('Run cancelled')
         const errorContent = `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
         
         // Store error message
@@ -162,7 +173,7 @@ export function setupChatHandlers() {
             createdAt: Date.now(),
           },
         }
-      }
+      } finally { activeRuns.delete(chatId) }
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : 'Failed to send message')
     }
