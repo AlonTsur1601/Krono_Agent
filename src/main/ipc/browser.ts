@@ -6,7 +6,7 @@ import { dbManager } from '../db'
 interface Tab { id: string; view: WebContentsView; privateMode: boolean }
 interface Entry { url: string; title: string; at: number }
 const sessions = new WeakSet<Session>()
-let downloads: { name: string; state: string; received: number; total: number }[] = []
+let downloads: { url: string; name: string; state: string; received: number; total: number }[] = []
 function library(key: 'bookmarks' | 'history'): Entry[] {
   const row = dbManager.getDb().prepare('SELECT value FROM settings WHERE key = ?').get('browser.' + key) as { value: string } | undefined
   return row ? JSON.parse(row.value) : []
@@ -18,7 +18,7 @@ let tabs: Tab[] = [], activeId: string | undefined, owner: WebContents | undefin
 let shown = false
 let bounds = { x: 248, y: 60, width: 800, height: 600 }
 function state() {
-  return { activeId, downloads, tabs: tabs.map(({ id, view }) => ({ id, title: view.webContents.getTitle() || 'New tab', url: view.webContents.getURL(), loading: view.webContents.isLoading(), canGoBack: view.webContents.navigationHistory.canGoBack(), canGoForward: view.webContents.navigationHistory.canGoForward() })) }
+  return { activeId, downloads, tabs: tabs.map(({ id, view, privateMode }) => ({ id, privateMode, title: view.webContents.getTitle() || 'New tab', url: view.webContents.getURL(), loading: view.webContents.isLoading(), canGoBack: view.webContents.navigationHistory.canGoBack(), canGoForward: view.webContents.navigationHistory.canGoForward() })) }
 }
 function publish() { if (owner && !owner.isDestroyed()) owner.send('browser:state', state()) }
 function render() {
@@ -64,7 +64,7 @@ function createTab(privateMode = false) {
       void dialog.showMessageBox(window, { type: 'question', title: 'Website permission', message: `${origin} requests ${permission}`, buttons: ['Deny', 'Allow once'], defaultId: 0, cancelId: 0 }).then(result => callback(result.response === 1)).catch(() => callback(false))
     })
     session.on('will-download', (_event, item) => {
-      const entry = { name: item.getFilename(), state: 'progressing', received: 0, total: item.getTotalBytes() }
+      const entry = { url: item.getURL(), name: item.getFilename(), state: 'choosing destination', received: 0, total: item.getTotalBytes() }
       downloads = [entry, ...downloads].slice(0,20)
       item.on('updated', (_event, status) => { entry.state = status; entry.received = item.getReceivedBytes(); publish() })
       item.once('done', (_event, status) => { entry.state = status; publish() })
@@ -124,7 +124,10 @@ export function setupBrowserHandlers() {
         if (!tabs.length) createTab()
         break
       }
-      case 'navigate': await tab.view.webContents.loadURL(allowedUrl(action.url ?? '')); break
+      case 'navigate':
+        try { await tab.view.webContents.loadURL(allowedUrl(action.url ?? '')) }
+        catch (error) { if ((error as { code?: string }).code !== 'ERR_ABORTED' && !downloads.some(item => item.url === action.url)) throw error }
+        break
       case 'back': if (tab.view.webContents.navigationHistory.canGoBack()) tab.view.webContents.navigationHistory.goBack(); break
       case 'forward': if (tab.view.webContents.navigationHistory.canGoForward()) tab.view.webContents.navigationHistory.goForward(); break
       case 'reload': tab.view.webContents.reload(); break

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 interface Entry { url: string; title: string; at: number }
-interface BrowserState { downloads?: { name: string; state: string; received: number; total: number }[]; activeId?: string; tabs: { id: string; title: string; url: string; loading: boolean; canGoBack: boolean; canGoForward: boolean }[] }
+interface BrowserState { downloads?: { name: string; state: string; received: number; total: number }[]; activeId?: string; tabs: { privateMode?: boolean; id: string; title: string; url: string; loading: boolean; canGoBack: boolean; canGoForward: boolean }[] }
 export function BrowserPanel() {
   const [state, setState] = useState<BrowserState>({ tabs: [] })
   const [address, setAddress] = useState(''), [error, setError] = useState('')
@@ -25,7 +25,7 @@ export function BrowserPanel() {
   const action = (action: string, extra = {}) => { setError(''); window.api.invoke('browser:action', { action, ...extra }).then(setState).catch(error => setError(error.message)) }
   return <section style={{ height: '100%', display: 'flex', flexDirection: 'column' }} aria-label="Browser">
     <div style={{ display: 'flex', gap: 8, padding: 8, overflowX: 'auto' }}>
-      {state.tabs.map(tab => <div key={tab.id} style={{ display: 'flex' }}><button aria-pressed={tab.id === state.activeId} onClick={() => action('select', { id: tab.id })}>{tab.title.slice(0, 28)}</button><button aria-label={`Close ${tab.title}`} onClick={() => action('close', { id: tab.id })}>×</button></div>)}
+      {state.tabs.map(tab => <div key={tab.id} style={{ display: 'flex' }}><button aria-pressed={tab.id === state.activeId} onClick={() => action('select', { id: tab.id })}>{tab.privateMode ? 'Private · ' : ''}{tab.title.slice(0, 28)}</button><button aria-label={`Close ${tab.title}`} onClick={() => action('close', { id: tab.id })}>×</button></div>)}
       <button onClick={() => action('new')}>New tab</button><button onClick={() => action('new', { privateMode: true })}>Private tab</button>
     </div>
     <form style={{ display: 'flex', gap: 8, padding: 8 }} onSubmit={event => { event.preventDefault(); const value = address.trim(); if (value) action('navigate', { url: /^https?:\/\//i.test(value) ? value : `https://www.google.com/search?q=${encodeURIComponent(value)}` }) }}>

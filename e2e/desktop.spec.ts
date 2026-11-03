@@ -9,7 +9,8 @@ test('desktop terminal and isolated Chromium with local auth fixture', async () 
   const user = { id: '11111111-1111-4111-8111-111111111111', email: 'fixture@example.com', aud: 'authenticated', role: 'authenticated', created_at: new Date().toISOString() }
   const server = http.createServer((req, res) => {
     if (req.url?.startsWith('/auth/')) { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ access_token: 'test-access-token', refresh_token: 'test-refresh-token', expires_in: 3600, token_type: 'bearer', user })) }
-    else { res.setHeader('Content-Type', 'text/html'); res.end('<title>Browser probe</title><h1>Embedded Chromium works</h1>') }
+    else if (req.url === '/download') { res.setHeader('Content-Disposition', 'attachment; filename="krono-fixture.txt"'); res.end('Krono download fixture') }
+    else { res.setHeader('Content-Type', 'text/html'); res.end(`<title>${req.url === '/private' ? 'Private probe' : 'Browser probe'}</title><h1>Embedded Chromium works</h1>`) }
   })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   const root = `http://127.0.0.1:${(server.address() as { port: number }).port}`
@@ -46,6 +47,18 @@ test('desktop terminal and isolated Chromium with local auth fixture', async () 
     const library = await page.evaluate(() => window.api.invoke('browser:action', { action: 'library' }))
     expect(library.bookmarks.some((entry: { url: string }) => entry.url === root + '/probe')).toBe(true)
     expect(library.history.some((entry: { url: string }) => entry.url === root + '/probe')).toBe(true)
+    await page.getByRole('button', { name: 'Private tab', exact: true }).click()
+    await page.getByLabel('Address or search').fill(root + '/private')
+    await page.getByRole('button', { name: 'Go', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Private · Private probe', exact: true })).toBeVisible()
+    const afterPrivate = await page.evaluate(() => window.api.invoke('browser:action', { action: 'library' }))
+    expect(afterPrivate.history.some((entry: { url: string }) => entry.url === root + '/private')).toBe(false)
+    await page.getByRole('button', { name: 'Close Private probe', exact: true }).click()
+    const downloadDir = mkdtempSync(path.join(tmpdir(), 'krono-download-e2e-'))
+    await app.evaluate(({ session }, file) => session.fromPartition('persist:browser-11111111-1111-4111-8111-111111111111').once('will-download', (_event, item) => item.setSavePath(file)), path.join(downloadDir, 'krono-fixture.txt'))
+    await page.getByLabel('Address or search').fill(root + '/download')
+    await page.getByRole('button', { name: 'Go', exact: true }).click()
+    await expect(page.getByText(/krono-fixture.txt · completed/)).toBeVisible()
     await page.getByRole('button', { name: 'New tab', exact: true }).click()
     await page.getByRole('button', { name: 'Browser probe', exact: true }).click()
     await page.getByLabel('Find in page').fill('Chromium')

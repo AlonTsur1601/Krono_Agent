@@ -28,7 +28,9 @@ export function TerminalPanel() {
       id = result.id
       if (disposed) { window.api.invoke('terminal:close', id).catch(() => {}); return }
       for (const event of pending) if (event.id === id) terminal.write(event.data)
-      pending.length = 0; fit.fit(); terminal.focus()
+      pending.length = 0; fit.fit();
+      window.api.invoke('terminal:resize', { id, cols: Math.max(10, terminal.cols), rows: Math.max(2, terminal.rows) }).catch(() => {})
+      terminal.focus()
     }).catch(error => { if (!disposed) setError(error instanceof Error ? error.message : 'Terminal unavailable') })
     return () => {
       disposed = true; resize.disconnect(); input.dispose(); terminal.dispose()
