@@ -45,9 +45,9 @@ export function MainLayout() {
   ]
 
   return (
-    <div style={{
+    <div className="workspace" style={{
       width: '100vw',
-      height: '100vh',
+      height: 'calc(100vh - 44px)',
       display: 'flex',
       backgroundColor: 'var(--bg-primary)',
       color: 'var(--text-primary)',
@@ -63,7 +63,7 @@ export function MainLayout() {
         overflowY: 'auto',
       }}>
         <div style={{ marginBottom: '1.5rem' }}>
-          <h1 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Krono Agent</h1>
+          <h1 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Krono <span style={{ color: 'var(--accent)' }}>Agent</span></h1>
           <p style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '0.25rem' }}>
             {user?.email}
           </p>

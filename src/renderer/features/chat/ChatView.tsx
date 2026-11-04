@@ -48,7 +48,14 @@ export function ChatView() {
         justifyContent: 'center',
         color: 'var(--text-muted)',
       }}>
-        Select a chat or create a new one
+        <section className="welcome-card">
+          <div className="welcome-mark" aria-hidden="true">K</div>
+          <p className="eyebrow">YOUR WORKSPACE</p>
+          <h2>What would you like to work on?</h2>
+          <p>Start a conversation, plan a project, or let your agent get to work.</p>
+          <button onClick={() => useChatStore.getState().createChat()}>+ Start a new chat</button>
+          <div className="welcome-hints"><span>Chat & plan</span><span>Project memory</span><span>Games between tasks</span></div>
+        </section>
       </div>
     )
   }

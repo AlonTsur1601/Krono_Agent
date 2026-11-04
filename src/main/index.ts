@@ -2,7 +2,7 @@ import { setupProjectHandlers } from './ipc/projects'
 import { setupApprovalHandlers } from './approvals'
 import { setupBrowserHandlers, closeBrowser } from './ipc/browser'
 import { setupTerminalHandlers, closeAllTerminals } from './ipc/terminal'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, nativeImage } from 'electron'
 import path from 'path'
 import { setupAuthHandlers } from './ipc/auth'
 import { setupChatHandlers, cancelAllRuns } from './ipc/chat'
@@ -12,6 +12,10 @@ let mainWindow: BrowserWindow | null = null
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    titleBarStyle: 'hidden',
+    frame: process.platform === 'darwin',
+    title: 'Krono Agent',
+    icon: nativeImage.createFromPath(path.join(app.getAppPath(), 'assets/logo/icon.png')),
     width: 1280,
     height: 800,
     minWidth: 1024,
@@ -46,6 +50,19 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null)
+  ipcMain.handle('window:action', (event, action) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return
+    if (action === 'minimize') win.minimize()
+    else if (action === 'maximize') { if (win.isMaximized()) win.unmaximize(); else win.maximize() }
+    else if (action === 'close') win.close()
+    else if (action === 'menu') Menu.buildFromTemplate([
+      { label: 'File', submenu: [{ role: 'close' }, { role: 'quit' }] },
+      { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
+      { label: 'View', submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
+    ]).popup({ window: win })
+  })
   // Setup IPC handlers
   setupAuthHandlers()
   setupChatHandlers()

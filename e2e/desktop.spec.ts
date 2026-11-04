@@ -25,6 +25,9 @@ test('desktop terminal and isolated Chromium with local auth fixture', async () 
     await page.locator('input[type=password]').fill('fixture-password')
     await page.locator('button[type=submit]').click()
     await expect(page.getByRole('button', { name: 'Sign Out' })).toBeVisible()
+    await page.reload()
+    await expect(page.getByRole('button', { name: 'Sign Out' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Application menu' })).toBeVisible()
     await page.evaluate(() => {
       const state = window as unknown as { ptyOutput: string; ptyId: string }
       state.ptyOutput = ''
@@ -63,7 +66,7 @@ test('desktop terminal and isolated Chromium with local auth fixture', async () 
     await page.getByRole('button', { name: 'Browser probe', exact: true }).click()
     await page.getByLabel('Find in page').fill('Chromium')
     await page.getByRole('button', { name: 'Chat', exact: true }).click()
-    await expect(page.getByText('Select a chat or create a new one')).toBeVisible()
+    await expect(page.getByText('What would you like to work on?')).toBeVisible()
     await page.getByRole('button', { name: 'Projects & memory', exact: true }).click()
     await page.getByLabel('Project name', { exact: true }).fill('Fixture project')
     await page.getByLabel('Project instructions', { exact: true }).fill('Use focused verification.')
@@ -101,4 +104,41 @@ test('desktop terminal and isolated Chromium with local auth fixture', async () 
     await expect(page.locator('input[type=email]')).toBeVisible()
     expect(errors).toEqual([])
   } finally { await app.close(); server.close() }
+})
+
+
+test('encrypted session survives process restart and explicit logout clears it', async () => {
+  const user = { id: '22222222-2222-4222-8222-222222222222', email: 'restart@example.com' }
+  const server = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify(req.url?.endsWith('/user') ? user : { access_token: 'restart-fixture-token', refresh_token: 'restart-refresh', expires_in: 3600, token_type: 'bearer', user }))
+  })
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  const dir = mkdtempSync(path.join(tmpdir(), 'krono-session-e2e-'))
+  const env = { ...process.env, SUPABASE_URL: `http://127.0.0.1:${(server.address() as { port: number }).port}`, SUPABASE_ANON_KEY: 'test-public-placeholder' }
+  delete env.ELECTRON_RUN_AS_NODE
+  const launch = async () => {
+    const instance = await electron.launch({ args: ['.'], env })
+    await instance.evaluate(({ app }, location) => app.setPath('userData', location), dir)
+    return instance
+  }
+  let instance = await launch()
+  try {
+    let page = await instance.firstWindow()
+    await page.locator('input[type=email]').fill(user.email)
+    await page.locator('input[type=password]').fill('fixture-password')
+    await page.locator('button[type=submit]').click()
+    await expect(page.getByRole('button', { name: 'Sign Out' })).toBeVisible()
+    await page.screenshot({ path: path.join(dir, 'workspace.png') })
+    await instance.close()
+    instance = await launch()
+    page = await instance.firstWindow()
+    await expect(page.getByRole('button', { name: 'Sign Out' })).toBeVisible()
+    await page.getByRole('button', { name: 'Sign Out' }).click()
+    await expect(page.locator('input[type=email]')).toBeVisible()
+    await instance.close()
+    instance = await launch()
+    page = await instance.firstWindow()
+    await expect(page.locator('input[type=email]')).toBeVisible()
+  } finally { await instance.close(); await new Promise<void>(resolve => server.close(() => resolve())) }
 })

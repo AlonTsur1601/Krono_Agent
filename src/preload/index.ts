@@ -5,7 +5,7 @@ const channels = new Set([
   'chat:approve',
   'browser:show', 'browser:bounds', 'browser:action',
   'terminal:create', 'terminal:write', 'terminal:resize', 'terminal:close',
-  'auth:login', 'auth:register', 'auth:logout',
+  'window:action', 'auth:restore', 'auth:login', 'auth:register', 'auth:logout',
   'chat:create', 'chat:list', 'chat:get', 'chat:send-message', 'chat:delete',
   'settings:get-providers', 'settings:configure-provider', 'settings:get-models',
 ])
