@@ -3,6 +3,7 @@ import { create } from 'zustand'
 interface Chat {
   id: string
   name: string
+  projectId?: string | null
   createdAt: number
   updatedAt: number
 }
@@ -23,7 +24,7 @@ interface ChatState {
   streamingMessageId: string | null
   
   loadChats: () => Promise<void>
-  createChat: (name?: string) => Promise<void>
+  createChat: (name?: string, projectId?: string) => Promise<void>
   selectChat: (chatId: string) => Promise<void>
   sendMessage: (content: string, options: {
     mode: 'chat' | 'plan' | 'agent' | 'goal'
@@ -53,9 +54,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  createChat: async (name?: string) => {
+  createChat: async (name?: string, projectId?: string) => {
     try {
-      const chat = await window.api.invoke('chat:create', { name })
+      const chat = await window.api.invoke('chat:create', { name, projectId })
       set({ chats: [chat, ...get().chats], currentChatId: chat.id, messages: [] })
     } catch (error) {
       console.error('Failed to create chat:', error)

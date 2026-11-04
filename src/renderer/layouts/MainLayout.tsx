@@ -1,3 +1,4 @@
+import { ProjectsPanel } from '../features/projects/ProjectsPanel'
 import { Approvals } from '../features/chat/Approvals'
 import { BrowserPanel } from '../features/browser/BrowserPanel'
 import { useState, useEffect, lazy, Suspense } from 'react'
@@ -22,7 +23,7 @@ type GameId = 'snake' | 'tic-tac-toe' | '2048' | 'minesweeper' | 'connect-four' 
 export function MainLayout() {
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [terminalMounted, setTerminalMounted] = useState(false)
-  const [activeView, setActiveView] = useState<'chat' | 'games' | 'settings' | 'browser'>('chat')
+  const [activeView, setActiveView] = useState<'chat' | 'games' | 'settings' | 'browser' | 'projects'>('chat')
   const [selectedGame, setSelectedGame] = useState<GameId>('snake')
   const { user, logout } = useAuthStore()
   const { theme, setTheme } = useThemeStore()
@@ -89,6 +90,7 @@ export function MainLayout() {
         )}
 
         <nav style={{ flex: 1, marginBottom: '1rem' }}>
+          <button onClick={() => setActiveView('projects')} style={{ width: '100%', padding: 12, color: 'var(--text-primary)', background: activeView === 'projects' ? 'var(--bg-surface)' : 'transparent', border: 'none', textAlign: 'left' }}>Projects & memory</button>
           <button onClick={() => setActiveView('browser')} style={{ width: '100%', padding: 12, color: 'var(--text-primary)', background: activeView === 'browser' ? 'var(--bg-surface)' : 'transparent', border: 'none', textAlign: 'left' }}>Browser</button>
           <div style={{ marginBottom: '1rem' }}>
             <button
@@ -266,6 +268,7 @@ export function MainLayout() {
       <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <Approvals />
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        {activeView === 'projects' && <ProjectsPanel onOpenChat={() => setActiveView('chat')} />}
         {activeView === 'browser' && <BrowserPanel />}
         {activeView === 'chat' && <ChatView />}
         {activeView === 'games' && selectedGame === 'snake' && <Snake />}

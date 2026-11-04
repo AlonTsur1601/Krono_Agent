@@ -1,3 +1,4 @@
+import { setupProjectHandlers } from './ipc/projects'
 import { setupApprovalHandlers } from './approvals'
 import { setupBrowserHandlers, closeBrowser } from './ipc/browser'
 import { setupTerminalHandlers, closeAllTerminals } from './ipc/terminal'
@@ -52,6 +53,7 @@ app.whenReady().then(() => {
   setupTerminalHandlers()
   setupBrowserHandlers()
   setupApprovalHandlers()
+  setupProjectHandlers()
   
   createWindow()
 

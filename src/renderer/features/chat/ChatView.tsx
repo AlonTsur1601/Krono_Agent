@@ -4,11 +4,21 @@ import { useEffect, useRef, useState } from 'react'
 import { useChatStore } from '@/stores/chatStore'
 
 export function ChatView() {
-  const { currentChatId, messages, sendMessage, streamingMessageId } = useChatStore()
+  const { currentChatId, messages, sendMessage, streamingMessageId, chats } = useChatStore()
   const { selectedModel, selectedProvider } = useSettingsStore()
   const [input, setInput] = useState('')
   const [mode, setMode] = useState<'chat' | 'plan' | 'agent' | 'goal'>('chat')
   const [permissions, setPermissions] = useState<'ask' | 'project' | 'full'>('ask')
+  const projectId = chats.find(chat => chat.id === currentChatId)?.projectId
+  useEffect(() => {
+    let cancelled = false
+    if (!projectId) { setPermissions('ask'); return }
+    window.api.invoke('projects:list').then(projects => {
+      const project = projects.find((project: { id: string }) => project.id === projectId)
+      if (!cancelled && project) setPermissions(project.permissions)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [projectId, currentChatId])
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -124,6 +134,7 @@ export function ChatView() {
             fontSize: '0.875rem',
           }}>
             <select
+              aria-label="Execution mode"
               value={mode}
               onChange={(e) => setMode(e.target.value as any)}
               style={{
@@ -141,6 +152,7 @@ export function ChatView() {
             </select>
 
             <select
+              aria-label="Permissions"
               value={permissions}
               onChange={(e) => setPermissions(e.target.value as any)}
               style={{

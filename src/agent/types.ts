@@ -62,6 +62,7 @@ export interface Message {
   content: string
   toolCallId?: string
   toolCalls?: ToolCall[]
+  providerState?: Record<string, unknown>
 }
 
 export interface Tool {
@@ -71,8 +72,9 @@ export interface Tool {
 }
 
 export interface CompletionChunk {
-  type: 'text' | 'tool_call' | 'done' | 'error'
+  type: 'text' | 'tool_call' | 'done' | 'error' | 'provider_state'
   content?: string
+  providerState?: Record<string, unknown>
   toolCall?: ToolCall
   usage?: Usage
   error?: Error

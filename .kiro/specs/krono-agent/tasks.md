@@ -1,3 +1,5 @@
+> 02:00 continuation: native provider contracts and local project/memory management are implemented and fixture-tested. See review-2026-11-04.md. Full cloud/provider/game/release acceptance remains incomplete.
+
 > Continued 2026-11-04: see review-2026-11-04.md for dependency upgrades, user terminal implementation and actual verification. Full milestones remain incomplete.
 
 > Supabase preparation 2026-11-03: migration, ownership policies, private bucket and setup guide implemented; embedded PostgreSQL isolation tests pass. Cloud deployment and live account/sync acceptance remain pending user project creation.

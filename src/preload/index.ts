@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 const channels = new Set([
+  'projects:list', 'projects:save', 'projects:pick-folders', 'projects:move-chat', 'memory:get-global', 'memory:set-global',
   'chat:cancel',
   'chat:approve',
   'browser:show', 'browser:bounds', 'browser:action',

@@ -17,6 +17,9 @@ interface AgentConfig {
   modelId: string
   providerId: string
   projectPath?: string
+  projectDirs?: string[]
+  instructions?: string
+  memories?: string[]
   signal?: AbortSignal
   maxToolCalls?: number
   requestApproval?: ExecutionContext['requestApproval']
@@ -91,13 +94,18 @@ export class AgentRuntime {
       if (config.signal?.aborted) throw new Error('Run cancelled')
       if (Date.now() > deadline) throw new Error('Run time budget exceeded')
       const pending: ToolCall[] = []
+      let text = ''
+      let providerState: Record<string, unknown> | undefined
       for await (const chunk of provider.createCompletion({ ...request, signal: config.signal })) {
         if (config.signal?.aborted) throw new Error('Run cancelled')
         if (chunk.type === 'error') throw chunk.error || new Error('Provider request failed')
+        if (chunk.type === 'provider_state') { providerState = chunk.providerState; continue }
+        if (chunk.type === 'text') text += chunk.content ?? ''
         if (chunk.type === 'tool_call' && chunk.toolCall) pending.push(chunk.toolCall)
         else if (chunk.type !== 'done') yield chunk
       }
       if (!pending.length) { yield { type: 'done' }; return }
+      request.messages.push({ role: 'assistant', content: text, toolCalls: pending, providerState })
       for (const call of pending) {
         if (++calls > (config.maxToolCalls ?? 100)) throw new Error('Tool-call budget exceeded')
         if (config.signal?.aborted) throw new Error('Run cancelled')
@@ -105,7 +113,7 @@ export class AgentRuntime {
         if (!tool) throw new Error('Model requested a tool unavailable in the current mode')
         const parsed = (tool.inputSchema as ZodTypeAny).parse(call.arguments)
         const context: ExecutionContext = {
-          projectDirs: config.projectPath ? [config.projectPath] : [],
+          projectDirs: config.projectDirs ?? (config.projectPath ? [config.projectPath] : []),
           permissions: config.permissions,
           requestApproval: config.requestApproval ?? (async () => ({ approved: false })),
           emitProgress: () => {},
@@ -124,7 +132,6 @@ export class AgentRuntime {
           const count = (failures.get(step) ?? 0) + 1; failures.set(step, count)
           if (count >= 3) throw new Error('Stopped after three failures of the same tool action')
         } else failures.delete(step)
-        request.messages.push({ role: 'assistant', content: '', toolCalls: [call] })
         request.messages.push({ role: 'tool', content: JSON.stringify(result), toolCallId: call.id })
       }
     }
@@ -153,7 +160,7 @@ export class AgentRuntime {
 
     switch (config.permissions) {
       case 'ask':
-        prompt += ' Always ask for permission before taking any action.'
+        prompt += ' Writes, command execution and desktop actions require explicit approval. Read-only tools may run within the authorized scope.'
         break
       case 'project':
         prompt += ` You have permission to work within the project directory${
@@ -165,6 +172,9 @@ export class AgentRuntime {
         break
     }
 
+    if (config.projectDirs?.length) prompt += '\nProject folders:\n' + config.projectDirs.join('\n')
+    if (config.instructions) prompt += '\nUser project instructions:\n' + config.instructions
+    if (config.memories?.length) prompt += '\nUser-saved memories:\n' + config.memories.join('\n')
     return prompt
   }
 

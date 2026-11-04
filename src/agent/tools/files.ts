@@ -46,7 +46,7 @@ export const readFileTool: ToolDefinition = {
   async execute(input: unknown, context: ExecutionContext): Promise<ToolResult> {
     try {
       const { path } = ReadFileSchema.parse(input)
-      const absolutePath = resolve(path)
+      const absolutePath = resolve(context.projectDirs[0] ?? process.cwd(), path)
 
       await authorizePath(absolutePath, context, false)
 
@@ -78,7 +78,7 @@ export const writeFileTool: ToolDefinition = {
   async execute(input: unknown, context: ExecutionContext): Promise<ToolResult> {
     try {
       const { path, content } = WriteFileSchema.parse(input)
-      const absolutePath = resolve(path)
+      const absolutePath = resolve(context.projectDirs[0] ?? process.cwd(), path)
 
       await authorizePath(absolutePath, context, true)
 
@@ -127,7 +127,7 @@ export const listFilesTool: ToolDefinition = {
   async execute(input: unknown, context: ExecutionContext): Promise<ToolResult> {
     try {
       const { path, recursive = false } = ListFilesSchema.parse(input)
-      const absolutePath = resolve(path)
+      const absolutePath = resolve(context.projectDirs[0] ?? process.cwd(), path)
 
       await authorizePath(absolutePath, context, false)
 

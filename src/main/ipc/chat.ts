@@ -1,3 +1,4 @@
+import { projectContext } from './projects'
 import { requestApproval } from '../approvals'
 import { loadCredential } from '../credentials'
 import { ipcMain, BrowserWindow } from 'electron'
@@ -16,6 +17,7 @@ export function setupChatHandlers() {
       const { projectId, name } = CreateChatSchema.parse(data)
       const db = dbManager.getDb()
 
+      if (projectId && !db.prepare('SELECT id FROM projects WHERE id = ? AND deleted_at IS NULL').get(projectId)) throw new Error('Project not found')
       const chatId = randomBytes(16).toString('hex')
       const now = Date.now()
 
@@ -29,7 +31,9 @@ export function setupChatHandlers() {
       return {
         id: chatId,
         name: name || 'New Chat',
+        projectId: projectId ?? null,
         createdAt: now,
+        updatedAt: now,
       }
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : 'Failed to create chat')
@@ -40,7 +44,7 @@ export function setupChatHandlers() {
     try {
       const db = dbManager.getDb()
       const chats = db
-        .prepare('SELECT * FROM chats WHERE deleted_at IS NULL ORDER BY updated_at DESC')
+        .prepare('SELECT id,name,project_id AS projectId,created_at AS createdAt,updated_at AS updatedAt FROM chats WHERE deleted_at IS NULL ORDER BY updated_at DESC')
         .all()
 
       return chats
@@ -52,14 +56,14 @@ export function setupChatHandlers() {
   ipcMain.handle('chat:get', async (_event, chatId: string) => {
     try {
       const db = dbManager.getDb()
-      const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(chatId)
+      const chat = db.prepare('SELECT id,name,project_id AS projectId,created_at AS createdAt,updated_at AS updatedAt FROM chats WHERE id = ? AND deleted_at IS NULL').get(chatId)
 
       if (!chat) {
         throw new Error('Chat not found')
       }
 
       const messages = db
-        .prepare('SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC')
+        .prepare('SELECT id,role,content,created_at AS createdAt FROM messages WHERE chat_id = ? AND deleted_at IS NULL ORDER BY created_at ASC')
         .all(chatId)
 
       return {
@@ -76,7 +80,7 @@ export function setupChatHandlers() {
       const { chatId, content, mode, modelId, permissions, providerId } = SendMessageSchema.parse(data)
       const db = dbManager.getDb()
       if (activeRuns.has(chatId)) throw new Error('This chat already has an active run')
-      const chat = db.prepare('SELECT id FROM chats WHERE id = ? AND deleted_at IS NULL').get(chatId)
+      const chat = db.prepare('SELECT id,project_id FROM chats WHERE id = ? AND deleted_at IS NULL').get(chatId) as { id: string; project_id: string | null } | undefined
       if (!chat) throw new Error('Chat not found')
 
       const messageId = randomBytes(16).toString('hex')
@@ -115,6 +119,9 @@ export function setupChatHandlers() {
         // Execute agent
         for await (const chunk of agentRuntime.execute(messages as any, {
           mode,
+          projectDirs: projectContext(chat.project_id).directories,
+          instructions: projectContext(chat.project_id).instructions,
+          memories: projectContext(chat.project_id).memories,
           permissions,
           modelId,
           providerId,
