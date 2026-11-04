@@ -51,3 +51,13 @@ jobs:
       - name: Native Windows UI integration
         if: runner.os == 'Windows'
         run: npm run test:native
+
+      - name: Publish native Windows distribution
+        if: runner.os == 'Windows'
+        run: npm run package:win
+
+      - name: Test published Windows distribution
+        if: runner.os == 'Windows'
+        env:
+          KRONO_SMOKE_EXE: ${{ github.workspace }}\release\Krono-Agent\Krono.Agent.exe
+        run: npm run test:native

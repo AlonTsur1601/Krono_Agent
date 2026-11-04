@@ -29,7 +29,9 @@ native C#/WinUI 3. This is not completion of the full original product scope.
   acceptance. Browser permissions/downloads and extended game balancing still
   need additional acceptance beyond the implemented paths.
 - Native build and self-contained Windows x64 folder publish succeed locally.
-  Isolated published-folder and remote CI verification are tracked in .kiro.
+  An isolated published folder passed the full native fixture after explicit
+  inclusion of compiled XAML resources. GitHub native CI passed on dab084b;
+  the expanded published-app CI check is tracked in .kiro.
 - npm audit: zero vulnerabilities after removing legacy UI/build dependencies
   and validating the remaining modern minimatch callers against patched 11.0.4.
 - NuGet audit: no vulnerable direct/transitive packages reported.

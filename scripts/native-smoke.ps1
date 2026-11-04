@@ -31,6 +31,15 @@ function SetValue([string]$Id, [string]$Value) { $element = Find $Id; $pattern =
 function SelectNav([string]$Name) { $element = Find $Name -ByName; $pattern = $element.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern); $pattern.Select(); Start-Sleep -Milliseconds 400 }
 function SelectChoice([string]$Id, [string]$Name) { $box = Find $Id; ($box.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand(); $item = Find $Name -ByName; ($item.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)).Select() }
 function CloseApp { if ($script:process -and !$script:process.HasExited) { $script:process.CloseMainWindow() | Out-Null; if (!$script:process.WaitForExit(5000)) { Stop-Process -Id $script:process.Id } } }
+function Capture([string]$Name) {
+    Start-Sleep -Milliseconds 200
+    $bounds = $script:window.Current.BoundingRectangle
+    $bitmap = New-Object Drawing.Bitmap([int]$bounds.Width, [int]$bounds.Height)
+    $graphics = [Drawing.Graphics]::FromImage($bitmap)
+    $graphics.CopyFromScreen([int]$bounds.X, [int]$bounds.Y, 0, 0, $bitmap.Size)
+    $bitmap.Save((Join-Path $ReportDirectory $Name), [Drawing.Imaging.ImageFormat]::Png)
+    $graphics.Dispose(); $bitmap.Dispose()
+}
 try {
     Launch
     SetValue 'EmailInput' 'native-fixture@example.com'
@@ -85,6 +94,8 @@ try {
     $bitmap.Save((Join-Path $ReportDirectory 'native-workspace.png'), [Drawing.Imaging.ImageFormat]::Png)
     $graphics.Dispose(); $bitmap.Dispose()
     SelectNav 'Games'
+    (Find 'GameTile0').SetFocus()
+    Capture 'native-game-library.png'
     Invoke 'GameTile0'
     Find 'Restart' -ByName | Out-Null
     foreach ($game in @('Tic-Tac-Toe','2048','Minesweeper','Connect Four','Breakout','Memory Match','Pong','Snake')) {
@@ -107,6 +118,7 @@ try {
             if ((Find 'GameCell0').Current.Name -eq 'Cell 1: ?') { throw 'Native memory game did not reveal a card' }
         }
         if ($game -eq '2048') { Invoke 'Move left' -ByName }
+        if ($game -eq 'Breakout') { Capture 'native-breakout.png' }
     }
     SelectNav 'Terminal'
     Start-Sleep -Seconds 2
