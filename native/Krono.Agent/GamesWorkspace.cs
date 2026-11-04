@@ -9,12 +9,14 @@ using Windows.UI;
 namespace Krono_Agent;
 
 // Native XAML controls and Canvas. No embedded web page is used for games.
-public sealed class GamesWorkspace : Grid, IDisposable
+public sealed partial class GamesWorkspace : Grid, IDisposable
 {
     readonly Workspace workspace;
     readonly Canvas canvas = new() { Width = 480, Height = 480, Background = new SolidColorBrush(Color.FromArgb(255, 15, 21, 30)) };
     readonly TextBlock status = new() { FontSize = 16 };
-    readonly ComboBox picker = new() { ItemsSource = new[] { "Snake", "Tic-Tac-Toe", "2048", "Minesweeper", "Connect Four", "Breakout", "Memory Match", "Pong" }, SelectedIndex = 0, MinWidth = 180 };
+    readonly StackPanel movementControls = new() { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center };
+    readonly TextBlock gameHelp = new() { TextWrapping = TextWrapping.Wrap, Opacity = .65 };
+    readonly ComboBox picker = new() { ItemsSource = names, SelectedIndex = 0, MinWidth = 180 };
     readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(30) };
     readonly Random random = new();
     int game, score, tick, dx = 1, dy, food, paddle = 220, first = -1, second = -1, hideAt, moves;
@@ -24,10 +26,10 @@ public sealed class GamesWorkspace : Grid, IDisposable
     double ballX, ballY, ballDx, ballDy, enemy;
     Grid? playScreen;
     Grid? library;
-    readonly string[] names = ["Snake", "Tic-Tac-Toe", "2048", "Minesweeper", "Connect Four", "Breakout", "Memory Match", "Pong"];
-    static readonly string[] descriptions = ["Grow without hitting the walls", "An unbeaten minimax opponent", "Slide and merge matching tiles", "Reveal safe cells and flag mines", "Four connected discs to win", "Bounce through a field of bricks", "Turn cards and match pairs", "A rally against a reactive bot"];
-    static readonly Color[] colors = [Color.FromArgb(255,143,215,199),Color.FromArgb(255,184,161,246),Color.FromArgb(255,242,201,130),Color.FromArgb(255,133,187,237),Color.FromArgb(255,244,146,159),Color.FromArgb(255,255,173,109),Color.FromArgb(255,177,165,244),Color.FromArgb(255,125,221,217)];
-    SolidColorBrush Accent => new(colors[Math.Clamp(game, 0, 7)]);
+    static readonly string[] names = ["Snake", "Tic-Tac-Toe", "2048", "Minesweeper", "Connect Four", "Breakout", "Memory Match", "Pong", "Lights Out", "Simon", "Odd Color", "Orbit"];
+    static readonly string[] descriptions = ["Grow without hitting the walls", "An unbeaten minimax opponent", "Slide and merge matching tiles", "Reveal safe cells and flag mines", "Four connected discs to win", "Bounce through a field of bricks", "Turn cards and match pairs", "A rally against a reactive bot", "Toggle a cross. Darken every light.", "Watch the pattern. Play it back.", "Find the tile with a different shade", "Tap inside the arc. Aim for its core."];
+    static readonly Color[] colors = [Color.FromArgb(255,143,215,199),Color.FromArgb(255,184,161,246),Color.FromArgb(255,242,201,130),Color.FromArgb(255,133,187,237),Color.FromArgb(255,244,146,159),Color.FromArgb(255,255,173,109),Color.FromArgb(255,177,165,244),Color.FromArgb(255,125,221,217),Color.FromArgb(255,242,210,134),Color.FromArgb(255,166,174,251),Color.FromArgb(255,224,154,209),Color.FromArgb(255,134,213,234)];
+    SolidColorBrush Accent => new(colors[Math.Clamp(game, 0, colors.Length - 1)]);
     public GamesWorkspace(Workspace workspace)
     {
         this.workspace = workspace;
@@ -44,9 +46,10 @@ public sealed class GamesWorkspace : Grid, IDisposable
         Grid.SetRow(stage, 2); Children.Add(stage);
         status.FontFamily = KronoDesign.CodeFont; status.FontSize = 25; status.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
         var footer = new StackPanel { Spacing = 8 };
-        var arrows = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center };
+        var arrows = movementControls;
         foreach (var (name, vx, vy) in new[] { ("Move left", -1, 0), ("Move up", 0, -1), ("Move down", 0, 1), ("Move right", 1, 0) }) { var button = new Button { Content = name }; button.Click += (_, _) => Move(vx, vy); arrows.Children.Add(button); }
-        footer.Children.Add(arrows); footer.Children.Add(new TextBlock { Text = "Arrow keys / WASD to move · Click to play board games · Right-click to flag mines", TextWrapping = TextWrapping.Wrap, Opacity = .65 }); Grid.SetRow(footer, 3); Children.Add(footer);
+        orbitTap.Click += (_, _) => HitOrbit(); footer.Children.Add(orbitTap);
+        footer.Children.Add(arrows); footer.Children.Add(gameHelp); Grid.SetRow(footer, 3); Children.Add(footer);
         picker.SelectionChanged += (_, _) => { game = picker.SelectedIndex; Reset(); };
         canvas.PointerPressed += (sender, args) => { if (game is 0 or 5 or 7) Click(sender, args); }; canvas.RightTapped += (_, e) => { if (game == 3 && !ended) { var point = e.GetPosition(canvas); var index = (int)(point.Y / 60) * 8 + (int)(point.X / 60); if (index is >= 0 and < 64 && !revealed[index]) flags[index] = !flags[index]; Draw(); } };
         IsTabStop = true; KeyDown += Key;
@@ -70,7 +73,7 @@ public sealed class GamesWorkspace : Grid, IDisposable
             var poster = new Canvas { Width = 200, Height = 104 }; Poster(poster, i);
             card.Children.Add(new Viewbox { Child = poster, Stretch = Stretch.Uniform, MaxHeight = 130 });
             card.Children.Add(new TextBlock { Text = names[i], FontSize = 19, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(14, 0, 14, 0) });
-            card.Children.Add(new TextBlock { Text = descriptions[i], FontSize = 12, Opacity = .65, Margin = new Thickness(14, 0, 14, 6) });
+            card.Children.Add(new TextBlock { Text = descriptions[i], FontSize = 12, Opacity = .65, TextWrapping = TextWrapping.Wrap, MinHeight = 34, Margin = new Thickness(14, 0, 14, 6) });
             card.Children.Add(new TextBlock { Text = i is 1 or 4 or 7 ? "VS BOT    ↗" : "SOLO    ↗", FontSize = 10, CharacterSpacing = 160, Foreground = new SolidColorBrush(colors[i]), Margin = new Thickness(14, 0, 14, 14) });
             var button = new Button { Content = card, Padding = new Thickness(0), Margin = new Thickness(6), CornerRadius = new CornerRadius(16), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(button, "GameTile" + i);
@@ -78,7 +81,7 @@ public sealed class GamesWorkspace : Grid, IDisposable
             button.Click += (_, _) => { picker.SelectedIndex = index; Reset(); library.Visibility = Visibility.Collapsed; playScreen.Visibility = Visibility.Visible; timer.Start(); Focus(FocusState.Programmatic); };
             buttons.Add(button); cards.Children.Add(button);
         }
-        void Arrange() { var columns = ActualWidth >= 850 ? 4 : ActualWidth >= 420 ? 2 : 1; cards.ColumnDefinitions.Clear(); cards.RowDefinitions.Clear(); for (var i = 0; i < columns; i++) cards.ColumnDefinitions.Add(new ColumnDefinition()); for (var i = 0; i < 8 / columns; i++) cards.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); for (var i = 0; i < buttons.Count; i++) { Grid.SetColumn(buttons[i], i % columns); Grid.SetRow(buttons[i], i / columns); } }
+        void Arrange() { var columns = ActualWidth >= 850 ? 4 : ActualWidth >= 650 ? 3 : ActualWidth >= 420 ? 2 : 1; cards.ColumnDefinitions.Clear(); cards.RowDefinitions.Clear(); for (var i = 0; i < columns; i++) cards.ColumnDefinitions.Add(new ColumnDefinition()); for (var i = 0; i < (names.Length + columns - 1) / columns; i++) cards.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); for (var i = 0; i < buttons.Count; i++) { Grid.SetColumn(buttons[i], i % columns); Grid.SetRow(buttons[i], i / columns); } }
         SizeChanged += (_, _) => Arrange(); Arrange();
         content.Children.Add(cards); library.Children.Add(new ScrollViewer { Content = content }); Children.Add(library);
     }
@@ -94,15 +97,22 @@ public sealed class GamesWorkspace : Grid, IDisposable
         if (game == 3 || game == 4) { for (var y=0;y<3;y++) for(var x=0;x<5;x++) if (game == 4) O(47+x*23,19+y*23,16,(x+y)%3==0?accent:faint); else R(47+x*23,19+y*23,17,17,(x+y)%4==0?accent:faint); }
         if (game == 5) { for(var y=0;y<2;y++) for(var x=0;x<5;x++) R(30+x*29,18+y*15,25,10,accent,3); R(82,82,40,5,accent); O(126,57,7,accent); }
         if (game == 7) { R(44,28,5,45,accent); R(151,37,5,45,accent); for(var i=0;i<5;i++)R(99,12+i*18,2,9,faint,1); O(113,41,9,accent); }
+        if (game == 8) { for(var y=0;y<3;y++) for(var x=0;x<5;x++) R(47+x*23,19+y*23,17,17, x==2 || y==1 ? accent : faint); }
+        if (game == 9) { R(59,14,37,34,accent,12); R(104,14,37,34,faint,12); R(59,56,37,34,faint,12); R(104,56,37,34,new SolidColorBrush(colors[0]),12); }
+        if (game == 10) { for(var y=0;y<3;y++) for(var x=0;x<5;x++) R(47+x*23,19+y*23,17,17,x==3 && y==1 ? new SolidColorBrush(Color.FromArgb(255,170,100,160)) : accent); }
+        if (game == 11) { var ring = new Ellipse { Width=70,Height=70,Stroke=faint,StrokeThickness=7 };Canvas.SetLeft(ring,65);Canvas.SetTop(ring,17);canvas.Children.Add(ring);O(126,20,12,accent);O(68,62,9,White); }
     }
     void Reset()
     {
+        movementControls.Visibility = game is 0 or 2 or 5 or 7 ? Visibility.Visible : Visibility.Collapsed;
+        gameHelp.Text = game switch { 0 => "Arrow keys / WASD · Eat the coral dots and avoid walls and your tail.", 1 => "Choose a square. Connect three marks against the minimax bot.", 2 => "Arrow keys / WASD · Merge matching tiles; each tile merges once per move.", 3 => "Choose a cell to reveal it. Right-click to flag a mine; the first move is safe.", 4 => "Choose a column. Connect four discs before the bot does.", 5 => "Left / right arrows or click to position the paddle. Clear every brick.", 6 => "Turn two cards at a time. Remember their positions and match every pair.", 7 => "Up / down arrows or click to position your paddle. Return the bot's serves.", 8 => "Each tile toggles itself and its four neighbors. Turn every light off.", 9 => "Watch the lit pads, then repeat their order. Click or press 1–4. Reach 20 rounds.", 10 => "Find the one tile with a different shade. Twenty rounds get progressively closer.", _ => "Press Space or Tap orbit inside the colored arc. The white core scores 25; the arc scores 10. Each hit increases the speed." };
         score = tick = moves = 0; paused = ended = turned = false; first = second = -1; dx = 1; dy = 0; board = new int[64]; revealed = new bool[64]; flags = new bool[64];
         snake = [210, 209, 208]; food = random.Next(400); paddle = 220; enemy = 220; ballX = 240; ballY = 300; ballDx = 3; ballDy = -3;
         while (snake.Contains(food)) food = random.Next(400);
         bricks = []; for (var y = 0; y < 4; y++) for (var x = 0; x < 8; x++) bricks.Add((x * 60 + 3, y * 25 + 30));
         if (game == 2) { SpawnTile(); SpawnTile(); }
         if (game == 6) { var cards = Enumerable.Range(1, 8).SelectMany(n => new[] { n, n }).OrderBy(_ => random.Next()).ToArray(); Array.Copy(cards, board, 16); }
+        ResetPuzzles();
         Draw();
     }
     void End(string message)
@@ -113,6 +123,7 @@ public sealed class GamesWorkspace : Grid, IDisposable
     void Update()
     {
         if (paused || ended) return; tick++;
+        UpdatePuzzles();
         if (game == 6 && second >= 0 && tick >= hideAt) { revealed[first] = revealed[second] = false; first = second = -1; Draw(); }
         if (game == 0 && tick % 4 == 0) {
             turned = false;
@@ -140,6 +151,8 @@ public sealed class GamesWorkspace : Grid, IDisposable
     }
     void Key(object sender, KeyRoutedEventArgs args)
     {
+        if (game == 11 && args.Key == Windows.System.VirtualKey.Space) { args.Handled = true; HitOrbit(); return; }
+        if (game == 9 && args.Key >= Windows.System.VirtualKey.Number1 && args.Key <= Windows.System.VirtualKey.Number4) { args.Handled = true; PuzzleClick((int)args.Key - (int)Windows.System.VirtualKey.Number1); return; }
         var x = 0; var y = 0;
         switch (args.Key) { case Windows.System.VirtualKey.Left: case Windows.System.VirtualKey.A: x = -1; break; case Windows.System.VirtualKey.Right: case Windows.System.VirtualKey.D: x = 1; break; case Windows.System.VirtualKey.Up: case Windows.System.VirtualKey.W: y = -1; break; case Windows.System.VirtualKey.Down: case Windows.System.VirtualKey.S: y = 1; break; default: return; }
         args.Handled = true; Move(x, y);
@@ -162,6 +175,7 @@ public sealed class GamesWorkspace : Grid, IDisposable
     {
         Focus(FocusState.Pointer); if (ended || paused) return;
         var point = new Windows.Foundation.Point(px, py);
+        if (game >= 8) { var columns = game == 8 ? 5 : game == 9 ? 2 : 4; PuzzleClick((int)(py / (480.0 / columns)) * columns + (int)(px / (480.0 / columns))); return; }
         if (game is 5 or 7) { paddle = (int)Math.Clamp(game == 5 ? point.X : point.Y, 45, 435); return; }
         if (game == 1) { var index = (int)(point.Y / 160) * 3 + (int)(point.X / 160); if (index is < 0 or > 8 || board[index] != 0) return; board[index] = 1; if (!CheckBoard(3, 3, 3)) { var best = -1; var bestValue = int.MinValue; for (var i = 0; i < 9; i++) if (board[i] == 0) { board[i] = 2; var value = Minimax(false); board[i] = 0; if (value > bestValue) { best = i; bestValue = value; } } if (best >= 0) board[best] = 2; CheckBoard(3, 3, 3); } }
         if (game == 4) { var col = (int)(point.X / (480.0 / 7)); if (col is < 0 or > 6 || !DropPiece(col, 1)) return; if (!CheckBoard(7, 6, 4)) { var choice = -1; foreach (var candidate in new[] { 3, 2, 4, 1, 5, 0, 6 }) { var spot = Landing(candidate); if (spot < 0) continue; board[spot] = 2; var win = Winner(7, 6, 4) == 2; board[spot] = 0; if (win) { choice = candidate; break; } } if (choice < 0) foreach (var candidate in new[] { 3, 2, 4, 1, 5, 0, 6 }) { var spot = Landing(candidate); if (spot < 0) continue; board[spot] = 1; var danger = Winner(7, 6, 4) == 1; board[spot] = 0; if (danger) { choice = candidate; break; } } if (choice < 0) choice = new[] { 3, 2, 4, 1, 5, 0, 6 }.FirstOrDefault(c => Landing(c) >= 0); DropPiece(choice, 2); CheckBoard(7, 6, 4); } }
@@ -196,6 +210,7 @@ public sealed class GamesWorkspace : Grid, IDisposable
     void Draw()
     {
         canvas.Children.Clear(); status.Foreground = Accent; if (!ended) status.Text = (paused ? "Paused · " : "") + "Score " + score;
+        if (game >= 8) { DrawPuzzles(); return; }
         if (game == 0) {
             for (var i=0;i<20;i++) { Rect(i*24,0,1,480,new SolidColorBrush(Color.FromArgb(18,143,215,199)),0); Rect(0,i*24,480,1,new SolidColorBrush(Color.FromArgb(18,143,215,199)),0); }
             for (var i=0;i<snake.Count;i++) { var cell=snake[i]; Rect(cell%20*24+2,cell/20*24+2,20,20,new SolidColorBrush(Color.FromArgb((byte)Math.Max(90,255-i*7),143,215,199)),7); }

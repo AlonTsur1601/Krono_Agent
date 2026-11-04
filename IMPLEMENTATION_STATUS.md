@@ -24,7 +24,7 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 - Windows UI Automation fixture exercises registration/sign-in controls,
   project creation and scoped memories, streamed model response with Chat tools
   omitted, project reassignment, approved file write (no write before approval),
-  eight game initializations and board moves, real PTY output 42, WebView2 page
+  twelve game initializations and board moves, real PTY output 42, WebView2 page
   navigation and absence of host/Node APIs, process restart, manual logout,
   and rejection of a remotely revoked refresh session on restart.
 - Ollama, LM Studio and custom OpenAI-compatible endpoints now have native
@@ -50,7 +50,7 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 - Live owner auth/provider acceptance, cloud record/attachment synchronization,
   OAuth, scheduled tasks, side chats, plugins/import, app connections, local
   bundled local inference/model downloads, media generation, agent browser/terminal/computer-use tools,
-  automatic memory proposals and sixteen additional games remain incomplete.
+  automatic memory proposals and twelve additional games remain incomplete.
 - macOS/Linux desktop UIs are not implemented after the owner's explicit
   choice of native Windows UI. Agent unit checks remain cross-platform.
 - Runtime signing, automatic updates and a production installer are not verified.

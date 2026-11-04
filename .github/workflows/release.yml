@@ -23,7 +23,13 @@ jobs:
       - run: npm run package:win
       - name: Archive native Windows distribution
         shell: pwsh
-        run: Compress-Archive -Path release/Krono-Agent -DestinationPath release/Krono-Agent-Windows-x64.zip
+        run: |
+          Compress-Archive -LiteralPath release/Krono-Agent -DestinationPath release/Krono-Agent-Windows-x64.zip
+          $kronoReleaseCheck = Join-Path $env:RUNNER_TEMP 'krono-release-check'
+          Expand-Archive -LiteralPath release/Krono-Agent-Windows-x64.zip -DestinationPath $kronoReleaseCheck
+          $env:KRONO_SMOKE_EXE = Join-Path $kronoReleaseCheck 'Krono-Agent/KronoAgent.exe'
+          node scripts/native-smoke.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Extracted release distribution failed native acceptance.' }
       - uses: actions/upload-artifact@v4
         with:
           name: Krono-Agent-Windows-x64
@@ -31,3 +37,4 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: release/Krono-Agent-Windows-x64.zip
+          prerelease: ${{ contains(github.ref_name, '-') }}

@@ -129,7 +129,7 @@ try {
     Capture 'native-game-library.png'
     Invoke 'GameTile0'
     Find 'Restart' -ByName | Out-Null
-    foreach ($game in @('Tic-Tac-Toe','2048','Minesweeper','Connect Four','Breakout','Memory Match','Pong','Snake')) {
+    foreach ($game in @('Tic-Tac-Toe','2048','Minesweeper','Connect Four','Breakout','Memory Match','Pong','Snake','Lights Out','Simon','Odd Color','Orbit')) {
         SelectChoice 'GameSelector' $game
         Invoke 'Restart' -ByName
         if ($game -eq 'Tic-Tac-Toe') {
@@ -150,6 +150,56 @@ try {
         }
         if ($game -eq '2048') { Invoke 'Move left' -ByName }
         if ($game -eq 'Breakout') { Capture 'native-breakout.png' }
+        if ($game -eq 'Lights Out') {
+            $initial = @(0..24 | ForEach-Object { [int]((Find ('GameCell' + $_)).Current.Name -match ': on$') })
+            $solution = $null
+            # Chase each possible first row; the following row is then forced.
+            for ($mask = 0; $mask -lt 32; $mask++) {
+                $cells = [int[]]$initial.Clone(); $presses = New-Object 'System.Collections.Generic.List[int]'
+                for ($row = 0; $row -lt 5; $row++) { for ($column = 0; $column -lt 5; $column++) {
+                    $index = $row * 5 + $column
+                    $press = if ($row -eq 0) { ($mask -band (1 -shl $column)) -ne 0 } else { $cells[$index - 5] -eq 1 }
+                    if ($press) {
+                        $presses.Add($index)
+                        foreach ($offset in @(0,-5,5,-1,1)) { $other = $index + $offset; if ($other -ge 0 -and $other -lt 25 -and (($offset -ne -1 -and $offset -ne 1) -or [math]::Floor($other / 5) -eq $row)) { $cells[$other] = $cells[$other] -bxor 1 } }
+                    }
+                } }
+                if (($cells | Measure-Object -Sum).Sum -eq 0) { $solution = $presses; break }
+            }
+            if ($null -eq $solution) { throw 'Lights Out generated an unsolvable board' }
+            foreach ($index in $solution) { Invoke ('GameCell' + $index) }
+            if ((Find 'GameStatus').Current.Name -notmatch '^All lights out') { throw 'Lights Out did not recognize its solved board' }
+            Capture 'native-lights-out.png'
+        }
+        if ($game -eq 'Simon') {
+            # Catch the next playback from its start, including a deliberate ignored early click.
+            Invoke 'Restart' -ByName
+            $deadline = (Get-Date).AddSeconds(5); $lit = -1
+            do { for ($i=0; $i -lt 4; $i++) { if ((Find ('GameCell' + $i)).Current.Name -match ': lit$') { $lit = $i; break } }; if ($lit -lt 0) { Start-Sleep -Milliseconds 30 } } while ($lit -lt 0 -and (Get-Date) -lt $deadline)
+            if ($lit -lt 0) { throw 'Simon did not show its first cue' }
+            Invoke ('GameCell' + (($lit + 1) % 4))
+            do { Start-Sleep -Milliseconds 50; $state = (Find 'GameStatus').Current.Name } while ($state -notmatch '^Your turn' -and (Get-Date) -lt $deadline)
+            if ($state -notmatch '^Your turn') { throw 'Simon never enabled pattern input' }
+            Invoke ('GameCell' + $lit)
+            if ((Find 'GameStatus').Current.Name -notmatch 'Score 10') { throw 'Simon did not accept the remembered pattern' }
+        }
+        if ($game -eq 'Odd Color') {
+            $tiles = @(0..15 | ForEach-Object { [pscustomobject]@{ Index = $_; Shade = ((Find ('GameCell' + $_)).Current.Name -split ': ')[1] } })
+            $odd = $tiles | Group-Object Shade | Where-Object Count -eq 1
+            if (!$odd) { throw 'Odd Color did not generate exactly one different tile' }
+            Invoke ('GameCell' + $odd.Group[0].Index)
+            if ((Find 'GameStatus').Current.Name -notmatch '^Shade 2/20 · Score 100') { throw 'Odd Color did not advance or score the correct choice' }
+            Capture 'native-odd-color.png'
+            $tiles = @(0..15 | ForEach-Object { [pscustomobject]@{ Index = $_; Shade = ((Find ('GameCell' + $_)).Current.Name -split ': ')[1] } })
+            $common = $tiles | Group-Object Shade | Where-Object Count -gt 1
+            Invoke ('GameCell' + $common.Group[0].Index)
+            if ((Find 'GameStatus').Current.Name -notmatch '^Different shade missed') { throw 'Odd Color did not end after a wrong choice' }
+        }
+        if ($game -eq 'Orbit') {
+            Capture 'native-orbit.png'
+            Invoke 'Tap orbit' -ByName
+            if ((Find 'GameStatus').Current.Name -eq 'Score 0') { throw 'Orbit did not register its timing input' }
+        }
     }
     SelectNav 'Terminal'
     Start-Sleep -Seconds 2
@@ -187,5 +237,5 @@ try {
     Launch
     Find 'LoginButton' | Out-Null
     if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin')) { throw 'Revoked session was retained after restart' }
-    Write-Output 'NATIVE_SMOKE_PASS: native auth, scoped projects/memory, streamed cloud/local endpoint, tool omission and key isolation, approved file write, eight game initializations and board moves, PTY 42, WebView2 navigation, restart, logout, remote-revocation rejection'
+    Write-Output 'NATIVE_SMOKE_PASS: native auth, scoped projects/memory, streamed cloud/local endpoint, tool omission and key isolation, approved file write, twelve games with Lights Out solution/Simon pattern/Odd Color scoring/Orbit input, PTY 42, WebView2 navigation, restart, logout, remote-revocation rejection'
 } finally { CloseApp }
