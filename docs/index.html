@@ -12,12 +12,12 @@ if (error || values.has('access_token')) {
   document.getElementById('confirmation-message').textContent = error ? 'This link is invalid or expired. Return to Krono and try signing in. If your email is still unconfirmed, request a new link.' : 'You can close this tab and return to Krono Agent to sign in.';
   history.replaceState(null, '', location.pathname);
 }
-</script><span class="badge">In development</span><h1>Krono Agent</h1>
-<p>A desktop agent workspace with games to play while tasks run.</p>
+</script><span class="badge">In development</span><div style="display:flex;align-items:center;gap:20px"><img src="https://raw.githubusercontent.com/AlonTsur1601/Krono_Agent/main/assets/logo/logo.svg" width="72" height="72" alt=""><h1>Krono Agent</h1></div>
+<p>A native Windows agent workspace with games to play while tasks run.</p>
 <p>The application is being implemented and reviewed. There is no verified
 production installer available yet. Windows is the primary target;
-macOS and Linux runtime support remains unverified.</p>
-<p>Development checks include account-ownership policy tests and an integrated PowerShell terminal and isolated Chromium browsing. Local project and memory management is also implemented. Full release acceptance is still pending.</p>
+the interface uses WinUI 3, and macOS/Linux desktop interfaces are not implemented.</p>
+<p>Development checks include account-ownership policy tests and an integrated PowerShell terminal and isolated WebView2 browsing. The WinUI interface includes local project and memory management, native Markdown and eight games. Full release acceptance is still pending.</p>
 <nav><a href="https://github.com/AlonTsur1601/Krono_Agent#הקמת-krono-במחשב-שלך" lang="he" dir="rtl">מדריך הקמה בעברית</a><a href="https://github.com/AlonTsur1601/Krono_Agent">Source code</a>
 <a href="https://github.com/AlonTsur1601/Krono_Agent/blob/main/IMPLEMENTATION_STATUS.md">Implementation status</a>
 <a href="https://github.com/AlonTsur1601/Krono_Agent/blob/main/.kiro/specs/krono-agent/requirements.md">Requirements</a></nav>

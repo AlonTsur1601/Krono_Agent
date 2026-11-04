@@ -1,3 +1,5 @@
+> 2026-11-04 owner-authorized change: the Windows interface is now C#/WinUI 3. Original Electron/React examples below are historical implementation guidance; current stack and paths are in .kiro/steering/tech.md and structure.md. Product requirements remain applicable.
+
 > 02:00 continuation: native provider contracts and local project/memory management are implemented and fixture-tested. See review-2026-11-04.md. Full cloud/provider/game/release acceptance remains incomplete.
 
 > Continued 2026-11-04: see review-2026-11-04.md for dependency upgrades, user terminal implementation and actual verification. Full milestones remain incomplete.

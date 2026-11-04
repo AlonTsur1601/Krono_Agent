@@ -1,77 +1,42 @@
 {
   "name": "krono-agent",
   "version": "0.1.0",
-  "description": "Desktop agent workspace with 24 games to play while the agent works",
-  "main": "dist/main/index.js",
+  "description": "Native Windows agent workspace with project memory and games",
   "author": "Alon Tsur",
   "license": "MIT",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
-    "dev:vite": "vite",
-    "dev:electron": "wait-on http://localhost:5173 && electron .",
-    "build": "npm run build:renderer && npm run build:main",
-    "build:renderer": "vite build",
-    "build:main": "tsc -p tsconfig.node.json",
-    "preview": "vite preview",
-    "lint": "eslint src --ext .ts,.tsx",
-    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "dev": "npm run build && powershell.exe -NoProfile -File scripts/run-native.ps1",
+    "build": "powershell.exe -NoProfile -File scripts/build-native.ps1",
+    "build:engine": "node scripts/build-engine.cjs",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "npm run build && playwright test",
-    "package:win": "npm run build && electron-builder --win",
-    "package:mac": "npm run build && electron-builder --mac",
-    "package:linux": "npm run build && electron-builder --linux",
-    "postinstall": "node scripts/install-native.cjs"
+    "test:native": "node scripts/native-smoke.cjs",
+    "package:win": "powershell.exe -NoProfile -File scripts/build-native.ps1 -Publish"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.4.0",
     "@google/genai": "2.32.0",
-    "@radix-ui/react-dialog": "^1.0.5",
-    "@radix-ui/react-dropdown-menu": "^2.0.6",
-    "@radix-ui/react-select": "^2.0.0",
-    "@radix-ui/react-switch": "^1.0.3",
-    "@radix-ui/react-tabs": "^1.0.4",
-    "@supabase/supabase-js": "^2.39.3",
-    "@tanstack/react-query": "^5.17.19",
-    "better-sqlite3": "13.0.3",
-    "monaco-editor": "^0.45.0",
     "node-pty": "^1.0.0",
     "openai": "7.49.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-markdown": "^9.0.1",
-    "xterm": "^5.3.0",
-    "xterm-addon-fit": "^0.8.0",
-    "zod": "4.6.7",
-    "zustand": "^4.4.7"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.15",
-    "@electron/rebuild": "4.2.1",
-    "@playwright/test": "^1.40.1",
-    "@types/better-sqlite3": "^7.6.8",
     "@types/node": "^24.0.0",
-    "@types/react": "^18.2.46",
-    "@types/react-dom": "^18.2.18",
     "@typescript-eslint/eslint-plugin": "8.72.1",
     "@typescript-eslint/parser": "8.72.1",
-    "@vitejs/plugin-react": "6.2.1",
-    "autoprefixer": "^10.4.16",
-    "concurrently": "^8.2.2",
-    "electron": "45.2.2",
-    "electron-builder": "26.18.0",
+    "esbuild": "^0.28.2",
     "eslint": "10.14.0",
-    "eslint-plugin-react-hooks": "7.1.1",
-    "eslint-plugin-react-refresh": "0.5.7",
-    "postcss": "^8.4.32",
-    "tailwindcss": "^3.4.0",
     "typescript": "^5.3.3",
-    "vite": "8.3.5",
-    "vitest": "5.1.0",
-    "wait-on": "^7.2.0"
+    "vitest": "5.1.0"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=24"
+  },
+  "overrides": {
+    "minimatch": "11.0.4"
   }
 }

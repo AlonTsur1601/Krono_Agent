@@ -1,62 +1,52 @@
 # Krono Agent
 
-An independent desktop agent workspace with games to play while tasks run.
+Native Windows agent workspace built with C# / WinUI 3. Chat, projects, settings,
+Markdown and games use native XAML controls. Only the embedded web browser uses
+WebView2. The agent runs in a private local Node worker over stdio, without an
+Electron host or a localhost HTTP control server.
 
-**Development status: incomplete. No production release is available yet.**
-The target includes 24 games, providers, local inference, projects, plugins,
-computer/browser tools, side chats and account synchronization. These are
-requirements, not claims that all features already work.
+The UI migration is distinct from completion of the original product scope.
+See [implementation status](IMPLEMENTATION_STATUS.md) and [.kiro requirements](.kiro/specs/krono-agent/requirements.md).
 
-See [audited implementation status](IMPLEMENTATION_STATUS.md) and the
-[tracked requirements](.kiro/specs/krono-agent/requirements.md).
+## Develop on Windows
 
-## Development
-
-Node.js 22.12+ (CI uses Node.js 24) and native build tooling may be required for Electron modules.
+Install Node 24+ and .NET 10 SDK, then:
 
 ```powershell
 npm ci
-npm run build
-npm test
-npx tsc --noEmit
-npm run lint
+npm run dev
 ```
 
-Launch the built desktop application using `npx electron .`.
-For Vite development, build the main/preload first, then run `npm run dev`.
+`npm run build` builds the native app and bundles its agent runtime.
+`npm run package:win` publishes a Windows x64 folder under `release/Krono-Agent`.
+Keep all files together. WebView2 Evergreen Runtime is required for browsing.
 
-Authentication requires a real Supabase project. Follow the
-[account setup instructions below](#הקמת-krono-במחשב-שלך), which covers the SQL migration,
-private Storage policies, email setup and local account-service.json config.
-Environment configuration remains supported. Never use a service-role key.
-Missing configuration produces an explicit error.
-Provider credentials are entered in app settings after authentication and
-stored encrypted using the OS. Live authentication and provider acceptance
-require external configuration and remain unverified.
+```powershell
+npm run typecheck
+npm run lint
+npm test
+npm run test:native
+```
 
-## Verification boundaries
+Agent unit tests run on Windows/macOS/Linux. Native UI testing uses Windows UI
+Automation against an isolated local account/provider fixture, real SQLite,
+DPAPI, PowerShell PTY and WebView2. This does not establish live Supabase or
+provider acceptance. macOS/Linux desktop interfaces are not implemented.
 
-Local tests cover Chat tool omission, Plan mutation rejection, approvals,
-tool-result continuation and project path/junction boundaries. An Electron
-smoke test confirmed launch, preload and the unconfigured-service error.
-Eight existing game components remain under review; sixteen are absent.
-No installer, cross-platform runtime, full app, or live integrations have
-passed acceptance yet. Dependency audit findings remain to be remediated.
+Existing local account databases and account-service.json remain under
+`%APPDATA%/krono-agent`. The native app uses its own Windows DPAPI-protected
+session and provider-key files; sign in and configure provider keys once in the
+new interface. Previous encrypted files are not deleted.
 
-## Development provenance
-
-Initial work and specifications were created using Kiro Crew. The owner
-subsequently authorized Codex to review, fix and continue implementation.
-The .kiro review log distinguishes the takeover from the original work.
-
-MIT license. Do not redistribute model weights or third-party assets
-without their required license notices.
+Initial specifications and development used Kiro Crew; owner-authorized native
+migration and subsequent fixes are by Codex. MIT license; dependency notices
+are included with the runtime bundle.
 
 ---
 
 # הקמת Krono במחשב שלך
 
-האפליקציה עדיין בפיתוח. ההוראות כאן מפעילות את מה שכבר קיים; הן אינן מפעילות סנכרון ענן, OAuth או תכונות שטרם מומשו. אין עדיין מתקין רשמי מאומת. אתר GitHub Pages הוא עמוד מידע, ולא האפליקציה עצמה.
+המוצר המלא עדיין בפיתוח. ההוראות כאן מפעילות את מה שכבר קיים; הן אינן מפעילות סנכרון ענן, OAuth או תכונות שטרם מומשו. הגרסה הנוכחית היא אפליקציית Windows מקורית ב־WinUI 3. חבילת ההפצה מכילה קובץ EXE ואת הקבצים הדרושים לידו; אין להעביר רק את ה־EXE. אתר GitHub Pages הוא עמוד מידע, ולא האפליקציה עצמה.
 
 ## 1. יצירת שירות החשבונות
 
@@ -101,18 +91,17 @@ notepad (Join-Path $kronoConfigDir 'account-service.json')
 
 ## 4. הפעלה מקוד המקור
 
-נדרשים Git ו־Node.js; מומלץ Node 24 LTS, ויש להשתמש לפחות ב־22.12. פתח PowerShell בתיקיית הפרויקט:
+נדרשים Git ו־Node.js; נדרשים Node 24 ומעלה ו־.NET 10 SDK במחשב הפיתוח. משתמשי חבילת ההפצה אינם צריכים להתקין אותם. פתח PowerShell בתיקיית הפרויקט:
 
 ```powershell
 Set-Location 'C:\Users\alont\OneDrive\מסמכים\Alon\Krono Agent'
 git pull --ff-only origin main
 node --version
 npm ci
-npm run build
-npx electron .
+npm run dev
 ```
 
-הרץ כל פקודה רק אם הקודמת הצליחה. `npm ci` נדרש בהתקנה ראשונה או אחרי שינוי תלויות, וסוגר/מחליף את תיקיית התלויות הקיימת: סגור קודם את האפליקציה. בסביבת פיתוח קיימת שבה התלויות כבר מעודכנות אפשר להתחיל מהבנייה. אם בניית מודול native נכשלת, שמור את השגיאה במקום לעקוף את התקנתו; SQLite והטרמינל תלויים בו.
+הרץ כל פקודה רק אם הקודמת הצליחה. `npm ci` נדרש בהתקנה ראשונה או אחרי שינוי תלויות, וסוגר/מחליף את תיקיית התלויות הקיימת: סגור קודם את האפליקציה. בסביבת פיתוח קיימת שבה התלויות כבר מעודכנות אפשר להתחיל מהבנייה. אם בניית מודול native נכשלת, שמור את השגיאה במקום לעקוף את התקנתו; הטרמינל תלוי בו.
 
 ## 5. בדיקת חשבון וחיבור מודל
 
@@ -133,6 +122,6 @@ npx electron .
 - **Email not confirmed**: אשר את המייל ואז בחר התחברות, לא הרשמה נוספת.
 - לא מגיע מייל: בדוק ספאם, לוגים ב־Authentication והגבלות SMTP; לפני שימוש ציבורי נדרש שירות מייל מתאים.
 - שגיאת RLS: אל תכבה את ההגנה. שמור את הודעת השגיאה לבדיקה.
-- עמוד האתר נפתח בלי האפליקציה: זה צפוי. זו אפליקציית Electron למחשב, והאתר כרגע מציג תיעוד בלבד.
+- עמוד האתר נפתח בלי האפליקציה: זה צפוי. זו אפליקציית Windows מקורית, והאתר כרגע מציג תיעוד בלבד.
 
 מקורות רשמיים: [סיסמאות ואישור מייל](https://supabase.com/docs/guides/auth/passwords), [סוגי מפתחות](https://supabase.com/docs/guides/getting-started/api-keys), [SMTP](https://supabase.com/docs/guides/auth/auth-smtp).

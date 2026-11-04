@@ -83,3 +83,6 @@ native/**/bin/
 native/**/obj/
 native/**/*.user
 
+
+release/
+

@@ -1,3 +1,5 @@
+> 2026-11-04 owner-authorized change: the Windows interface is now C#/WinUI 3. Original Electron/React examples below are historical implementation guidance; current stack and paths are in .kiro/steering/tech.md and structure.md. Product requirements remain applicable.
+
 # Krono Agent - Design Document
 
 ## Architecture Overview

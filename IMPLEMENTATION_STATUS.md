@@ -1,34 +1,48 @@
 # Krono Agent — implementation status
 
-Reviewed 2026-11-04. The previous percentage and completion claims were not acceptance evidence.
+Reviewed 2026-11-04. The Windows UI has been migrated from Electron/React to
+native C#/WinUI 3. This is not completion of the full original product scope.
 
-## Verified locally
-- Integrated user PowerShell terminal with tabs/resizable drawer: real PTY output and logout cleanup tested using a local auth fixture.
-- Embedded Chromium navigation, tab switching, remote IPC/Node isolation, bookmarks/history and find tested using a local HTTP fixture.
-- Single-use approvals and cancellation covered by focused unit tests.
-- Modernized build/runtime dependencies; 17 unit/SQL/provider/approval tests pass.
-- Renderer/main build and TypeScript checks (see .kiro verification log for latest results).
-- Windows Electron launch, preload, nonblank sign-in screen, and an honest error for an unconfigured account service.
-- Unit coverage of Chat tool omission, Plan mutation rejection, approval denial, tool-result continuation, project file boundaries and junction escapes.
+## Current architecture
 
-- Local project creation/editing, directory mappings, project/global memory editing, new project chats and chat reassignment pass the Electron integration fixture.
+- Native shell, account forms, chat, Markdown, project/memory forms, settings,
+  terminal surface and game rendering. No Electron or React runtime.
+- Embedded WebView2 is used only for browsing, with per-account profiles,
+  private tabs, navigation, history/bookmarks, find, zoom and downloads.
+- Private bundled Node worker over stdio preserves the existing provider
+  adapters, tool validation, project file boundaries, approvals and cancellation.
+- Existing per-account SQLite databases and account-service.json paths are retained.
+- Native sessions/keys use Windows DPAPI. Configure them once in the new UI;
+  existing legacy encrypted files are not deleted.
 
-## Implemented, not live-provider verified
-- Supabase password sign-in/sign-up replacing fake local authentication.
-- Account-scoped OS-encrypted provider credentials; no provider keys exported through process.env.
-- Selected provider/model routed to chat and streamed text mapped to the visible pending message.
-- OpenAI Responses streaming and complete function-call parsing.
-- Bounded tool execution with validation and explicit approval dependency.
-- Anthropic/Gemini native model discovery and tool round trips pass mocked transport contracts; Gemini signature state stays in the main runtime.
+## Verification
 
-## Incomplete / unverified
-- A Supabase project and real account-service configuration are required for live authentication.
-- Provider calls require credentials and live smoke tests; mocked contracts do not establish live acceptance.
-- 8 existing game components need acceptance review; 16 games are absent.
-- Project sidebar grouping/icons/connection overrides, synchronization, offline recovery, OAuth, automatic memory proposals, external browser automation, agent terminal tooling, desktop control, plugins, connections, local inference, media, automation UI, side chats and release packaging remain incomplete.
-- Dependency modernization removed critical/high audit findings. 24 moderate upstream-tooling findings remain; full security acceptance is pending.
-- No release artifact or full product acceptance yet. Website permission dialogs and cross-platform desktop runtime still require acceptance. Downloads pass the local runtime fixture.
+- 13 agent/provider/file-boundary/SQL tests pass. Removed Electron-specific
+  auth/approval tests were replaced by real native UI flows, not marked passing.
+- Windows UI Automation fixture exercises registration/sign-in controls,
+  project creation and scoped memories, streamed model response with Chat tools
+  omitted, project reassignment, approved file write (no write before approval),
+  eight game initializations and board moves, real PTY output 42, WebView2 page
+  navigation and absence of host/Node APIs, process restart, manual logout,
+  and rejection of a remotely revoked refresh session on restart.
+- The fixture uses local auth/provider services. It is not live Supabase/model
+  acceptance. Browser permissions/downloads and extended game balancing still
+  need additional acceptance beyond the implemented paths.
+- Native build and self-contained Windows x64 folder publish succeed locally.
+  Isolated published-folder and remote CI verification are tracked in .kiro.
+- npm audit: zero vulnerabilities after removing legacy UI/build dependencies
+  and validating the remaining modern minimatch callers against patched 11.0.4.
+- NuGet audit: no vulnerable direct/transitive packages reported.
 
-This is an unfinished application, not a completed release.
+## Remaining product requirements
 
-Encrypted session persistence and process restart/logout pass local Electron fixtures. Confirmation landing page handles success/error without retaining token fragments. Live email delivery and provider session revocation are not yet acceptance-tested.
+- Live owner auth/provider acceptance, cloud record/attachment synchronization,
+  OAuth, scheduled tasks, side chats, plugins/import, app connections, local
+  inference, media generation, agent browser/terminal/computer-use tools,
+  automatic memory proposals and sixteen additional games remain incomplete.
+- macOS/Linux desktop UIs are not implemented after the owner's explicit
+  choice of native Windows UI. Agent unit checks remain cross-platform.
+- Runtime signing, automatic updates and a production installer are not verified.
+
+Initial specs/work used Kiro Crew. Native migration and subsequent implementation
+are by Codex, authorized by the owner. See .kiro review logs for provenance.

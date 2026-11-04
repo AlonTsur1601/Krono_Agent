@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="Krono_Agent.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Krono_Agent">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <!-- Other merged dictionaries here -->
+            </ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="KronoBackground" Color="#10151D" />
+                    <SolidColorBrush x:Key="KronoSidebar" Color="#141B24" />
+                    <SolidColorBrush x:Key="KronoSurface" Color="#1B2532" />
+                    <SolidColorBrush x:Key="KronoBorder" Color="#2B3B4C" />
+                    <SolidColorBrush x:Key="KronoMuted" Color="#9AABBF" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#293D48" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#344D59" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="KronoBackground" Color="#F2F5F7" />
+                    <SolidColorBrush x:Key="KronoSidebar" Color="#E7EEF0" />
+                    <SolidColorBrush x:Key="KronoSurface" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="KronoBorder" Color="#CDDADC" />
+                    <SolidColorBrush x:Key="KronoMuted" Color="#536D78" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#D8E9E5" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#C3DDD6" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#8FD7C7" />
+            <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#76C6B5" />
+            <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#10231F" />
+            <Style TargetType="Button">
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="Padding" Value="16,10" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Background" Value="{ThemeResource KronoSurface}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
+            </Style>
+            <Style TargetType="TextBox">
+                <Setter Property="CornerRadius" Value="12" />
+                <Setter Property="Padding" Value="14,12" />
+                <Setter Property="Background" Value="{ThemeResource KronoSurface}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
+            </Style>
+            <Style TargetType="ComboBox">
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="Padding" Value="12,10" />
+                <Setter Property="Background" Value="{ThemeResource KronoSurface}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

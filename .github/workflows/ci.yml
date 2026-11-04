@@ -31,14 +31,23 @@ jobs:
         run: npm run lint
       
       - name: Type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
       
       - name: Run tests
         run: npm test
       
-      - name: Build
+      - name: Build agent engine
+        run: npm run build:engine
+
+      - uses: actions/setup-dotnet@v5
+        if: runner.os == 'Windows'
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build native Windows app
+        if: runner.os == 'Windows'
         run: npm run build
 
-      - name: Windows desktop smoke
+      - name: Native Windows UI integration
         if: runner.os == 'Windows'
-        run: npx playwright test
+        run: npm run test:native
