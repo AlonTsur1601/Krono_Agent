@@ -271,7 +271,7 @@ Use path aliases configured in tsconfig:
 
 ## Configuration Files
 
-- `.env.example` - Environment template (no secrets)
+- `README.md` - Setup instructions and public account-service configuration format
 - `.env.local` - Local development (gitignored)
 - `electron-builder.yml` - Packaging config
 - `vite.config.ts` - Build and dev server
