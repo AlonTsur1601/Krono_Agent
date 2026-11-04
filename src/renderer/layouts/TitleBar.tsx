@@ -1,5 +1,5 @@
-// @ts-expect-error Vite resolves the bundled SVG asset.
-import logo from '../../../assets/logo/logo.svg'
+// @ts-expect-error Vite resolves the bundled image asset.
+import logo from '../../../assets/logo/icon.png'
 
 export function TitleBar() {
   return <header className="titlebar">
@@ -13,3 +13,4 @@ export function TitleBar() {
     </div>
   </header>
 }
+
