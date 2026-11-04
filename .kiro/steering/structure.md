@@ -4,10 +4,10 @@
   native game rendering and native Markdown.
 - src/agent: provider adapters, agent execution and file tools, with unit tests.
 - src/sidecar: private stdio worker and PTY lifetime management.
-- src/db/schema.ts: authoritative local SQL schema; native build extracts it.
+- src/db/schema.sql: authoritative local SQL schema; native build copies it.
 - src/tests: cloud SQL ownership-policy tests.
 - scripts: native build/publish/launch and real Windows UI integration fixture.
-- assets/logo: authoritative SVG mark, monochrome/wordmark variants, derived PNG.
+- assets/logo: authoritative SVG mark; the required native ICO lives in the Windows assets.
 - supabase/migrations: cloud account schema and private attachment policies.
 - docs/index.html: public project page and email-confirmation landing state.
 - .kiro/specs: requirements, original design/tasks and honest takeover reviews.

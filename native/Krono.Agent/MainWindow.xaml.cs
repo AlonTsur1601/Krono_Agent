@@ -1,15 +1,7 @@
 using Microsoft.UI.Xaml;
 
-// To learn more about WinUI, the WinUI project structure,
-// and more about our project templates, see: http://aka.ms/winui-project-info.
-
 namespace Krono_Agent;
 
-/// <summary>
-/// The application window. This hosts a Frame that displays pages. Add your
-/// UI and logic to MainPage.xaml / MainPage.xaml.cs instead of here so you
-/// can use Page features such as navigation events and the Loaded lifecycle.
-/// </summary>
 public sealed partial class MainWindow : Window
 {
     public static MainWindow? Instance { get; private set; }
@@ -20,11 +12,23 @@ public sealed partial class MainWindow : Window
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        if (Content is FrameworkElement root) {
+            root.ActualThemeChanged += (_, _) => UpdateCaptionColors();
+            UpdateCaptionColors();
+        }
 
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1360, 900));
 
-        // Navigate the root frame to the main page on startup.
         RootFrame.Navigate(typeof(MainPage));
+    }
+    void UpdateCaptionColors()
+    {
+        var light = Content is FrameworkElement root && root.ActualTheme == ElementTheme.Light;
+        var foreground = light ? Windows.UI.Color.FromArgb(255, 16, 35, 31) : Windows.UI.Color.FromArgb(255, 241, 245, 249);
+        AppWindow.TitleBar.ButtonForegroundColor = foreground;
+        AppWindow.TitleBar.ButtonInactiveForegroundColor = foreground;
+        AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+        AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
     }
 }

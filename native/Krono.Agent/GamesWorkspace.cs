@@ -42,7 +42,7 @@ public sealed class GamesWorkspace : Grid, IDisposable
         var view = new Viewbox { Child = canvas, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, MaxHeight = 510 };
         var stage = new Border { Child = view, Background = new SolidColorBrush(Color.FromArgb(255, 10, 18, 28)), CornerRadius = new CornerRadius(24), Padding = new Thickness(16), BorderThickness = new Thickness(1), BorderBrush = new SolidColorBrush(Color.FromArgb(255, 42, 60, 78)), HorizontalAlignment = HorizontalAlignment.Center };
         Grid.SetRow(stage, 2); Children.Add(stage);
-        status.FontFamily = new FontFamily("Cascadia Mono"); status.FontSize = 25; status.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+        status.FontFamily = KronoDesign.CodeFont; status.FontSize = 25; status.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
         var footer = new StackPanel { Spacing = 8 };
         var arrows = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center };
         foreach (var (name, vx, vy) in new[] { ("Move left", -1, 0), ("Move up", 0, -1), ("Move down", 0, 1), ("Move right", 1, 0) }) { var button = new Button { Content = name }; button.Click += (_, _) => Move(vx, vy); arrows.Children.Add(button); }
@@ -61,7 +61,7 @@ public sealed class GamesWorkspace : Grid, IDisposable
         foreach (var height in heights) playScreen.RowDefinitions.Add(new RowDefinition { Height = height });
         var children = Children.ToArray(); Children.Clear(); RowDefinitions.Clear(); foreach (var child in children) playScreen.Children.Add(child); Children.Add(playScreen);
         library = new Grid(); var content = new StackPanel { Spacing = 12 };
-        content.Children.Add(new TextBlock { Text = "Games", FontFamily = new FontFamily("Segoe UI Variable Display"), FontSize = 34, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        content.Children.Add(new TextBlock { Text = "Games", FontFamily = (FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 34, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         content.Children.Add(new TextBlock { Text = "Choose a game. Your agent can keep working.", FontSize = 15, Opacity = .6, Margin = new Thickness(0, 0, 0, 16) });
         var cards = new Grid(); var buttons = new List<Button>();
         for (var i = 0; i < names.Length; i++) {

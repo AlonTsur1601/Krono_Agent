@@ -58,6 +58,7 @@ try {
     Invoke 'Save global memory' -ByName
     SelectNav 'Settings'
     Find 'Save key' -ByName | Out-Null
+    foreach ($appearance in @('light','dark','halloween','system')) { SelectChoice 'Appearance' $appearance; if ($appearance -ne 'system') { Capture ('native-theme-' + $appearance + '.png') } }
     SetValue 'ProviderKey' 'fixture-provider-key'
     Invoke 'Save key' -ByName
     $model = Find 'ModelSelector'

@@ -44,7 +44,7 @@ const server = http.createServer((request, response) => {
 server.listen(0, '127.0.0.1', () => {
   const root = `http://127.0.0.1:${server.address().port}`
   fs.writeFileSync(path.join(home, 'account-service.json'), JSON.stringify({ url: root, anonKey: 'native-public-fixture' }))
-  const exe = process.env.KRONO_SMOKE_EXE || path.resolve('native/Krono.Agent/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/Krono.Agent.exe')
+  const exe = process.env.KRONO_SMOKE_EXE || path.resolve('native/Krono.Agent/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/KronoAgent.exe')
   const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/native-smoke.ps1'), '-Executable', exe, '-Fixture', root, '-ReportDirectory', home], { env: { ...process.env, KRONO_USER_DATA: home, OPENAI_BASE_URL: root + '/v1' }, stdio: 'inherit', windowsHide: true })
   child.on('exit', code => { server.close(); console.log('Native smoke artifacts:', home); process.exitCode = code ?? 1 })
 })

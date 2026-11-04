@@ -11,8 +11,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     
     strategy:
+      fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, macos-15-intel, ubuntu-latest]
         node-version: [24]
     
     steps:
@@ -59,5 +60,5 @@ jobs:
       - name: Test published Windows distribution
         if: runner.os == 'Windows'
         env:
-          KRONO_SMOKE_EXE: ${{ github.workspace }}\release\Krono-Agent\Krono.Agent.exe
+          KRONO_SMOKE_EXE: ${{ github.workspace }}\release\Krono-Agent\KronoAgent.exe
         run: npm run test:native

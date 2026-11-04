@@ -17,7 +17,7 @@
 </Grid></NavigationView>
 <ProgressRing x:Name="StartupProgress" IsActive="True" Width="36" Height="36" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 <ScrollViewer x:Name="SignIn" Visibility="Collapsed" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="440" Padding="32"><StackPanel Spacing="16" Width="350">
-<Image Source="Assets/Krono.png" Width="72" Height="72" HorizontalAlignment="Left"/>
+<Image Width="72" Height="72" HorizontalAlignment="Left"><Image.Source><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg"/></Image.Source></Image>
 <TextBlock Text="Welcome to Krono" Style="{ThemeResource TitleTextBlockStyle}"/>
 <TextBlock Text="Sign in to your workspace." Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 <TextBox x:Name="EmailInput" Header="Email" PlaceholderText="you@example.com" InputScope="EmailSmtpAddress"/>

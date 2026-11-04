@@ -1,5 +1,3 @@
-// SQLite Database Schema
-export const CREATE_TABLES = `
 -- Accounts
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
@@ -118,12 +116,3 @@ CREATE INDEX IF NOT EXISTS idx_projects_account ON projects(account_id);
 CREATE INDEX IF NOT EXISTS idx_memories_account ON memories(account_id);
 CREATE INDEX IF NOT EXISTS idx_outbox_created ON outbox(created_at);
 CREATE INDEX IF NOT EXISTS idx_game_scores_account ON game_scores(account_id, game_id);
-`;
-
-export const MIGRATIONS = [
-  {
-    version: 1,
-    name: 'initial_schema',
-    sql: CREATE_TABLES,
-  },
-]

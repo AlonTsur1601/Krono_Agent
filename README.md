@@ -20,6 +20,7 @@ npm run dev
 `npm run build` builds the native app and bundles its agent runtime.
 `npm run package:win` publishes a Windows x64 folder under `release/Krono-Agent`.
 Keep all files together. WebView2 Evergreen Runtime is required for browsing.
+Launch `KronoAgent.exe` from that folder. The executable name has no dot separator.
 
 ```powershell
 npm run typecheck

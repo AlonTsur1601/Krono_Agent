@@ -3,8 +3,7 @@ const result = buildSync({ entryPoints: ['src/sidecar/index.ts'], bundle: true, 
 const fs = require('fs')
 const path = require('path')
 fs.copyFileSync(process.execPath, 'dist/sidecar/node.exe')
-const schema = fs.readFileSync('src/db/schema.ts', 'utf8').match(/export const CREATE_TABLES = `([\s\S]*?)`;/)[1]
-fs.writeFileSync('dist/sidecar/schema.sql', schema)
+fs.copyFileSync('src/db/schema.sql', 'dist/sidecar/schema.sql')
 for (const item of ['lib', 'prebuilds/win32-x64', 'package.json', 'LICENSE']) {
   const source = path.join('node_modules/node-pty', item)
   if (fs.existsSync(source)) fs.cpSync(source, path.join('dist/sidecar/node_modules/node-pty', item), { recursive: true })

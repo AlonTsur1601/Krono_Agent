@@ -2,7 +2,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Dispatching;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 
 namespace Krono_Agent;
 
@@ -12,7 +11,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
     readonly TabView tabs = new();
     readonly Dictionary<string, TerminalBuffer> buffers = new();
     readonly Dictionary<string, (TabViewItem Tab, TextBox Output)> terminals = new();
-    readonly TextBox input = new() { PlaceholderText = "PowerShell input · Enter to send", FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono") };
+    readonly TextBox input = new() { PlaceholderText = "PowerShell input · Enter to send", FontFamily = KronoDesign.CodeFont };
     public TerminalWorkspace(AgentWorker worker, DispatcherQueue queue)
     {
         this.worker = worker;
@@ -37,7 +36,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
     async Task Create()
     {
         var id = Guid.NewGuid().ToString();
-        var output = new TextBox { IsReadOnly = true, AcceptsReturn = true, FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono"), FontSize = 13, TextWrapping = TextWrapping.NoWrap, BorderThickness = new Thickness(0) };
+        var output = new TextBox { IsReadOnly = true, AcceptsReturn = true, FontFamily = KronoDesign.CodeFont, FontSize = KronoDesign.CodeSize, TextWrapping = TextWrapping.NoWrap, BorderThickness = new Thickness(0) };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(output, "TerminalOutput");
         var tab = new TabViewItem { Header = "PowerShell", Content = output }; terminals[id] = (tab, output); buffers[id] = new TerminalBuffer(); tabs.TabItems.Add(tab); tabs.SelectedItem = tab;
         try { await worker.Request(id, "terminal:create", new { }); } catch (Exception error) { output.Text = error.Message; }

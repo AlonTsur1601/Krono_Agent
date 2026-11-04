@@ -1,10 +1,12 @@
 # Krono Agent — implementation status
 
-Reviewed 2026-11-04. The Windows UI has been migrated from Electron/React to
+Reviewed 2026-11-05. The Windows UI has been migrated from Electron/React to
 native C#/WinUI 3. This is not completion of the full original product scope.
 
 ## Current architecture
 
+- Renamed product executable: KronoAgent.exe, with shared native typography,
+  surfaces, motion and live dark/light/Halloween resources.
 - Native shell, account forms, chat, Markdown, project/memory forms, settings,
   terminal surface and game rendering. No Electron or React runtime.
 - Embedded WebView2 is used only for browsing, with per-account profiles,
@@ -31,7 +33,9 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 - Native build and self-contained Windows x64 folder publish succeed locally.
   An isolated published folder passed the full native fixture after explicit
   inclusion of compiled XAML resources. GitHub native CI passed on dab084b;
-  the expanded published-app CI check is tracked in .kiro.
+  expanded published-app Windows CI also passed on 31e4825. That run failed
+  overall because GitHub could not provision its macOS ARM runner; a supported
+  Intel runner now replaces that infrastructure leg (see .kiro review).
 - npm audit: zero vulnerabilities after removing legacy UI/build dependencies
   and validating the remaining modern minimatch callers against patched 11.0.4.
 - NuGet audit: no vulnerable direct/transitive packages reported.

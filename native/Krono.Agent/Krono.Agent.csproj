@@ -4,6 +4,7 @@
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>Krono_Agent</RootNamespace>
+    <AssemblyName>KronoAgent</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x64</Platforms>
@@ -29,7 +30,6 @@
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\dist\sidecar\**\*" Link="Engine\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\assets\logo\logo.svg" Link="Assets\Krono.svg" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\..\assets\logo\icon.png" Link="Assets\Krono.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <!-- Unpackaged dotnet publish must explicitly carry compiled XAML resources. -->

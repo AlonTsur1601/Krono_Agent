@@ -86,3 +86,9 @@ native/**/*.user
 
 release/
 
+
+.vs/
+*.suo
+*.pubxml
+native/**/AppPackages/
+

@@ -4,8 +4,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
-using System.Diagnostics;
 using Microsoft.UI.Xaml.Automation;
 
 namespace Krono_Agent;
@@ -67,7 +65,7 @@ public sealed partial class MainPage : Page
         worker = new AgentWorker(); worker.Event += WorkerEvent;
         SignIn.Visibility = Visibility.Collapsed; Nav.Visibility = Visibility.Visible;
         provider = workspace.Setting("native.provider"); if (provider.Length == 0) provider = "openai";
-        model = workspace.Setting("native.model"); ApplyTheme(workspace.Setting("native.theme"));
+        model = workspace.Setting("native.model"); KronoDesign.ApplyTypography(workspace, this); ApplyTheme(workspace.Setting("native.theme"));
         ShowChats();
         if (workspace.IsOfflineSession) progress.Text = "Offline · local workspace restored; account validation will retry.";
         sessionTimer.Start();
@@ -80,9 +78,9 @@ public sealed partial class MainPage : Page
                 case "chats": ShowChats(); break;
                 case "projects": ShowProjects(); break;
                 case "settings": ShowSettings(); break;
-                case "browser": browser ??= new BrowserWorkspace(workspace, this); Body.Content = browser; break;
-                case "terminal": terminal ??= new TerminalWorkspace(worker!, DispatcherQueue); Body.Content = terminal; break;
-                case "games": games ??= new GamesWorkspace(workspace); Body.Content = games; break;
+                case "browser": browser ??= new BrowserWorkspace(workspace, this); KronoDesign.Present(Body, browser); break;
+                case "terminal": terminal ??= new TerminalWorkspace(worker!, DispatcherQueue); KronoDesign.Present(Body, terminal); break;
+                case "games": games ??= new GamesWorkspace(workspace); KronoDesign.Present(Body, games); break;
                 case "logout":
                     await Leave(false); break;
             }
@@ -100,7 +98,7 @@ public sealed partial class MainPage : Page
         var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = title, Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap }, PrimaryButtonText = "Allow", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
-    static TextBlock Heading(string text) => new() { Text = text, FontFamily = new FontFamily("Segoe UI Variable Display"), FontSize = 28, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 12) };
+    static TextBlock Heading(string text) => new() { Text = text, FontFamily = (FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 28, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 12) };
     Button Button(string label, Action action) { var button = new Button { Content = label }; button.Click += (_, _) => { try { action(); } catch (Exception error) { Error(error); } }; return button; }
     Button Button(string label, Func<Task> action) { var button = new Button { Content = label }; button.Click += async (_, _) => { try { await action(); } catch (Exception error) { Error(error); } }; return button; }
     static ComboBox Choices(string label, string[] choices, string selected, Action<string> change)
@@ -139,7 +137,7 @@ public sealed partial class MainPage : Page
             actions.Children.Add(send); actions.Children.Add(stop); actions.Children.Add(modelChoice); input.Children.Add(actions); Grid.SetRow(input, 3); conversation.Children.Add(input);
         }
         modelChoice.Content = model.Length == 0 ? "Choose model" : provider + " / " + (model.Length > 24 ? model[..24] + "…" : model);
-        Body.Content = chatView; ReloadChats(); if (runId is null) LoadChat();
+        KronoDesign.Present(Body, chatView); ReloadChats(); if (runId is null) LoadChat();
     }
     record ChatItem(string Id, string Name);
     void ReloadChats() { chatList.ItemsSource = workspace.Query("SELECT id,name FROM chats WHERE deleted_at IS NULL ORDER BY updated_at DESC").Select(row => new ChatItem(row["id"]!.ToString(), row["name"]!.ToString())).ToList(); }
@@ -149,7 +147,7 @@ public sealed partial class MainPage : Page
         if (chatId is null) {
             var welcome = new StackPanel { Spacing = 18, Margin = new Thickness(0, 80, 0, 0), MaxWidth = 520 };
             welcome.Children.Add(new Image { Source = new SvgImageSource(new Uri("ms-appx:///Assets/Krono.svg")), Width = 92, Height = 92, HorizontalAlignment = HorizontalAlignment.Left });
-            welcome.Children.Add(new TextBlock { Text = "What would you like to work on?", FontFamily = new FontFamily("Segoe UI Variable Display"), FontSize = 34, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+            welcome.Children.Add(new TextBlock { Text = "What would you like to work on?", FontFamily = (FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 34, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
             welcome.Children.Add(new TextBlock { Text = "Start a conversation, work on a project, or pick up where you left off.", FontSize = 15, Opacity = .65, TextWrapping = TextWrapping.Wrap });
             welcome.Children.Add(Button("+ Start a conversation", () => { chatId = workspace.CreateChat(); ReloadChats(); LoadChat(); }));
             messages.Children.Add(welcome); return;
@@ -172,8 +170,8 @@ public sealed partial class MainPage : Page
         else messages.Children.Add(box);
     }
     RichTextBlock Markdown(string text) => NativeMarkdown.Render(text,
-        workspace.Setting("native.textFont") is { Length: > 0 } font ? font : "Segoe UI",
-        double.TryParse(workspace.Setting("native.textSize"), out var size) ? Math.Clamp(size, 11, 28) : 15,
+        workspace.Setting("native.textFont") is { Length: > 0 } font ? font : "Segoe UI Variable Text",
+        double.TryParse(workspace.Setting("native.textSize"), out var size) ? Math.Clamp(size, 11, 28) : 14,
         workspace.Setting("native.codeFont") is { Length: > 0 } codeFont ? codeFont : "Cascadia Code",
         double.TryParse(workspace.Setting("native.codeSize"), out var codeSize) ? Math.Clamp(codeSize, 10, 26) : 14,
         workspace.Setting("native.codePalette"));
@@ -184,7 +182,7 @@ public sealed partial class MainPage : Page
             var apiKey = workspace.Key(provider); if (apiKey.Length == 0 || model.Length == 0) throw new InvalidOperationException("Choose a provider and model in Settings first.");
             chatId ??= workspace.CreateChat(); var text = composer.Text; composer.Text = "";
             workspace.AddMessage(chatId, "user", text); if (workspace.Query("SELECT id FROM messages WHERE chat_id=$p0", chatId).Count == 1) workspace.Execute("UPDATE chats SET name=$p0 WHERE id=$p1", text[..Math.Min(42, text.Length)], chatId);
-            LoadChat(); ReloadChats(); streaming = new TextBlock { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontSize = 15, LineHeight = 24 }; messages.Children.Add(streaming); fullResponse = "";
+            LoadChat(); ReloadChats(); streaming = new TextBlock { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontFamily = (FontFamily)Application.Current.Resources["KronoTextFont"], FontSize = (double)Application.Current.Resources["KronoTextSize"], LineHeight = 24 }; messages.Children.Add(streaming); fullResponse = "";
             var project = workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).First()["project_id"]?.ToString();
             var config = project is null ? null : JsonNode.Parse(workspace.Setting("project." + project));
             var dirs = project is null ? [] : workspace.Query("SELECT path FROM project_directories WHERE project_id=$p0", project).Select(p => p["path"]!.ToString()).ToArray();
@@ -210,14 +208,7 @@ public sealed partial class MainPage : Page
     {
         RequestedTheme = value == "light" ? ElementTheme.Light : value is "dark" or "halloween" ? ElementTheme.Dark : ElementTheme.Default;
         if (MainWindow.Instance?.Content is FrameworkElement root) root.RequestedTheme = RequestedTheme;
-        foreach (var key in new[] { "KronoBackground", "KronoSidebar", "KronoSurface", "KronoBorder" }) Resources.Remove(key);
-        if (value == "halloween") {
-            Resources["KronoBackground"] = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 21, 16, 29));
-            Resources["KronoSidebar"] = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 29, 21, 40));
-            Resources["KronoSurface"] = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 43, 29, 57));
-            Resources["KronoBorder"] = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 68, 45, 86));
-        }
-        Resources["AccentFillColorDefaultBrush"] = new SolidColorBrush(value == "halloween" ? Windows.UI.Color.FromArgb(255, 255, 155, 80) : Windows.UI.Color.FromArgb(255, 143, 215, 199));
+        KronoDesign.ApplyPalette(value == "halloween");
     }
     void ShowSettings()
     {
@@ -226,22 +217,22 @@ public sealed partial class MainPage : Page
         panel.Children.Add(Button("Sign out on all devices", async () => { if (await Confirm("Sign out on all devices", "End this account's refresh sessions on all devices?")) await Leave(true); }));
         panel.Children.Add(Choices("Appearance", ["system", "dark", "light", "halloween"], workspace.Setting("native.theme") is { Length: > 0 } t ? t : "system", value => { workspace.SetSetting("native.theme", value); ApplyTheme(value); }));
         panel.Children.Add(Choices("Provider", ["openai", "anthropic", "google"], provider, value => { provider = value; workspace.SetSetting("native.provider", value); }));
-        var secret = new PasswordBox { Header = "Provider API key", Width = 420 }; panel.Children.Add(secret);
+        var secret = new PasswordBox { Header = "Provider API key", MinWidth = 420, HorizontalAlignment = HorizontalAlignment.Stretch }; panel.Children.Add(secret);
         AutomationProperties.SetAutomationId(secret, "ProviderKey");
         panel.Children.Add(Button("Save key", () => { if (!string.IsNullOrWhiteSpace(secret.Password)) { workspace.SaveKey(provider, secret.Password.Trim()); secret.Password = ""; } }));
-        var models = new ComboBox { Header = "Model", MinWidth = 420, IsEditable = true, Text = model }; panel.Children.Add(models);
+        var models = new ComboBox { Header = "Model", MinWidth = 420, HorizontalAlignment = HorizontalAlignment.Stretch, IsEditable = true, Text = model }; panel.Children.Add(models);
         AutomationProperties.SetAutomationId(models, "ModelSelector");
         panel.Children.Add(Button("Load available models", async () => { try { var result = await worker!.Request(Guid.NewGuid().ToString(), "models", new { providerId = provider, apiKey = workspace.Key(provider) }); models.ItemsSource = result!.AsArray().Select(m => m!["id"]!.ToString()).ToArray(); } catch (Exception error) { Error(error); } }));
         panel.Children.Add(Button("Use model", () => { model = models.Text; workspace.SetSetting("native.model", model); }));
-        var textFont = new TextBox { Header = "Text font", Text = workspace.Setting("native.textFont") is { Length: > 0 } tf ? tf : "Segoe UI" };
+        var textFont = new TextBox { Header = "Text font", Text = workspace.Setting("native.textFont") is { Length: > 0 } tf ? tf : "Segoe UI Variable Text" };
         var codeFont = new TextBox { Header = "Code font", Text = workspace.Setting("native.codeFont") is { Length: > 0 } cf ? cf : "Cascadia Code" };
-        var textSize = new NumberBox { Header = "Text size", Minimum = 11, Maximum = 28, Value = double.TryParse(workspace.Setting("native.textSize"), out var ts) ? ts : 15 };
+        var textSize = new NumberBox { Header = "Text size", Minimum = 11, Maximum = 28, Value = double.TryParse(workspace.Setting("native.textSize"), out var ts) ? ts : 14 };
         var codeSize = new NumberBox { Header = "Code size", Minimum = 10, Maximum = 26, Value = double.TryParse(workspace.Setting("native.codeSize"), out var cs) ? cs : 14 };
         panel.Children.Add(textFont); panel.Children.Add(textSize); panel.Children.Add(codeFont); panel.Children.Add(codeSize);
         panel.Children.Add(Choices("Code palette", ["classic", "mint", "halloween"], workspace.Setting("native.codePalette") is { Length: > 0 } palette ? palette : "classic", value => workspace.SetSetting("native.codePalette", value)));
-        panel.Children.Add(Button("Save typography", () => { workspace.SetSetting("native.textFont", textFont.Text); workspace.SetSetting("native.codeFont", codeFont.Text); workspace.SetSetting("native.textSize", textSize.Value.ToString()); workspace.SetSetting("native.codeSize", codeSize.Value.ToString()); }));
+        panel.Children.Add(Button("Save typography", () => { workspace.SetSetting("native.textFont", textFont.Text); workspace.SetSetting("native.codeFont", codeFont.Text); workspace.SetSetting("native.textSize", textSize.Value.ToString()); workspace.SetSetting("native.codeSize", codeSize.Value.ToString()); KronoDesign.ApplyTypography(workspace, this); }));
         panel.Children.Add(new TextBlock { Text = "API keys are encrypted for this Windows account. Provider usage and billing follow your provider account.", TextWrapping = TextWrapping.Wrap });
-        Body.Content = new ScrollViewer { Content = panel };
+        KronoDesign.Present(Body, new ScrollViewer { Content = panel });
     }
     void ShowProjects()
     {
@@ -276,7 +267,7 @@ public sealed partial class MainPage : Page
             workspace.SetSetting("project." + id, new JsonObject { ["instructions"] = instructions.Text, ["permissions"] = projectPermissions }.ToJsonString()); SaveMemory("project:" + id, id, memory.Text); workspace.Execute("COMMIT"); } catch { workspace.Execute("ROLLBACK"); throw; } ShowProjects();
         } catch (Exception error) { Error(error); } }));
         panel.Children.Add(global); panel.Children.Add(Button("Save global memory", () => SaveMemory("global", null, global.Text)));
-        Body.Content = new ScrollViewer { Content = panel };
+        KronoDesign.Present(Body, new ScrollViewer { Content = panel });
     }
     void SaveMemory(string id, string? project, string content) => workspace.Execute("INSERT INTO memories(id,account_id,project_id,content,created_at,updated_at) VALUES($p0,$p1,$p2,$p3,$p4,$p4) ON CONFLICT(id) DO UPDATE SET content=excluded.content,updated_at=excluded.updated_at", id, workspace.AccountId, project, content, Workspace.Now);
 }
