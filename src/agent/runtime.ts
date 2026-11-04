@@ -3,6 +3,7 @@ import type { ZodTypeAny } from 'zod'
 import type { ExecutionContext, ToolCall } from './types'
 import type {
   ProviderAdapter,
+  ProviderConfig,
   CompletionRequest,
   CompletionChunk,
   ToolDefinition,
@@ -22,6 +23,7 @@ interface AgentConfig {
   memories?: string[]
   signal?: AbortSignal
   maxToolCalls?: number
+  toolsEnabled?: boolean
   requestApproval?: ExecutionContext['requestApproval']
 }
 
@@ -49,13 +51,13 @@ export class AgentRuntime {
     }
   }
 
-  async configureProvider(providerId: string, apiKey: string): Promise<void> {
+  async configureProvider(providerId: string, apiKey: string, options: Omit<ProviderConfig, 'apiKey'> = {}): Promise<void> {
     const provider = this.providers.get(providerId)
     if (!provider) {
       throw new Error(`Provider ${providerId} not found`)
     }
 
-    await provider.configure({ apiKey })
+    await provider.configure({ ...options, apiKey })
   }
 
   async *execute(
@@ -68,10 +70,12 @@ export class AgentRuntime {
     }
 
     // Get available tools based on mode
-    const availableTools = this.getToolsForMode(config.mode, config.permissions)
+    const availableTools = config.toolsEnabled === false ? [] : this.getToolsForMode(config.mode, config.permissions)
 
     // Build system prompt
-    const systemPrompt = this.buildSystemPrompt(config)
+    const systemPrompt = config.toolsEnabled === false
+      ? this.buildSystemPrompt({ ...config, mode: 'chat' }) + '\nTool calling is disabled for this endpoint/model. Answer using conversation context only; do not claim access to files, terminals or other tools.'
+      : this.buildSystemPrompt(config)
 
     // Prepare messages
     const allMessages: Message[] = [

@@ -94,6 +94,36 @@ try {
     $graphics.CopyFromScreen([int]$bounds.X, [int]$bounds.Y, 0, 0, $bitmap.Size)
     $bitmap.Save((Join-Path $ReportDirectory 'native-workspace.png'), [Drawing.Imaging.ImageFormat]::Png)
     $graphics.Dispose(); $bitmap.Dispose()
+    SelectNav 'Settings'
+    SelectChoice 'Provider' 'ollama'
+    SetValue 'ProviderEndpoint' ($Fixture + '/local/v1')
+    Invoke 'Save endpoint' -ByName
+    Invoke 'Test connection' -ByName
+    $deadline = (Get-Date).AddSeconds(10)
+    do { Start-Sleep -Milliseconds 200; $connected = (Find 'ProviderConnectionStatus').Current.Name } while ($connected -notmatch '^Connected' -and (Get-Date) -lt $deadline)
+    if ($connected -notmatch '^Connected') { throw 'Native local endpoint connection test failed' }
+    Invoke 'Load available models' -ByName
+    Start-Sleep -Milliseconds 500
+    SelectChoice 'ModelSelector' 'local-fixture-model'
+    Invoke 'Use model' -ByName
+    Capture 'native-local-model.png'
+    SelectNav 'Chats'
+    SetValue 'Composer' 'Reply using the local endpoint, without tools'
+    Invoke 'Send' -ByName
+    $deadline = (Get-Date).AddSeconds(10)
+    do { Start-Sleep -Milliseconds 200; $assertions = Invoke-RestMethod ($Fixture + '/assertions') } while (!$assertions.localNoTools -and (Get-Date) -lt $deadline)
+    if (!$assertions.localNoTools -or !$assertions.localKeyIsolated) { throw 'Native local endpoint failed tool omission or credential isolation' }
+    $deadline = (Get-Date).AddSeconds(10)
+    do {
+        Start-Sleep -Milliseconds 200
+        $reply = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name.Trim() -eq 'Native local endpoint reply.' }
+    } while (!$reply -and (Get-Date) -lt $deadline)
+    if (!$reply) { throw 'Local endpoint response was not rendered in the native transcript' }
+    SelectNav 'Settings'
+    SelectChoice 'Provider' 'openai'
+    $model = Find 'ModelSelector'
+    $edit = $model.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit)))
+    if (($edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).Current.Value -ne 'native-fixture-model') { throw 'Provider switching lost its model selection' }
     SelectNav 'Games'
     (Find 'GameTile0').SetFocus()
     Capture 'native-game-library.png'
@@ -157,5 +187,5 @@ try {
     Launch
     Find 'LoginButton' | Out-Null
     if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin')) { throw 'Revoked session was retained after restart' }
-    Write-Output 'NATIVE_SMOKE_PASS: native auth, scoped projects/memory, streamed model, approved file write, eight game initializations and board moves, PTY 42, WebView2 navigation, restart, logout, remote-revocation rejection'
+    Write-Output 'NATIVE_SMOKE_PASS: native auth, scoped projects/memory, streamed cloud/local endpoint, tool omission and key isolation, approved file write, eight game initializations and board moves, PTY 42, WebView2 navigation, restart, logout, remote-revocation rejection'
 } finally { CloseApp }

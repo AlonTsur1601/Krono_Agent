@@ -1,5 +1,5 @@
 // Real WinUI window + UI Automation, SQLite, DPAPI, PTY and WebView2.
-// Only the Supabase endpoint is a local fixture. No owner account is touched.
+// Auth/provider endpoints are local fixtures. No owner account is touched.
 const http = require('http')
 const fs = require('fs')
 const os = require('os')
@@ -10,8 +10,21 @@ const user = { id: '33333333-3333-4333-8333-333333333333', email: 'native-fixtur
 const requests = []
 let revoked = false
 let browserIsolated = false
+let localNoTools = false
+let localKeyIsolated = false
 const server = http.createServer((request, response) => {
-  if (request.url === '/v1/models') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ object: 'list', data: [{ id: 'native-fixture-model', object: 'model' }] })) }
+  if (request.url === '/local/v1/models') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ data: [{ id: 'local-fixture-model' }] })) }
+  else if (request.url === '/local/v1/chat/completions') {
+    let body = ''; request.on('data', chunk => body += chunk); request.on('end', () => {
+      const input = JSON.parse(body)
+      localNoTools = !input.tools && input.model === 'local-fixture-model' && input.messages[0].content.includes('Tool calling is disabled')
+      localKeyIsolated = request.headers.authorization === 'Bearer local'
+      response.setHeader('Content-Type', 'text/event-stream')
+      response.write('data: ' + JSON.stringify({ choices: [{ delta: { content: 'Native local endpoint reply.' }, finish_reason: null }] }) + '\n\n')
+      response.end('data: ' + JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] }) + '\n\ndata: [DONE]\n\n')
+    })
+  }
+  else if (request.url === '/v1/models') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ object: 'list', data: [{ id: 'native-fixture-model', object: 'model' }] })) }
   else if (request.url === '/v1/responses') {
     let body = ''; request.on('data', chunk => body += chunk); request.on('end', () => {
       const input = JSON.parse(body); requests.push(input)
@@ -25,7 +38,7 @@ const server = http.createServer((request, response) => {
   } else if (request.url === '/assertions') {
     const firstContext = requests[0]?.input[0]?.content || ''
     const secondContext = requests[1]?.input[0]?.content || ''
-    response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserIsolated, completions: requests.length, chatHasNoTools: requests.length > 0 && !requests[0].tools, globalOnly: firstContext.includes('Native global memory fixture') && !firstContext.includes('Native project memory fixture'), projectScope: secondContext.includes('Native global memory fixture') && secondContext.includes('Native project memory fixture'), toolWrite: fs.existsSync(path.join(home, 'native-tool-proof.txt')) }))
+    response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserIsolated, localNoTools, localKeyIsolated, completions: requests.length, chatHasNoTools: requests.length > 0 && !requests[0].tools, globalOnly: firstContext.includes('Native global memory fixture') && !firstContext.includes('Native project memory fixture'), projectScope: secondContext.includes('Native global memory fixture') && secondContext.includes('Native project memory fixture'), toolWrite: fs.existsSync(path.join(home, 'native-tool-proof.txt')) }))
   }
   else if (request.url === '/revoke') { revoked = true; response.end('ok') }
   else if (request.url.startsWith('/auth/')) {

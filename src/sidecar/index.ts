@@ -4,17 +4,22 @@ import { randomUUID } from 'node:crypto'
 import { AgentRuntime } from '../agent/runtime'
 import { AnthropicProvider } from '../agent/providers/anthropic'
 import { GoogleProvider } from '../agent/providers/google'
+import { CompatibleProvider } from '../agent/providers/compatible'
 import { z } from 'zod'
 import * as pty from 'node-pty'
 
-const runtime = new AgentRuntime()
-runtime.registerProvider(new AnthropicProvider())
-runtime.registerProvider(new GoogleProvider())
+function createRuntime() {
+  const runtime = new AgentRuntime()
+  runtime.registerProvider(new AnthropicProvider())
+  runtime.registerProvider(new GoogleProvider())
+  for (const id of ['ollama', 'lmstudio', 'custom'] as const) runtime.registerProvider(new CompatibleProvider(id))
+  return runtime
+}
 const active = new Map<string, AbortController>()
 const approvals = new Map<string, (approved: boolean) => void>()
 const terminals = new Map<string, pty.IPty>()
 const send = (data: unknown) => process.stdout.write(JSON.stringify(data) + '\n')
-const Request = z.object({ id: z.string(), method: z.enum(['models','run','cancel','approve','terminal:create','terminal:write','terminal:resize','terminal:close']), data: z.any() })
+const Request = z.object({ id: z.string(), method: z.enum(['models','test','run','cancel','approve','terminal:create','terminal:write','terminal:resize','terminal:close']), data: z.any() })
 readline.createInterface({ input: process.stdin }).on('line', line => {
   void (async () => {
     let id = ''
@@ -37,15 +42,19 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       }
       if (method === 'approve') { approvals.get(String(data.id))?.(data.approved === true); return }
       if (method === 'cancel') { active.get(String(data.id))?.abort(); return }
-      const provider = z.enum(['openai','anthropic','google']).parse(data.providerId)
-      await runtime.configureProvider(provider, z.string().min(1).parse(data.apiKey))
+      const provider = z.enum(['openai','anthropic','google','ollama','lmstudio','custom']).parse(data.providerId)
+      const compatible = ['ollama','lmstudio','custom'].includes(provider)
+      const runtime = createRuntime()
+      const toolsEnabled = !compatible || data.toolsEnabled === true
+      await runtime.configureProvider(provider, compatible ? z.string().parse(data.apiKey) : z.string().min(1).parse(data.apiKey), compatible ? { endpoint: z.string().parse(data.endpoint), toolsEnabled } : {})
       if (method === 'models') { send({ id, result: await runtime.getProvider(provider)!.listModels() }); return }
+      if (method === 'test') { send({ id, result: await runtime.getProvider(provider)!.testConnection() }); return }
       const controller = new AbortController(); active.set(id, controller)
       const deadline = setTimeout(() => controller.abort(), 30 * 60 * 1000)
       try {
         const config = z.object({ mode: z.enum(['chat','plan','agent','goal']), permissions: z.enum(['ask','project','full']), modelId: z.string().min(1), projectDirs: z.array(z.string()), instructions: z.string(), memories: z.array(z.string()) }).parse(data)
         const messages = z.array(z.object({ role: z.enum(['user','assistant','system']), content: z.string() })).parse(data.messages)
-        for await (const chunk of runtime.execute(messages, { ...config, providerId: provider, signal: controller.signal, requestApproval: async action => {
+        for await (const chunk of runtime.execute(messages, { ...config, toolsEnabled, providerId: provider, signal: controller.signal, requestApproval: async action => {
           const approvalId = randomUUID()
           return new Promise(resolve => {
             const finish = (approved: boolean) => { approvals.delete(approvalId); controller.signal.removeEventListener('abort', abort); resolve({ approved }) }

@@ -8,6 +8,9 @@ This supersedes original stack examples in the design and historical review logs
 - WebView2 only for the browser, with per-account profiles and InPrivate tabs.
 - Private Node 24 worker over inherited stdio: existing provider adapters,
   bounded tool loop, file boundaries, cancellation and one-action approvals.
+- OpenAI/Anthropic/Google adapters plus Chat Completions endpoints for Ollama,
+  LM Studio and custom servers. Custom endpoint tool support is opt-in; URLs
+  require HTTPS except loopback HTTP, and credentials never belong in URLs.
 - Microsoft.Data.Sqlite: same account-specific database paths/schema.
 - Supabase Auth over HTTPS, Windows DPAPI for persistent sessions and keys.
 - Windows x64 unpackaged, self-contained publish folder; no Electron runtime.

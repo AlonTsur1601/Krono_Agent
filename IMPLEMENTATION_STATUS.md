@@ -19,7 +19,7 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 
 ## Verification
 
-- 13 agent/provider/file-boundary/SQL tests pass. Removed Electron-specific
+- 19 agent/provider/file-boundary/SQL tests pass. Removed Electron-specific
   auth/approval tests were replaced by real native UI flows, not marked passing.
 - Windows UI Automation fixture exercises registration/sign-in controls,
   project creation and scoped memories, streamed model response with Chat tools
@@ -27,6 +27,10 @@ native C#/WinUI 3. This is not completion of the full original product scope.
   eight game initializations and board moves, real PTY output 42, WebView2 page
   navigation and absence of host/Node APIs, process restart, manual logout,
   and rejection of a remotely revoked refresh session on restart.
+- Ollama, LM Studio and custom OpenAI-compatible endpoints now have native
+  setup, discovery/manual model IDs, connection testing, streaming, cancellation
+  and opt-in tool support. Real HTTP and native fixtures cover the protocol and
+  credential separation; actual local inference is not yet accepted on hardware.
 - The fixture uses local auth/provider services. It is not live Supabase/model
   acceptance. Browser permissions/downloads and extended game balancing still
   need additional acceptance beyond the implemented paths.
@@ -35,7 +39,8 @@ native C#/WinUI 3. This is not completion of the full original product scope.
   inclusion of compiled XAML resources. GitHub native CI passed on dab084b;
   expanded published-app Windows CI also passed on 31e4825. That run failed
   overall because GitHub could not provision its macOS ARM runner; a supported
-  Intel runner now replaces that infrastructure leg (see .kiro review).
+  Intel runner now replaces that infrastructure leg. All three CI legs and Pages
+  passed on ae25dc5, including the published Windows fixture (see .kiro review).
 - npm audit: zero vulnerabilities after removing legacy UI/build dependencies
   and validating the remaining modern minimatch callers against patched 11.0.4.
 - NuGet audit: no vulnerable direct/transitive packages reported.
@@ -44,7 +49,7 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 
 - Live owner auth/provider acceptance, cloud record/attachment synchronization,
   OAuth, scheduled tasks, side chats, plugins/import, app connections, local
-  inference, media generation, agent browser/terminal/computer-use tools,
+  bundled local inference/model downloads, media generation, agent browser/terminal/computer-use tools,
   automatic memory proposals and sixteen additional games remain incomplete.
 - macOS/Linux desktop UIs are not implemented after the owner's explicit
   choice of native Windows UI. Agent unit checks remain cross-platform.

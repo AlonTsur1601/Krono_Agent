@@ -65,7 +65,7 @@ public sealed partial class MainPage : Page
         worker = new AgentWorker(); worker.Event += WorkerEvent;
         SignIn.Visibility = Visibility.Collapsed; Nav.Visibility = Visibility.Visible;
         provider = workspace.Setting("native.provider"); if (provider.Length == 0) provider = "openai";
-        model = workspace.Setting("native.model"); KronoDesign.ApplyTypography(workspace, this); ApplyTheme(workspace.Setting("native.theme"));
+        model = workspace.Setting("native.model." + provider); if (model.Length == 0 && !CompatibleEndpoint) { model = workspace.Setting("native.model"); workspace.SetSetting("native.model." + provider, model); workspace.SetSetting("native.model", ""); } KronoDesign.ApplyTypography(workspace, this); ApplyTheme(workspace.Setting("native.theme"));
         ShowChats();
         if (workspace.IsOfflineSession) progress.Text = "Offline · local workspace restored; account validation will retry.";
         sessionTimer.Start();
@@ -179,7 +179,7 @@ public sealed partial class MainPage : Page
     {
         if (runId is not null || string.IsNullOrWhiteSpace(composer.Text)) return;
         try {
-            var apiKey = workspace.Key(provider); if (apiKey.Length == 0 || model.Length == 0) throw new InvalidOperationException("Choose a provider and model in Settings first.");
+            var apiKey = workspace.Key(provider); if ((!CompatibleEndpoint && apiKey.Length == 0) || model.Length == 0) throw new InvalidOperationException("Choose a provider and model in Settings first.");
             chatId ??= workspace.CreateChat(); var text = composer.Text; composer.Text = "";
             workspace.AddMessage(chatId, "user", text); if (workspace.Query("SELECT id FROM messages WHERE chat_id=$p0", chatId).Count == 1) workspace.Execute("UPDATE chats SET name=$p0 WHERE id=$p1", text[..Math.Min(42, text.Length)], chatId);
             LoadChat(); ReloadChats(); streaming = new TextBlock { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontFamily = (FontFamily)Application.Current.Resources["KronoTextFont"], FontSize = (double)Application.Current.Resources["KronoTextSize"], LineHeight = 24 }; messages.Children.Add(streaming); fullResponse = "";
@@ -189,7 +189,7 @@ public sealed partial class MainPage : Page
             var memories = workspace.Query("SELECT content FROM memories WHERE deleted_at IS NULL AND (project_id IS NULL OR project_id=$p0)", project).Select(p => p["content"]!.ToString()).ToArray();
             runId = Guid.NewGuid().ToString(); send.IsEnabled = false; chatList.IsEnabled = false; stop.IsEnabled = true; progress.Text = "Working…";
             var history = workspace.Query("SELECT role,content FROM messages WHERE chat_id=$p0 AND deleted_at IS NULL ORDER BY created_at", chatId).Select(p => new { role = p["role"]!.ToString(), content = p["content"]!.ToString() }).ToArray();
-            await worker!.Request(runId, "run", new { providerId = provider, apiKey, modelId = model, mode, permissions, messages = history, projectDirs = dirs, instructions = config?["instructions"]?.ToString() ?? "", memories });
+            await worker!.Request(runId, "run", new { providerId = provider, apiKey, endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled, modelId = model, mode, permissions, messages = history, projectDirs = dirs, instructions = config?["instructions"]?.ToString() ?? "", memories });
             workspace.AddMessage(chatId, "assistant", fullResponse); progress.Text = "Done";
         } catch (Exception error) { Error(error); progress.Text = "Stopped"; }
         finally { runId = null; send.IsEnabled = true; chatList.IsEnabled = true; stop.IsEnabled = false; Approval.IsOpen = false; LoadChat(); }
@@ -210,20 +210,40 @@ public sealed partial class MainPage : Page
         if (MainWindow.Instance?.Content is FrameworkElement root) root.RequestedTheme = RequestedTheme;
         KronoDesign.ApplyPalette(value == "halloween");
     }
+    bool CompatibleEndpoint => provider is "ollama" or "lmstudio" or "custom";
+    string ProviderEndpoint => workspace.Setting("native.endpoint." + provider) is { Length: > 0 } endpoint ? endpoint : provider switch { "ollama" => "http://localhost:11434/v1", "lmstudio" => "http://localhost:1234/v1", _ => "" };
+    bool ProviderToolsEnabled => !CompatibleEndpoint || workspace.Setting("native.tools." + provider) == "true";
     void ShowSettings()
     {
         var panel = new StackPanel { Spacing = 18, MaxWidth = 650, HorizontalAlignment = HorizontalAlignment.Left }; panel.Children.Add(Heading("Settings"));
         panel.Children.Add(new TextBlock { Text = workspace.Email, Opacity = .65 });
         panel.Children.Add(Button("Sign out on all devices", async () => { if (await Confirm("Sign out on all devices", "End this account's refresh sessions on all devices?")) await Leave(true); }));
         panel.Children.Add(Choices("Appearance", ["system", "dark", "light", "halloween"], workspace.Setting("native.theme") is { Length: > 0 } t ? t : "system", value => { workspace.SetSetting("native.theme", value); ApplyTheme(value); }));
-        panel.Children.Add(Choices("Provider", ["openai", "anthropic", "google"], provider, value => { provider = value; workspace.SetSetting("native.provider", value); }));
-        var secret = new PasswordBox { Header = "Provider API key", MinWidth = 420, HorizontalAlignment = HorizontalAlignment.Stretch }; panel.Children.Add(secret);
+        var secret = new PasswordBox { Header = "Provider API key · optional for local servers", MinWidth = 420, HorizontalAlignment = HorizontalAlignment.Stretch };
+        var endpoint = new TextBox { Header = "Server base URL · include /v1", Text = ProviderEndpoint, MinWidth = 420 };
+        AutomationProperties.SetAutomationId(endpoint, "ProviderEndpoint");
+        var tools = new CheckBox { Content = "This model supports tool calling", IsChecked = ProviderToolsEnabled };
+        AutomationProperties.SetAutomationId(tools, "ProviderTools");
+        var connectionStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .7 }; AutomationProperties.SetAutomationId(connectionStatus, "ProviderConnectionStatus");
+        var models = new ComboBox { Header = "Model", MinWidth = 420, HorizontalAlignment = HorizontalAlignment.Stretch, IsEditable = true, Text = model };
+        var saveEndpoint = Button("Save endpoint", () => { try {
+            if (!Uri.TryCreate(endpoint.Text.Trim(), UriKind.Absolute, out var url) || (url.Scheme != "https" && !(url.Scheme == "http" && url.IsLoopback)) || url.UserInfo.Length > 0 || url.Query.Length > 0 || url.Fragment.Length > 0) throw new InvalidOperationException("Use HTTPS, or HTTP on loopback only. Do not put credentials or query parameters in the URL.");
+            workspace.SetSetting("native.endpoint." + provider, url.AbsoluteUri.TrimEnd('/')); connectionStatus.Text = "Endpoint saved.";
+        } catch (Exception error) { Error(error); } });
+        void EndpointVisibility() { endpoint.Visibility = tools.Visibility = saveEndpoint.Visibility = CompatibleEndpoint ? Visibility.Visible : Visibility.Collapsed; }
+        panel.Children.Add(Choices("Provider", ["openai", "anthropic", "google", "ollama", "lmstudio", "custom"], provider, value => {
+            provider = value; workspace.SetSetting("native.provider", value); secret.Password = ""; model = workspace.Setting("native.model." + provider); models.ItemsSource = null; models.Text = model; endpoint.Text = ProviderEndpoint; tools.IsChecked = ProviderToolsEnabled; connectionStatus.Text = ""; EndpointVisibility();
+        }));
+        tools.Checked += (_, _) => workspace.SetSetting("native.tools." + provider, "true"); tools.Unchecked += (_, _) => workspace.SetSetting("native.tools." + provider, "false");
+        EndpointVisibility(); panel.Children.Add(endpoint); panel.Children.Add(saveEndpoint); panel.Children.Add(tools); panel.Children.Add(secret);
         AutomationProperties.SetAutomationId(secret, "ProviderKey");
         panel.Children.Add(Button("Save key", () => { if (!string.IsNullOrWhiteSpace(secret.Password)) { workspace.SaveKey(provider, secret.Password.Trim()); secret.Password = ""; } }));
-        var models = new ComboBox { Header = "Model", MinWidth = 420, HorizontalAlignment = HorizontalAlignment.Stretch, IsEditable = true, Text = model }; panel.Children.Add(models);
+        panel.Children.Add(Button("Test connection", async () => { try { var result = await worker!.Request(Guid.NewGuid().ToString(), "test", new { providerId = provider, apiKey = workspace.Key(provider), endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled }); connectionStatus.Text = result?["success"]?.GetValue<bool>() == true ? "Connected · " + result["latencyMs"] + " ms" : "Connection failed. Check the server, endpoint and credentials."; } catch (Exception error) { Error(error); } }));
+        panel.Children.Add(connectionStatus); panel.Children.Add(models);
         AutomationProperties.SetAutomationId(models, "ModelSelector");
-        panel.Children.Add(Button("Load available models", async () => { try { var result = await worker!.Request(Guid.NewGuid().ToString(), "models", new { providerId = provider, apiKey = workspace.Key(provider) }); models.ItemsSource = result!.AsArray().Select(m => m!["id"]!.ToString()).ToArray(); } catch (Exception error) { Error(error); } }));
-        panel.Children.Add(Button("Use model", () => { model = models.Text; workspace.SetSetting("native.model", model); }));
+        panel.Children.Add(Button("Load available models", async () => { try { var result = await worker!.Request(Guid.NewGuid().ToString(), "models", new { providerId = provider, apiKey = workspace.Key(provider), endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled }); models.ItemsSource = result!.AsArray().Select(m => m!["id"]!.ToString()).ToArray(); } catch (Exception error) { Error(error); } }));
+        panel.Children.Add(Button("Use model", () => { model = models.Text.Trim(); workspace.SetSetting("native.model." + provider, model); }));
+        panel.Children.Add(new TextBlock { Text = "Ollama and LM Studio connect to an existing local server. Install and load a model there first, save its /v1 endpoint, then load models or enter its exact ID. Tool calling starts disabled; enable it only for a compatible model. Local inference uses your hardware. Server setup and model downloads are not bundled yet.", TextWrapping = TextWrapping.Wrap, Opacity = .65 });
         var textFont = new TextBox { Header = "Text font", Text = workspace.Setting("native.textFont") is { Length: > 0 } tf ? tf : "Segoe UI Variable Text" };
         var codeFont = new TextBox { Header = "Code font", Text = workspace.Setting("native.codeFont") is { Length: > 0 } cf ? cf : "Cascadia Code" };
         var textSize = new NumberBox { Header = "Text size", Minimum = 11, Maximum = 28, Value = double.TryParse(workspace.Setting("native.textSize"), out var ts) ? ts : 14 };
