@@ -1,5 +1,5 @@
 // @ts-expect-error Vite resolves the bundled image asset.
-import logo from '../../../assets/logo/icon.png'
+import logo from '../../../assets/logo/logo.svg'
 
 export function TitleBar() {
   return <header className="titlebar">

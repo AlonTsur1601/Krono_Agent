@@ -77,3 +77,9 @@ ehthumbs.db
 
 # Temporary dependency checkpoint during major upgrades
 node_modules.previous/
+
+# Native Windows build outputs
+native/**/bin/
+native/**/obj/
+native/**/*.user
+

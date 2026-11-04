@@ -90,11 +90,11 @@ export function MainLayout() {
         )}
 
         <nav style={{ flex: 1, marginBottom: '1rem' }}>
-          <button onClick={() => setActiveView('projects')} style={{ width: '100%', padding: 12, color: 'var(--text-primary)', background: activeView === 'projects' ? 'var(--bg-surface)' : 'transparent', border: 'none', textAlign: 'left' }}>Projects & memory</button>
-          <button onClick={() => setActiveView('browser')} style={{ width: '100%', padding: 12, color: 'var(--text-primary)', background: activeView === 'browser' ? 'var(--bg-surface)' : 'transparent', border: 'none', textAlign: 'left' }}>Browser</button>
+          <button aria-label="Projects & memory" onClick={() => setActiveView('projects')} style={{ width: '100%', padding: 12, color: 'var(--text-primary)', background: activeView === 'projects' ? 'var(--bg-surface)' : 'transparent', border: 'none', textAlign: 'left' }}>Projects & memory</button>
+          <button aria-label="Browser" onClick={() => setActiveView('browser')} style={{ width: '100%', padding: 12, color: 'var(--text-primary)', background: activeView === 'browser' ? 'var(--bg-surface)' : 'transparent', border: 'none', textAlign: 'left' }}>Browser</button>
           <div style={{ marginBottom: '1rem' }}>
             <button
-              onClick={() => setActiveView('chat')}
+              aria-label="Chat" onClick={() => setActiveView('chat')}
               style={{
                 width: '100%',
                 padding: '0.75rem',
@@ -110,7 +110,7 @@ export function MainLayout() {
               Chat
             </button>
             <button
-              onClick={() => setActiveView('games')}
+              aria-label="Games" onClick={() => setActiveView('games')}
               style={{
                 width: '100%',
                 padding: '0.75rem',
@@ -126,7 +126,7 @@ export function MainLayout() {
               Games
             </button>
             <button
-              onClick={() => setActiveView('settings')}
+              aria-label="Settings" onClick={() => setActiveView('settings')}
               style={{
                 width: '100%',
                 padding: '0.75rem',

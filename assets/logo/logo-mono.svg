@@ -1,6 +1,1 @@
-<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Monochrome version for app icons -->
-  <rect x="14" y="8" width="18" height="24" rx="4" fill="currentColor"/>
-  <rect x="32" y="32" width="18" height="24" rx="4" fill="currentColor"/>
-  <rect x="28" y="28" width="4" height="4" fill="currentColor"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><title>Krono Agent</title><path fill="currentColor" fill-rule="evenodd" d="M28 20H44V49L78 23Q81 20 85 20H108L66 64L108 108H85Q81 108 78 105L44 79V108H28Q20 108 20 100V28Q20 20 28 20Z M58 50H70L65 62V66L70 78H58L63 66V62Z"/></svg>
