@@ -30,7 +30,7 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 - Windows UI Automation fixture exercises registration/sign-in controls,
   project creation and scoped memories, streamed model response with Chat tools
   omitted, project reassignment, approved file write (no write before approval),
-  twenty game initializations and board moves, real PTY output 42, WebView2 page
+  twenty-four game initializations and board moves, real PTY output 42, WebView2 page
   navigation and absence of host/Node APIs, process restart, manual logout,
   and rejection of a remotely revoked refresh session on restart.
 - Side-chat fixtures verify independent completion while a parent stream waits,
@@ -64,7 +64,7 @@ native C#/WinUI 3. This is not completion of the full original product scope.
   OAuth, scheduled tasks, side-chat attachment references/sync, plugins/import,
   app connections, bundled local inference/model downloads, media generation,
   agent browser/computer-use tools and durable terminal jobs,
-  automatic memory proposals and four additional games remain incomplete.
+  automatic memory proposals remain incomplete.
 - GitHub Copilot integration, capability-adaptive composer controls, dictation,
   attachments and durable goal/task execution remain incomplete. GitHub Models
   retired on 2026-07-30; its discontinued API is not offered as a working profile.
@@ -82,7 +82,7 @@ are by Codex, authorized by the owner. See .kiro review logs for provenance.
   Chat and Plan omit command execution. This is not an OS sandbox or durable job
   manager; detached background services remain unsupported.
 - Native run/approval/response activity while playing, with return-to-chat pausing
-  the current game. Versioned local SQLite saves now restore all twenty games paused; cross-device save synchronization remains incomplete.
+  the current game. Versioned local SQLite saves now restore all twenty-four games paused; cross-device save synchronization remains incomplete.
 - Cached chat/terminal typography updates preserve separate text/code fonts.
 - 34 core tests passed. Published native fixture 97jxma passed actual command
   approval/execution, game/response coexistence and cached font-role checks,
@@ -97,3 +97,13 @@ are by Codex, authorized by the owner. See .kiro review logs for provenance.
 - Maze Chase, Flap, Darts and Jigsaw bring the playable catalog to twenty.
   Published fixture 6suxlx verifies actual movement/flight/throws/swaps, all
   twenty saves, restart/finish flows and native minimize pause.
+
+- All 24 specified games are playable in the native library. The last four are
+  Block Fit, Falling Blocks, Sand Blocks and Klondike Solitaire. Search,
+  categories, favorites, recent games and personal bests are implemented.
+- Every card uses a WinUI bitmap rendered from that game's real board renderer.
+  Save choice appears only after opening a game that has a compatible save.
+  The redesigned play surfaces share a score HUD, responsive board framing and
+  motion that honors the Windows animation preference. Native debug fixture
+  WRYJzT passed the 24-game flows. Audio, additional bot difficulty options and
+  desktop-control coordination still need work; local data is not cloud sync.

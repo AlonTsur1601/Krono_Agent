@@ -91,11 +91,11 @@ public sealed partial class GamesWorkspace
         for (var index = 0; index < columns * columns; index++) {
             var cellIndex = index;
             var lit = game == 8 ? board[index] == 1 : game == 9 && !simonWaiting && !ended && SimonCue == index;
-            var color = game == 10 ? index == oddCell ? oddShade : oddBase : game == 9 ? colors[new[] { 0, 4, 2, 1 }[index]] : colors[8];
+            var color = game == 10 ? index == oddCell ? oddShade : oddBase : game == 9 ? BlockColors[new[] { 0, 4, 1, 2 }[index]].Color : Color.FromArgb(255, 255, 217, 116);
             var colorBrush = new SolidColorBrush(color);
             var button = new Button { Width = width - 12, Height = width - 12, CornerRadius = new CornerRadius(game == 9 ? 38 : 14), Padding = new Thickness(0),
-                Background = game == 10 || lit ? colorBrush : Muted, BorderBrush = colorBrush, BorderThickness = new Thickness(game == 9 ? 2 : 0),
-                Foreground = lit ? new SolidColorBrush(Color.FromArgb(255, 16, 35, 31)) : White, FontSize = game == 9 ? 40 : 25, Content = game == 9 ? lit ? "◉" : (index + 1).ToString() : game == 8 ? lit ? "●" : "·" : "" };
+                Background = game == 10 || lit ? colorBrush : Ink(game == 8 ? 0x263349 : 0x22354a), BorderBrush = game == 10 ? BlockShadow : colorBrush, BorderThickness = new Thickness(game == 9 ? 3 : game == 10 ? 1 : lit ? 2 : 0),
+                Foreground = lit ? Ink(0x273449) : colorBrush, FontSize = game == 9 ? 52 : 31, Content = game == 9 ? lit ? "◉" : (index + 1).ToString() : game == 8 ? lit ? "✦" : "·" : "" };
             AutomationProperties.SetAutomationId(button, "GameCell" + index);
             AutomationProperties.SetName(button, game == 10 ? $"Color {index + 1}: #{color.R:X2}{color.G:X2}{color.B:X2}" : game == 9 ? $"Pad {index + 1}: {(lit ? "lit" : "idle")}" : $"Light {index + 1}: {(lit ? "on" : "off")}");
             button.Click += (_, _) => PuzzleClick(cellIndex);
@@ -104,6 +104,7 @@ public sealed partial class GamesWorkspace
     }
     void DrawOrbit()
     {
+        for (var i = 0; i < 36; i++) { var angle = i * Math.PI / 18; Rect(238 + Math.Cos(angle)*198, 238 + Math.Sin(angle)*198, i % 3 == 0 ? 5 : 3, i % 3 == 0 ? 5 : 3, Ink(0x3b617a), 2); }
         var ring = new Ellipse { Width = 344, Height = 344, Stroke = Muted, StrokeThickness = 22 };
         Canvas.SetLeft(ring, 68); Canvas.SetTop(ring, 68); canvas.Children.Add(ring);
         Arc(orbitTarget - 32, orbitTarget + 32, Accent, 24);

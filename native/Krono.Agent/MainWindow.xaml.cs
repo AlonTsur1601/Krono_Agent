@@ -21,8 +21,8 @@ public sealed partial class MainWindow : Window
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1360, 900));
 
         RootFrame.Navigate(typeof(MainPage));
-        Activated += (_, args) => { if (args.WindowActivationState == WindowActivationState.Deactivated && RootFrame.Content is MainPage page) page.PauseGames(); };
-        Closed += (_, _) => { if (RootFrame.Content is MainPage page) page.PauseGames(); };
+        Activated += (_, args) => { if (args.WindowActivationState == WindowActivationState.Deactivated && RootFrame.Content is MainPage page) page.PauseGames("Krono lost window focus"); };
+        Closed += (_, _) => { if (RootFrame.Content is MainPage page) page.PauseGames("Krono window closed"); };
     }
     void UpdateCaptionColors()
     {

@@ -97,7 +97,7 @@ public sealed partial class GamesWorkspace
             if (running) status.Text = $"Lives {arcade.Lives} · Score {score} · {arcade.Pellets.Count(n => n > 0)} dots left";
             for (var i = 0; i < ArcadeRules.Maze.Length; i++) {
                 var x = i % 15 * 32; var y = i / 15 * 32;
-                if (!ArcadeRules.MazeOpen(i)) Rect(x + 1, y + 1, 30, 30, Muted, 5);
+                if (!ArcadeRules.MazeOpen(i)) Bevel(x + 1, y + 1, 30, 30, Ink(0x294d70), 5);
                 else if (arcade.Pellets[i] > 0) { var size = arcade.Pellets[i] == 2 ? 12 : 4; Rect(x + 16 - size / 2, y + 16 - size / 2, size, size, Accent, size / 2); }
             }
             var cell = arcade.MazePlayer; Rect(cell % 15 * 32 + 5, cell / 15 * 32 + 5, 22, 22, Mint, 7);
@@ -105,9 +105,11 @@ public sealed partial class GamesWorkspace
         }
         if (game == Flap) {
             if (running && !arcade.FlapStarted) status.Text = "Press Space or Flap to start";
+            Rect(353, 37, 83, 83, Ink(0x70586e), 42); Rect(368, 52, 53, 53, Ink(0xf6bc91), 26);
+            for (var i = 0; i < 9; i++) { var x = ((i * 62 - tick * .65) % 558 + 558) % 558 - 65; var h = 45 + i * 23 % 112; Rect(x, 480-h, 53, h, Ink(i % 2 == 0 ? 0x263e5b : 0x2e4663), 5); for (var j = 0; j < 3; j++) Rect(x + 8 + j*14, 490-h, 6, 10, Ink(0x755b72), 2); }
             foreach (var pipe in arcade.Pipes) {
                 var x = pipe[0]; if (x > 480) continue;
-                Rect(x, 0, 56, pipe[1] - 80, Muted, 3); Rect(x, pipe[1] + 80, 56, 400 - pipe[1], Muted, 3);
+                Bevel(x, 0, 56, pipe[1] - 80, Ink(0x4f7181), 3); Bevel(x, pipe[1] + 80, 56, 400 - pipe[1], Ink(0x4f7181), 3);
                 Rect(x, pipe[1] - 91, 56, 11, Accent, 5); Rect(x, pipe[1] + 80, 56, 11, Accent, 5);
             }
             Rect(105, arcade.BirdY - 12, 29, 24, Accent, 12); Rect(107, arcade.BirdY, 17, 9, White, 6); Rect(125, arcade.BirdY - 6, 5, 5, Muted, 2); Rect(134, arcade.BirdY, 9, 5, new SolidColorBrush(colors[2]), 2);
@@ -134,6 +136,7 @@ public sealed partial class GamesWorkspace
     Canvas MakeDartboard()
     {
         var result = new Canvas { Width = 480, Height = 480, IsHitTestVisible = false };
+        var rim = new Ellipse { Width = 376, Height = 376, Fill = Ink(0x202e43), Stroke = Ink(0x627690), StrokeThickness = 3 }; Canvas.SetLeft(rim, 52); Canvas.SetTop(rim, 52); result.Children.Add(rim);
         var ringA = new SolidColorBrush(Color.FromArgb(255, 179, 73, 100)); var ringB = new SolidColorBrush(Color.FromArgb(255, 63, 149, 132));
         for (var i = 0; i < 20; i++) {
             var center = i * 18 - 90; var band = i % 2 == 0 ? ringA : ringB;

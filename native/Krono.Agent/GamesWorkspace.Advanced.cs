@@ -111,10 +111,12 @@ public sealed partial class GamesWorkspace
             if (!paused && !ended) status.Text = game == 12 ? $"Coral {board.Count(n => n == 1)} · Ivory {board.Count(n => n == 2)}{detail}" : $"Score {score}{detail}";
             for (var i = 0; i < columns * columns; i++) {
                 var index = i; var value = game == 12 ? board[i] : sudoku[i]; var enabled = game == 12 ? legal.Contains(i) : !clues[i];
-                var cell = new Button { Width = width - 4, Height = width - 4, Padding = new Thickness(0), BorderThickness = new Thickness(game == 13 && selectedSquare == i ? 2 : 0), BorderBrush = Accent,
+                var box = i / 27 * 3 + i % 9 / 3;
+                var near = selectedSquare >= 0 && (i % 9 == selectedSquare % 9 || i / 9 == selectedSquare / 9);
+                var cell = new Button { Width = width - 4, Height = width - 4, Padding = new Thickness(0), BorderThickness = new Thickness(game == 13 && selectedSquare == i ? 2 : 0), BorderBrush = Ink(0x87e3d1),
                     CornerRadius = new CornerRadius(game == 12 ? 20 : 6), FontSize = 24,
-                    Background = game == 13 && clues[i] ? new SolidColorBrush(Color.FromArgb(255, 49, 59, 77)) : Muted,
-                    Foreground = game == 12 ? value == 1 ? Accent : White : clues[i] ? White : Accent,
+                    Background = game == 13 ? near && !clues[i] ? Ink(0x34505f) : SudokuBoxes[box] : Ink(0x27454b),
+                    Foreground = game == 12 ? value == 1 ? Ink(0xff9d8e) : White : value > 0 ? DigitColors[value-1] : White,
                     Content = game == 12 ? value > 0 ? "●" : enabled ? "·" : "" : value == 0 ? "" : value.ToString() };
                 if (game == 12) cell.FontSize = value > 0 ? 40 : 28;
                 AutomationProperties.SetAutomationId(cell, "GameCell" + i);
@@ -122,12 +124,12 @@ public sealed partial class GamesWorkspace
                 cell.Click += (_, _) => AdvancedClick(index);
                 Canvas.SetLeft(cell, i % columns * width + 2); Canvas.SetTop(cell, i / columns * width + 2); canvas.Children.Add(cell);
             }
-            if (game == 13) for (var boundary = 1; boundary < 3; boundary++) { Rect(boundary * 160 - 2, 0, 4, 480, Accent, 0); Rect(0, boundary * 160 - 2, 480, 4, Accent, 0); }
+            if (game == 13) for (var boundary = 1; boundary < 3; boundary++) { Rect(boundary * 160 - 2, 0, 4, 480, Ink(0x6d86ab), 0); Rect(0, boundary * 160 - 2, 480, 4, Ink(0x6d86ab), 0); }
         }
         if (game == 14) {
             if (!paused && !ended) status.Text = $"Level {stackLevel} · Score {score} · {gameMessage}";
-            for (var i = 0; i < tower.Count; i++) Rect(tower[i][0], 430 - i * 28, tower[i][1], 24, new SolidColorBrush(colors[(stackLevel - tower.Count + i + 1 + colors.Length * 100) % colors.Length]), 5);
-            Rect(stackX, 430 - tower.Count * 28, stackWidth, 24, Accent, 5); Label("SPACE / PLACE", 150, 28, 19);
+            for (var i = 0; i < tower.Count; i++) Bevel(tower[i][0], 430 - i * 28, tower[i][1], 24, BlockColors[(stackLevel - tower.Count + i + 1 + BlockColors.Length * 100) % BlockColors.Length], 6);
+            Bevel(stackX, 430 - tower.Count * 28, stackWidth, 24, Ink(0xabf1d2), 6); Label("SPACE / PLACE", 150, 28, 19);
         }
         if (game == 15) {
             var showing = tick < colorStart && !ended;
@@ -135,6 +137,7 @@ public sealed partial class GamesWorkspace
             red.IsEnabled = green.IsEnabled = blue.IsEnabled = !showing && !paused && !ended;
             if (!paused && !ended) status.Text = showing ? $"Remember all five · {Math.Ceiling((colorStart - tick) * .03)}s" : $"Recreate color {chosenColors.Count + 1}/5 · Score {score}";
             for (var i = 0; i < 5; i++) {
+                Rect(8 + i * 94, 58, 88, 114, Ink(0x334b65), 14);
                 Rect(10 + i * 94, 60, 84, 110, showing || ended ? new SolidColorBrush(Unpack(targetColors[i])) : Muted, 12);
                 Label((i + 1).ToString(), 44 + i * 94, 185, 20);
                 if (i < chosenColors.Count) { Rect(10 + i * 94, 230, 84, 110, new SolidColorBrush(Unpack(chosenColors[i])), 12); if (ended) Label($"ΔE {NativeGameRules.DeltaE(targetColors[i], chosenColors[i]):F1}", 15 + i * 94, 350, 16); }

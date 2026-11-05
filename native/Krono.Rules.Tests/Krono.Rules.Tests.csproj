@@ -8,5 +8,7 @@
   <ItemGroup>
     <Compile Include="..\Krono.Agent\NativeGameRules.cs" Link="NativeGameRules.cs" />
     <Compile Include="..\Krono.Agent\ArcadeRules.cs" Link="ArcadeRules.cs" />
+    <Compile Include="..\Krono.Agent\BlockRules.cs" Link="BlockRules.cs" />
+    <Compile Include="..\Krono.Agent\KlondikeRound.cs" Link="KlondikeRound.cs" />
   </ItemGroup>
 </Project>

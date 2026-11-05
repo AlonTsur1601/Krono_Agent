@@ -42,9 +42,6 @@ yarn-error.log*
 *.sqlite
 *.sqlite3
 
-# Electron
-electron-builder.env
-
 # Testing
 coverage/
 .nyc_output/

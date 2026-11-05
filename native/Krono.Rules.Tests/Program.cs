@@ -51,4 +51,28 @@ Check(ArcadeRules.DartScore(0, 0) == 50 && ArcadeRules.DartScore(0, -10) == 25, 
 Check(ArcadeRules.DartScore(0, -100) == 60 && ArcadeRules.DartScore(0, -164) == 40 && ArcadeRules.DartScore(0, -80) == 20, "Dart triple, double or single scoring");
 Check(ArcadeRules.DartScore(0, -185) == 0 && ArcadeRules.DartScore(100, 0) == 18, "Dart angular sectors or miss");
 Check(!ArcadeRules.FlapHits(245, 100, 245) && ArcadeRules.FlapHits(177, 100, 245) && !ArcadeRules.FlapHits(177, 160, 245), "Flap pipe gap/collision bounds");
-Console.WriteLine("NATIVE_RULES_PASS: Reversi, unique Sudoku, Stack, CIE76, every maze cell reachable, darts rings/sectors, Flap collision");
+var fit = new int[64]; for (var i = 0; i < 8; i++) { fit[i] = 1; fit[i * 8] = 1; } fit[9] = 2;
+Check(BlockRules.ClearFit(fit) == 2 && fit.Count(n => n > 0) == 1 && fit[9] == 2, "Block Fit row and column must clear simultaneously");
+Check(!BlockRules.CanPlace(fit, 8, 8, BlockRules.Fit(9), 7, 7) && BlockRules.HasFit(fit, [9,-1,-1]), "Block Fit occupancy and bounds");
+var grid = new int[200]; Array.Fill(grid, 1, 190, 10); Array.Fill(grid, 2, 170, 10); grid[183] = 3;
+Check(BlockRules.ClearRows(grid, 10, 20) == 2 && grid[193] == 3 && grid.Count(n => n > 0) == 1, "Falling Blocks line compaction");
+var upright = BlockRules.Falling(0, 1);
+Check(upright.All(c => c.X == 0) && upright.Select(c => c.Y).Order().SequenceEqual(Enumerable.Range(0, 4)), "Falling Blocks rotation");
+var sand = new int[800]; BlockRules.Place(sand, 20, BlockRules.Falling(0, 0), 5, 0, 1, 2);
+for (var i = 0; i < 80 && BlockRules.SettleSand(sand, 20, 40, i % 2 == 0); i++) { }
+Check(sand.Count(n => n == 1) == 16 && !sand.Take(760).Any(n => n > 0), "Sand settling must conserve grains at the floor");
+Array.Clear(sand); Array.Fill(sand, 1, 780, 20); sand[774] = 1; sand[773] = 2;
+Check(BlockRules.ClearSandSpans(sand, 20, 40) == 21 && sand[773] == 2 && sand.Count(n => n > 0) == 1, "Sand span clears only the connected color");
+for (var seed = 0; seed < 8; seed++) {
+    var deal = KlondikeRound.Deal(new Random(seed));
+    Check(deal.Stock.Count == 24 && deal.IsValid(), "Klondike valid 52-card deal");
+    var before = deal.Stock.ToArray(); for (var i = 0; i < 25; i++) Check(deal.DrawStock(), "Klondike stock cycle");
+    Check(deal.Stock.SequenceEqual(before) && deal.Waste.Count == 0 && deal.IsValid(), "Klondike stock recycle order");
+}
+var cards = new KlondikeRound(); cards.Tableau[0].AddRange([15, 0]); cards.FaceDown[0] = 1; cards.Stock.AddRange(Enumerable.Range(0, 52).Except([0,15]));
+cards.Select(KlondikeRound.TableauKind, 0, 1);
+Check(!cards.ToFoundation(1) && cards.ToFoundation(0) && cards.FaceDown[0] == 0 && cards.Foundations[0] == 1 && cards.IsValid(), "Klondike suit enforcement and reveal");
+cards.Select(KlondikeRound.FoundationKind, 0);
+Check(!cards.ToTableau(1) && cards.IsValid(), "Only kings may enter an empty tableau");
+Check(KlondikeRound.Below(12, 24) && !KlondikeRound.Below(12, 37), "Klondike alternate colors");
+Console.WriteLine("NATIVE_RULES_PASS: Reversi, Sudoku, Stack, CIE76, maze, darts, Flap, simultaneous clears, tetromino rotation, sand spans, Klondike deal/rules");

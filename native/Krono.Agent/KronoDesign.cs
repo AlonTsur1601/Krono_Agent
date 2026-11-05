@@ -68,9 +68,10 @@ public static class KronoDesign
             var isCode = codeContext;
             if (element is Control control) {
                 var id = Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(control);
-                isCode |= id is "TerminalInput" or "TerminalOutput" or "ToolApprovalDetails";
+                var gameCode = control.Tag?.ToString() == "game-code";
+                isCode |= id is "TerminalInput" or "TerminalOutput" or "ToolApprovalDetails" || gameCode;
                 control.FontFamily = isCode ? code : text;
-                if (!id.StartsWith("GameCell", StringComparison.Ordinal) && control is TextBox or PasswordBox or ComboBox or NumberBox or Button) control.FontSize = isCode ? codeSize : control.Tag?.ToString() == "caption" ? Math.Max(11, textSize - 3) : textSize;
+                if (!gameCode && !id.StartsWith("GameCell", StringComparison.Ordinal) && control is TextBox or PasswordBox or ComboBox or NumberBox or Button) control.FontSize = isCode ? codeSize : control.Tag?.ToString() == "caption" ? Math.Max(11, textSize - 3) : textSize;
             }
             for (var i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++) Refresh(VisualTreeHelper.GetChild(element, i), isCode);
         }

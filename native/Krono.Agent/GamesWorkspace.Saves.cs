@@ -7,29 +7,58 @@ namespace Krono_Agent;
 
 public sealed partial class GamesWorkspace
 {
-    bool stateReady, disposed;
+    bool stateReady, disposed, openingGame, changingPicker;
     string endMessage = "";
     readonly List<TextBlock> saveLabels = [];
     string SaveId(int index) => "native-v1:" + names[index];
-    string SaveCaption(int index)
+    string BestCaption(int index)
     {
-        var saved = workspace.Query("SELECT id FROM game_saves WHERE id=$p0 AND account_id=$p1", SaveId(index), workspace.AccountId).Count > 0;
-        return saved ? "SAVED GAME    ↗" : index is 1 or 4 or 7 or 12 or MazeChase ? "VS BOT    ↗" : "SOLO    ↗";
+        var best = workspace.Query("SELECT MAX(score) AS best FROM game_scores WHERE account_id=$p0 AND game_id=$p1", workspace.AccountId, names[index]).First()["best"]?.ToString();
+        return "PERSONAL BEST  " + (best ?? "—");
     }
-    void OpenGame(int index)
+    void SetPicker(int index)
     {
-        if (!stateReady || game != index) {
-            SaveCurrent(); timer.Stop(); game = index; Reset(); stateReady = true;
-            if (!RestoreCurrent()) SaveCurrent();
+        changingPicker = true;
+        try { picker.SelectedIndex = index; } finally { changingPicker = false; }
+    }
+    async Task ChooseGame(int index)
+    {
+        if (disposed || openingGame) return;
+        openingGame = true;
+        try {
+            PauseAndSave();
+            var saved = workspace.Query("SELECT state FROM game_saves WHERE id=$p0 AND account_id=$p1", SaveId(index), workspace.AccountId).FirstOrDefault()?["state"]?.ToString();
+            var resume = false;
+            if (saved is { Length: > 0 and <= 65536 }) {
+                bool compatible;
+                try { var data = System.Text.Json.Nodes.JsonNode.Parse(saved); compatible = data?["Version"]?.ToString() == "1" && data?["Game"]?.ToString() == names[index]; }
+                catch (JsonException) { compatible = false; }
+                if (compatible) {
+                    var choice = new ContentDialog { XamlRoot = XamlRoot, Title = names[index], Content = "Continue where you left off, or replace the save with a new game.", PrimaryButtonText = "Continue saved game", SecondaryButtonText = "New game", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(choice, "GameSaveChoice");
+                    var result = await choice.ShowAsync();
+                    if (disposed || result == ContentDialogResult.None) return;
+                    resume = result == ContentDialogResult.Primary;
+                }
+            }
+            if (disposed) return;
+            timer.Stop(); game = index; SetPicker(index); Reset(); stateReady = true;
+            if (!resume || !RestoreCurrent()) SaveCurrent();
+            shownScore = -1;
+            library!.Visibility = Visibility.Collapsed; playScreen!.Visibility = Visibility.Visible;
+            Draw(); AnimateBoardEntry(); if (!paused && !ended) timer.Start(); Focus(FocusState.Programmatic);
+        } catch (Exception error) {
+            gameHelp.Text = "Could not open this game: " + error.Message;
+            if (MainWindow.Instance?.Content is FrameworkElement) Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(this, gameHelp.Text);
+        } finally {
+            openingGame = false;
         }
-        if (picker.SelectedIndex != index) picker.SelectedIndex = index;
-        if (!paused && !ended && playScreen?.Visibility == Visibility.Visible) timer.Start();
-        Draw();
     }
-    public void PauseAndSave()
+    public void PauseAndSave(string reason = "Game paused")
     {
         if (disposed || !stateReady) return;
         paused = true; timer.Stop(); SaveCurrent(); Draw();
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(status, reason);
     }
     void SaveCurrent()
     {
@@ -47,11 +76,10 @@ public sealed partial class GamesWorkspace
                 OrbitAngle = orbitAngle, OrbitTarget = orbitTarget, OrbitSpeed = orbitSpeed,
                 Sudoku = sudoku, Clues = clues, SelectedSquare = selectedSquare, GameMessage = gameMessage,
                 StackX = stackX, StackWidth = stackWidth, StackDirection = stackDirection, StackCombo = stackCombo, StackLevel = stackLevel, Tower = tower.ToArray(),
-                TargetColors = targetColors, ChosenColors = chosenColors.ToArray(), ColorStart = colorStart, CurrentColor = CurrentColor, Arcade = arcade
+                TargetColors = targetColors, ChosenColors = chosenColors.ToArray(), ColorStart = colorStart, CurrentColor = CurrentColor, Arcade = arcade, Blocks = blocks, Cards = cards
             };
             workspace.Execute("INSERT INTO game_saves(id,account_id,game_id,state,saved_at) VALUES($p0,$p1,$p2,$p3,$p4) ON CONFLICT(id) DO UPDATE SET state=excluded.state,saved_at=excluded.saved_at,synced=0",
                 SaveId(game), workspace.AccountId, names[game], JsonSerializer.Serialize(state), Workspace.Now);
-            if (game < saveLabels.Count) saveLabels[game].Text = "SAVED GAME    ↗";
         } catch (Exception error) when (error is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException) {
             // Keep the playable state in memory and make a failed disk write visible.
             gameHelp.Text = "Could not save this game. " + error.Message;
@@ -80,7 +108,9 @@ public sealed partial class GamesWorkspace
         gameMessage = state.GameMessage ?? "";
         if (game == 14) { stackX = state.StackX; stackWidth = state.StackWidth; stackDirection = state.StackDirection; stackCombo = state.StackCombo; stackLevel = state.StackLevel; tower.Clear(); tower.AddRange(state.Tower); }
         if (game == 15) { targetColors = state.TargetColors; chosenColors.Clear(); chosenColors.AddRange(state.ChosenColors); colorStart = state.ColorStart; SetColor(state.CurrentColor); }
-        if (game >= MazeChase) arcade = state.Arcade;
+        if (game is >= MazeChase and < BlockFit) arcade = state.Arcade;
+        if (game is BlockFit or FallingBlocks or SandBlocks) blocks = state.Blocks;
+        if (game == Solitaire) cards = state.Cards;
         // Restoration never starts a moving game or advances a pattern without consent.
         paused = true; return true;
     }
@@ -107,6 +137,7 @@ public sealed partial class GamesWorkspace
             13 => s.Sudoku?.Length == 81 && s.Clues?.Length == 81 && s.SelectedSquare is >= -1 and < 81 && s.Sudoku.All(value => value is >= 0 and <= 9) && s.Sudoku.Where((value, i) => value > 0 && !NativeGameRules.SudokuLegal(s.Sudoku, i, value)).Count() == 0 && NativeGameRules.SudokuSolutions(s.Sudoku.Select((value, i) => s.Clues[i] ? value : 0).ToArray()) == 1 && s.Clues.Where((fixedCell, i) => fixedCell && s.Sudoku[i] == 0).Count() == 0,
             14 => double.IsFinite(s.StackX) && double.IsFinite(s.StackWidth) && s.StackWidth is > 0 and <= 240 && s.StackX >= 0 && s.StackX + s.StackWidth <= 480 && s.StackDirection is -1 or 1 && s.StackLevel >= 0 && s.StackCombo >= 0 && s.Tower is { Length: > 0 and <= 10 } && s.Tower.All(row => row?.Length == 2 && row.All(double.IsFinite) && row[0] >= 0 && row[1] is > 0 and <= 240 && row[0] + row[1] <= 480),
             15 => s.TargetColors?.Length == 5 && s.ChosenColors is { Length: <= 5 } && s.ColorStart >= 0,
+            >= BlockFit => ValidBoardGame(s),
             >= MazeChase => ValidArcade(game, s),
             _ => true
         };
@@ -166,5 +197,7 @@ public sealed partial class GamesWorkspace
         public int ColorStart { get; set; }
         public uint CurrentColor { get; set; }
         public ArcadeSave Arcade { get; set; } = new();
+        public BlockRound Blocks { get; set; } = new();
+        public KlondikeRound Cards { get; set; } = new();
     }
 }
