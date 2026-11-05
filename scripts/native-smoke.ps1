@@ -31,6 +31,13 @@ function SetValue([string]$Id, [string]$Value) { $element = Find $Id; $pattern =
 function SetEditableChoice([string]$Id, [string]$Value) { $element = Find $Id; $edit = $element.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit))); ($edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).SetValue($Value) }
 function SelectNav([string]$Name) { $element = Find $Name -ByName; $pattern = $element.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern); $pattern.Select(); Start-Sleep -Milliseconds 400 }
 function SelectChoice([string]$Id, [string]$Name) { $box = Find $Id; ($box.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand(); $item = Find $Name -ByName; ($item.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)).Select() }
+function SelectGame([string]$Name) {
+    $games = @('Snake','Tic-Tac-Toe','2048','Minesweeper','Connect Four','Breakout','Memory Match','Pong','Lights Out','Simon','Odd Color','Orbit','Reversi','Sudoku','Stack','Color Gauntlet')
+    $index = [Array]::IndexOf($games, $Name)
+    if ($index -lt 0) { throw ('Unknown fixture game: ' + $Name) }
+    Invoke 'GameLibraryBack'
+    Invoke ('GameTile' + $index)
+}
 function CloseApp { if ($script:process -and !$script:process.HasExited) { $script:process.CloseMainWindow() | Out-Null; if (!$script:process.WaitForExit(5000)) { Stop-Process -Id $script:process.Id } } }
 function Capture([string]$Name) {
     Start-Sleep -Milliseconds 200
@@ -135,6 +142,9 @@ try {
         $reply = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name.Trim() -eq 'Native local endpoint reply.' }
     } while (!$reply -and (Get-Date) -lt $deadline)
     if (!$reply) { throw 'Local endpoint response was not rendered in the native transcript' }
+    $deadline = (Get-Date).AddSeconds(5)
+    do { Start-Sleep -Milliseconds 100; $storedReply = (Invoke-RestMethod ($Fixture + '/local-reply-proof')).count } while ($storedReply -ne 1 -and (Get-Date) -lt $deadline)
+    if ($storedReply -ne 1) { throw 'Final streamed fragments were not persisted together' }
     SelectNav 'Settings'
     $toggle = (Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
     $toggle.Toggle()
@@ -248,8 +258,8 @@ try {
     Capture 'native-game-library.png'
     Invoke 'GameTile0'
     Find 'Restart' -ByName | Out-Null
-    foreach ($game in @('Tic-Tac-Toe','2048','Minesweeper','Connect Four','Breakout','Memory Match','Pong','Snake','Lights Out','Simon','Odd Color','Orbit')) {
-        SelectChoice 'GameSelector' $game
+    foreach ($game in @('Tic-Tac-Toe','2048','Minesweeper','Connect Four','Breakout','Memory Match','Pong','Snake','Lights Out','Simon','Odd Color','Orbit','Reversi','Sudoku','Stack','Color Gauntlet')) {
+        SelectGame $game
         Invoke 'Restart' -ByName
         if ($game -eq 'Tic-Tac-Toe') {
             Invoke 'GameCell0'
@@ -319,6 +329,44 @@ try {
             Invoke 'Tap orbit' -ByName
             if ((Find 'GameStatus').Current.Name -eq 'Score 0') { throw 'Orbit did not register its timing input' }
         }
+        if ($game -eq 'Reversi') {
+            if ((Find 'GameCell19').Current.Name -notmatch 'playable$') { throw 'Reversi did not show a legal opening move' }
+            Invoke 'GameCell0'
+            if ((Find 'GameCell0').Current.Name -notmatch 'empty$') { throw 'Reversi accepted an illegal corner' }
+            Invoke 'GameCell19'
+            if ((Find 'GameCell19').Current.Name -notmatch 'coral$') { throw 'Reversi did not apply the opening move' }
+            Capture 'native-reversi.png'
+        }
+        if ($game -eq 'Sudoku') {
+            $sudoku = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Sudoku').state
+            $square = (0..80 | Where-Object { !$sudoku.Clues[$_] -and @($sudoku.Sudoku[([int][Math]::Floor($_ / 9) * 9)..([int][Math]::Floor($_ / 9) * 9 + 8)] | Where-Object { $_ -gt 0 }).Count -gt 0 } | Select-Object -First 1)
+            $row = [int][Math]::Floor($square / 9)
+            $conflict = $sudoku.Sudoku[($row * 9)..($row * 9 + 8)] | Where-Object { $_ -gt 0 } | Select-Object -First 1
+            Invoke ('GameCell' + $square)
+            Invoke ('SudokuDigit' + $conflict)
+            if ((Find 'GameStatus').Current.Name -notmatch 'conflicts') { throw 'Sudoku accepted a conflicting row digit' }
+            $column = $square % 9
+            $used = @(0..80 | Where-Object { $_ % 9 -eq $column -or [Math]::Floor($_ / 9) -eq $row -or ([Math]::Floor(($_ % 9) / 3) -eq [Math]::Floor($column / 3) -and [Math]::Floor($_ / 27) -eq [Math]::Floor($square / 27)) } | ForEach-Object { $sudoku.Sudoku[$_] })
+            $valid = 1..9 | Where-Object { $_ -notin $used } | Select-Object -First 1
+            Invoke ('SudokuDigit' + $valid)
+            if ((Find ('GameCell' + $square)).Current.Name -ne ('Square ' + ($square + 1) + ': ' + $valid)) { throw 'Sudoku rejected a legal digit' }
+            Capture 'native-sudoku.png'
+        }
+        if ($game -eq 'Stack') {
+            Invoke 'Place block' -ByName
+            if ((Find 'GameStatus').Current.Name -notmatch '^Level 1') { throw 'Stack did not place its first overlapping block' }
+            Capture 'native-stack.png'
+        }
+        if ($game -eq 'Color Gauntlet') {
+            if ((Find 'Use color' -ByName).Current.IsEnabled) { throw 'Gauntlet accepted input during memorization' }
+            Capture 'native-gauntlet.png'
+            $deadline = (Get-Date).AddSeconds(15)
+            do { Start-Sleep -Milliseconds 100; $ready = (Find 'Use color' -ByName).Current.IsEnabled } while (!$ready -and (Get-Date) -lt $deadline)
+            if (!$ready) { throw 'Gauntlet did not begin the reconstruction phase' }
+            Invoke 'Use color' -ByName
+            Invoke 'Use color' -ByName
+            if ((Find 'GameStatus').Current.Name -notmatch '^Recreate color 3/5') { throw 'Gauntlet did not advance after two guesses' }
+        }
     }
     SelectNav 'Terminal'
     Start-Sleep -Seconds 2
@@ -375,7 +423,7 @@ try {
     $fontProof = Invoke-RestMethod ($Fixture + '/font-proof')
     if ($fontProof.text -ne '14' -or $fontProof.code -ne '14') { throw 'Non-finite font sizes prevented recovery to valid defaults' }
     $savedGames = (Invoke-RestMethod ($Fixture + '/game-proof')).saves
-    if ($savedGames.Count -ne 12) { throw 'Not all twelve games were persisted' }
+    if ($savedGames.Count -ne 16) { throw 'Not all sixteen games were persisted' }
     SelectNav 'Games'
     Invoke 'GameTile1'
     if ((Find 'GameStatus').Current.Name -notmatch '^Paused') { throw 'Restored game started without resume consent' }
@@ -387,7 +435,7 @@ try {
     Invoke ('GameCell' + $empty)
     if ((Find ('GameCell' + $empty)).Current.Name -ne ('Cell ' + ($empty + 1) + ': X')) { throw 'Resumed game did not accept input' }
     foreach ($game in @('2048','Minesweeper','Memory Match','Lights Out','Simon','Odd Color','Orbit')) {
-        SelectChoice 'GameSelector' $game
+        SelectGame $game
         $saved = ($savedGames | Where-Object game -eq $game).state
         if ($game -in @('2048','Memory Match')) {
             foreach ($i in 0..15) {
@@ -408,9 +456,28 @@ try {
             if ((Find 'GameStatus').Current.Name -notmatch 'Score 30') { throw 'Restored Simon sequence did not retain its next round' }
         }
     }
-    SelectChoice 'GameSelector' 'Snake'
-    Invoke 'Restart' -ByName
+    SelectGame 'Reversi'
+    if ((Find 'GameCell19').Current.Name -notmatch 'coral$') { throw 'Reversi move was lost across restart' }
+    SelectGame 'Sudoku'
+    $savedSudoku = ($savedGames | Where-Object game -eq 'Sudoku').state
+    $selected = $savedSudoku.SelectedSquare
+    if ((Find ('GameCell' + $selected)).Current.Name -ne ('Square ' + ($selected + 1) + ': ' + $savedSudoku.Sudoku[$selected])) { throw 'Sudoku entered digit was lost across restart' }
+    SelectGame 'Stack'
+    $savedStack = ($savedGames | Where-Object game -eq 'Stack').state
+    if ((Find 'GameStatus').Current.Name -ne ('Paused · Score ' + $savedStack.Score)) { throw 'Stack score was lost across restart' }
+    SelectGame 'Color Gauntlet'
+    if ((Find 'GameStatus').Current.Name -notmatch '^Paused') { throw 'Gauntlet did not restore paused' }
     Invoke 'Pause / resume' -ByName
+    if ((Find 'GameStatus').Current.Name -notmatch '^Recreate color 3/5') { throw 'Gauntlet did not restore the next color' }
+    1..3 | ForEach-Object { Invoke 'Use color' -ByName }
+    if ((Find 'GameStatus').Current.Name -notmatch '^Gauntlet complete') { throw 'Gauntlet did not finish all five colors' }
+    SelectGame 'Snake'
+    Invoke 'Restart' -ByName
+    $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
+    $windowPattern.SetWindowVisualState([Windows.Automation.WindowVisualState]::Minimized)
+    Start-Sleep -Milliseconds 400
+    $windowPattern.SetWindowVisualState([Windows.Automation.WindowVisualState]::Normal)
+    if ((Find 'GameStatus').Current.Name -notmatch '^Paused') { throw 'Losing window activation did not pause the game' }
     SelectNav 'Chats'
     $beforeSnake = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
     Start-Sleep -Seconds 2
@@ -445,5 +512,5 @@ try {
     Launch
     Find 'LoginButton' | Out-Null
     if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin')) { throw 'Revoked session was retained after restart' }
-    Write-Output 'NATIVE_SMOKE_PASS: native auth, scoped memory, cloud/local profiles, command approval/PowerShell 42, side snapshots/queue/expiry, twelve games, PTY, WebView2, restart, re-login, revocation'
+    Write-Output 'NATIVE_SMOKE_PASS: native auth, scoped memory, cloud/local profiles, complete stream persistence, command approval/PowerShell 42, side snapshots/queue/expiry, sixteen durable games, PTY, WebView2, restart, re-login, revocation'
 } finally { CloseApp }

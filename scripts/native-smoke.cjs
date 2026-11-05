@@ -42,6 +42,7 @@ const server = http.createServer((request, response) => {
   }
   else if (request.url === '/cloud-proof') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ accepted: [...cloudAccepted] })) }
   else if (request.url === '/game-proof') { const saves = fixtureDb(db => db.prepare('SELECT game_id,state FROM game_saves WHERE account_id=? ORDER BY game_id').all(user.id).map(row => ({ game: row.game_id, state: JSON.parse(row.state) }))); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ saves })) }
+  else if (request.url === '/local-reply-proof') { const count = fixtureDb(db => db.prepare("SELECT count(*) AS n FROM messages WHERE role='assistant' AND content='Native local endpoint reply.'").get().n); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ count })) }
   else if (request.url === '/corrupt-game') { fixtureDb(db => db.prepare("UPDATE game_saves SET state='{}' WHERE game_id='Snake'").run()); response.end('ok') }
   else if (request.url === '/poison-font-sizes') { fixtureDb(db => { db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('native.textSize','NaN')").run(); db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('native.codeSize','Infinity')").run() }); response.end('ok') }
   else if (request.url === '/font-proof') { const proof = fixtureDb(db => ({ text: db.prepare("SELECT value FROM settings WHERE key='native.textSize'").get()?.value, code: db.prepare("SELECT value FROM settings WHERE key='native.codeSize'").get()?.value })); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(proof)) }
@@ -72,8 +73,8 @@ const server = http.createServer((request, response) => {
       if (input.model === 'basic-fixture-model') localModelBNoTools = localNoTools
       localKeyIsolated = request.headers.authorization === 'Bearer local'
       response.setHeader('Content-Type', 'text/event-stream')
-      response.write('data: ' + JSON.stringify({ choices: [{ delta: { content: 'Native local endpoint reply.' }, finish_reason: null }] }) + '\n\n')
-      response.end('data: ' + JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] }) + '\n\ndata: [DONE]\n\n')
+      const event = (content, finish = null) => 'data: ' + JSON.stringify({ choices: [{ delta: { content }, finish_reason: finish }] }) + '\n\n'
+      response.end(event('Native local endpoint ') + event('reply.') + event('', 'stop') + 'data: [DONE]\n\n')
     })
   }
   else if (request.url === '/v1/models') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ object: 'list', data: [{ id: 'native-fixture-model', object: 'model' }] })) }

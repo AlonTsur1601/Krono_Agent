@@ -30,7 +30,7 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 - Windows UI Automation fixture exercises registration/sign-in controls,
   project creation and scoped memories, streamed model response with Chat tools
   omitted, project reassignment, approved file write (no write before approval),
-  twelve game initializations and board moves, real PTY output 42, WebView2 page
+  sixteen game initializations and board moves, real PTY output 42, WebView2 page
   navigation and absence of host/Node APIs, process restart, manual logout,
   and rejection of a remotely revoked refresh session on restart.
 - Side-chat fixtures verify independent completion while a parent stream waits,
@@ -64,7 +64,7 @@ native C#/WinUI 3. This is not completion of the full original product scope.
   OAuth, scheduled tasks, side-chat attachment references/sync, plugins/import,
   app connections, bundled local inference/model downloads, media generation,
   agent browser/computer-use tools and durable terminal jobs,
-  automatic memory proposals and twelve additional games remain incomplete.
+  automatic memory proposals and eight additional games remain incomplete.
 - GitHub Copilot integration, capability-adaptive composer controls, dictation,
   attachments and durable goal/task execution remain incomplete. GitHub Models
   retired on 2026-07-30; its discontinued API is not offered as a working profile.
@@ -82,8 +82,14 @@ are by Codex, authorized by the owner. See .kiro review logs for provenance.
   Chat and Plan omit command execution. This is not an OS sandbox or durable job
   manager; detached background services remain unsupported.
 - Native run/approval/response activity while playing, with return-to-chat pausing
-  the current game. Versioned local SQLite saves now restore all twelve games paused; cross-device save synchronization remains incomplete.
+  the current game. Versioned local SQLite saves now restore all sixteen games paused; cross-device save synchronization remains incomplete.
 - Cached chat/terminal typography updates preserve separate text/code fonts.
 - 34 core tests passed. Published native fixture 97jxma passed actual command
   approval/execution, game/response coexistence and cached font-role checks,
   alongside account, side-chat, twelve-game, PTY and WebView2 checks.
+
+- Native Reversi, Sudoku, Stack and Color Gauntlet passed rules and actual UI
+  checks, including move legality, unique offline puzzles, perfect placement,
+  D65 CIE76 scoring and restart restoration. Worker events now drain on the UI
+  thread in stream order; the fast multi-fragment response is verified in both
+  the transcript and SQLite (native fixture YRaW9P).

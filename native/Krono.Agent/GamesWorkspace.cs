@@ -26,9 +26,9 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
     double ballX, ballY, ballDx, ballDy, enemy;
     Grid? playScreen;
     Grid? library;
-    static readonly string[] names = ["Snake", "Tic-Tac-Toe", "2048", "Minesweeper", "Connect Four", "Breakout", "Memory Match", "Pong", "Lights Out", "Simon", "Odd Color", "Orbit"];
-    static readonly string[] descriptions = ["Grow without hitting the walls", "An unbeaten minimax opponent", "Slide and merge matching tiles", "Reveal safe cells and flag mines", "Four connected discs to win", "Bounce through a field of bricks", "Turn cards and match pairs", "A rally against a reactive bot", "Toggle a cross. Darken every light.", "Watch the pattern. Play it back.", "Find the tile with a different shade", "Tap inside the arc. Aim for its core."];
-    static readonly Color[] colors = [Color.FromArgb(255,143,215,199),Color.FromArgb(255,184,161,246),Color.FromArgb(255,242,201,130),Color.FromArgb(255,133,187,237),Color.FromArgb(255,244,146,159),Color.FromArgb(255,255,173,109),Color.FromArgb(255,177,165,244),Color.FromArgb(255,125,221,217),Color.FromArgb(255,242,210,134),Color.FromArgb(255,166,174,251),Color.FromArgb(255,224,154,209),Color.FromArgb(255,134,213,234)];
+    static readonly string[] names = ["Snake", "Tic-Tac-Toe", "2048", "Minesweeper", "Connect Four", "Breakout", "Memory Match", "Pong", "Lights Out", "Simon", "Odd Color", "Orbit", "Reversi", "Sudoku", "Stack", "Color Gauntlet"];
+    static readonly string[] descriptions = ["Grow without hitting the walls", "An unbeaten minimax opponent", "Slide and merge matching tiles", "Reveal safe cells and flag mines", "Four connected discs to win", "Bounce through a field of bricks", "Turn cards and match pairs", "A rally against a reactive bot", "Toggle a cross. Darken every light.", "Watch the pattern. Play it back.", "Find the tile with a different shade", "Tap inside the arc. Aim for its core.", "Capture lines. Protect the corners.", "One solution. Nine rows of possibility.", "Place, trim, and build a taller tower", "Remember five shades. Rebuild them."];
+    static readonly Color[] colors = [Color.FromArgb(255,143,215,199),Color.FromArgb(255,184,161,246),Color.FromArgb(255,242,201,130),Color.FromArgb(255,133,187,237),Color.FromArgb(255,244,146,159),Color.FromArgb(255,255,173,109),Color.FromArgb(255,177,165,244),Color.FromArgb(255,125,221,217),Color.FromArgb(255,242,210,134),Color.FromArgb(255,166,174,251),Color.FromArgb(255,224,154,209),Color.FromArgb(255,134,213,234),Color.FromArgb(255,245,157,140),Color.FromArgb(255,171,181,246),Color.FromArgb(255,147,218,181),Color.FromArgb(255,235,175,222)];
     SolidColorBrush Accent => new(colors[Math.Clamp(game, 0, colors.Length - 1)]);
     public GamesWorkspace(Workspace workspace)
     {
@@ -50,6 +50,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         var arrows = movementControls;
         foreach (var (name, vx, vy) in new[] { ("Move left", -1, 0), ("Move up", 0, -1), ("Move down", 0, 1), ("Move right", 1, 0) }) { var button = new Button { Content = name }; button.Click += (_, _) => Move(vx, vy); arrows.Children.Add(button); }
         orbitTap.Click += (_, _) => HitOrbit(); footer.Children.Add(orbitTap);
+        BuildAdvancedControls(footer);
         footer.Children.Add(arrows); footer.Children.Add(gameHelp); Grid.SetRow(footer, 3); Children.Add(footer);
         picker.SelectionChanged += (_, _) => { if (picker.SelectedIndex >= 0 && (picker.SelectedIndex != game || !stateReady)) OpenGame(picker.SelectedIndex); };
         canvas.PointerPressed += (sender, args) => { if (game is 0 or 5 or 7) Click(sender, args); }; canvas.RightTapped += (_, e) => { if (game == 3 && !ended && !paused) { var point = e.GetPosition(canvas); var index = (int)(point.Y / 60) * 8 + (int)(point.X / 60); if (index is >= 0 and < 64 && !revealed[index]) flags[index] = !flags[index]; Draw(); SaveCurrent(); } };
@@ -82,7 +83,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
             button.Click += (_, _) => { OpenGame(index); library.Visibility = Visibility.Collapsed; playScreen.Visibility = Visibility.Visible; if (!paused && !ended) timer.Start(); Focus(FocusState.Programmatic); };
             buttons.Add(button); cards.Children.Add(button);
         }
-        void Arrange() { var columns = ActualWidth >= 850 ? 4 : ActualWidth >= 650 ? 3 : ActualWidth >= 420 ? 2 : 1; cards.ColumnDefinitions.Clear(); cards.RowDefinitions.Clear(); for (var i = 0; i < columns; i++) cards.ColumnDefinitions.Add(new ColumnDefinition()); for (var i = 0; i < (names.Length + columns - 1) / columns; i++) cards.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); for (var i = 0; i < buttons.Count; i++) { Grid.SetColumn(buttons[i], i % columns); Grid.SetRow(buttons[i], i / columns); } }
+        void Arrange() { var columns = ActualWidth >= (names.Length % 3 == 0 ? 850 : 720) ? 4 : ActualWidth >= 650 && names.Length % 3 == 0 ? 3 : ActualWidth >= 420 ? 2 : 1; cards.ColumnDefinitions.Clear(); cards.RowDefinitions.Clear(); for (var i = 0; i < columns; i++) cards.ColumnDefinitions.Add(new ColumnDefinition()); for (var i = 0; i < (names.Length + columns - 1) / columns; i++) cards.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); for (var i = 0; i < buttons.Count; i++) { Grid.SetColumn(buttons[i], i % columns); Grid.SetRow(buttons[i], i / columns); } }
         SizeChanged += (_, _) => Arrange(); Arrange();
         content.Children.Add(cards); library.Children.Add(new ScrollViewer { Content = content }); Children.Add(library);
     }
@@ -102,6 +103,10 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         if (game == 9) { R(59,14,37,34,accent,12); R(104,14,37,34,faint,12); R(59,56,37,34,faint,12); R(104,56,37,34,new SolidColorBrush(colors[0]),12); }
         if (game == 10) { for(var y=0;y<3;y++) for(var x=0;x<5;x++) R(47+x*23,19+y*23,17,17,x==3 && y==1 ? new SolidColorBrush(Color.FromArgb(255,170,100,160)) : accent); }
         if (game == 11) { var ring = new Ellipse { Width=70,Height=70,Stroke=faint,StrokeThickness=7 };Canvas.SetLeft(ring,65);Canvas.SetTop(ring,17);canvas.Children.Add(ring);O(126,20,12,accent);O(68,62,9,White); }
+        if (game == 12) { for(var y=0;y<3;y++) for(var x=0;x<5;x++) O(47+x*23,19+y*23,17, (x+y)%3==0 ? White : accent); }
+        if (game == 13) { for(var y=0;y<3;y++) for(var x=0;x<5;x++) R(47+x*23,19+y*23,17,17, (x+y)%3==0 ? accent : faint); }
+        if (game == 14) { R(45,78,110,12,faint); R(55,61,90,12,accent); R(65,44,70,12,accent); R(85,20,70,12,White); }
+        if (game == 15) { for(var i=0;i<5;i++) R(32+i*28,24,22,56,new SolidColorBrush(colors[i*3]),8); }
     }
     void Reset()
     {
@@ -114,6 +119,8 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         if (game == 2) { SpawnTile(); SpawnTile(); }
         if (game == 6) { var cards = Enumerable.Range(1, 8).SelectMany(n => new[] { n, n }).OrderBy(_ => random.Next()).ToArray(); Array.Copy(cards, board, 16); }
         ResetPuzzles();
+        ResetAdvanced();
+        if (game >= 12) gameHelp.Text = game switch { 12 => "Coral moves first. Bracket ivory discs along a row, column or diagonal. Dots mark legal moves; a player with no move passes. Most discs wins when both pass.", 13 => "Select an empty square; use 1–9 or the digit buttons. Erase with Backspace/Delete. Each row, column and 3×3 box contains 1–9 once. Conflicting moves are rejected.", 14 => "Space / Place block · Keep the overlap. Near-exact alignment is perfect; every three consecutive perfects restores 8% of the original width, up to the original size.", _ => "Remember five colors in order, then recreate each with the RGB fields. Each color scores 0–100 using CIE76 Delta E in D65 CIELAB; all five total up to 500." };
         Draw();
     }
     void End(string message)
@@ -127,6 +134,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
     {
         if (paused || ended) return; tick++;
         UpdatePuzzles();
+        UpdateAdvanced();
         if (game == 6 && second >= 0 && tick >= hideAt) { revealed[first] = revealed[second] = false; first = second = -1; Draw(); }
         if (game == 0 && tick % 4 == 0) {
             turned = false;
@@ -154,6 +162,12 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
     }
     void Key(object sender, KeyRoutedEventArgs args)
     {
+        if (game == 14 && args.Key == Windows.System.VirtualKey.Space) { args.Handled = true; PlaceStack(); return; }
+        if (game == 13) {
+            var digit = args.Key >= Windows.System.VirtualKey.Number1 && args.Key <= Windows.System.VirtualKey.Number9 ? (int)args.Key - (int)Windows.System.VirtualKey.Number0 : args.Key >= Windows.System.VirtualKey.NumberPad1 && args.Key <= Windows.System.VirtualKey.NumberPad9 ? (int)args.Key - (int)Windows.System.VirtualKey.NumberPad0 : -1;
+            if (args.Key is Windows.System.VirtualKey.Back or Windows.System.VirtualKey.Delete) digit = 0;
+            if (digit >= 0) { args.Handled = true; EnterSudoku(digit); return; }
+        }
         if (game == 11 && args.Key == Windows.System.VirtualKey.Space) { args.Handled = true; HitOrbit(); return; }
         if (game == 9 && args.Key >= Windows.System.VirtualKey.Number1 && args.Key <= Windows.System.VirtualKey.Number4) { args.Handled = true; PuzzleClick((int)args.Key - (int)Windows.System.VirtualKey.Number1); return; }
         var x = 0; var y = 0;
@@ -215,6 +229,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
     void Draw()
     {
         canvas.Children.Clear(); status.Foreground = Accent; status.Text = ended ? endMessage + " · Score " + score : (paused ? "Paused · " : "") + "Score " + score;
+        if (game >= 12) { DrawAdvanced(); return; }
         if (game >= 8) { DrawPuzzles(); return; }
         if (game == 0) {
             for (var i=0;i<20;i++) { Rect(i*24,0,1,480,new SolidColorBrush(Color.FromArgb(18,143,215,199)),0); Rect(0,i*24,480,1,new SolidColorBrush(Color.FromArgb(18,143,215,199)),0); }

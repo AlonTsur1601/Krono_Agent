@@ -48,10 +48,10 @@ public sealed class SideChatPanel : Grid, IDisposable
         footer.Children.Add(ActionButton("Keep as independent chat", Keep)); footer.Children.Add(ActionButton("Transfer latest reply…", Transfer)); Grid.SetRow(footer, 3); Children.Add(footer);
         AutomationProperties.SetAutomationId(input, "SideComposer"); AutomationProperties.SetAutomationId(send, "SideSend"); AutomationProperties.SetAutomationId(status, "SideStatus"); AutomationProperties.SetAutomationId(expiry, "SideExpiry"); AutomationProperties.SetAutomationId(saved, "SideChatSelector");
         send.Click += async (_, _) => await Send(); stop.Click += async (_, _) => { if (runId is not null) await worker.Send(Guid.NewGuid().ToString(), "cancel", new { id = runId }); };
-        worker.Event += (requestId, type, data) => DispatcherQueue.TryEnqueue(() => {
+        worker.Event += (requestId, type, data) => {
             if (disposed || requestId != runId || !Available()) return;
             if (type == "chunk" && data?["type"]?.ToString() == "text") { response += data["content"]?.ToString(); if (streaming is not null) streaming.Text = response; scroll.ChangeView(null, scroll.ScrollableHeight, null); }
-        });
+        };
         saved.SelectionChanged += (_, _) => { if (runId is null && saved.SelectedItem is SavedSide side) { chatId = side.Id; Render(); } };
         RefreshList(); Render(); timer.Tick += (_, _) => UpdateExpiry(); timer.Start();
     }

@@ -225,13 +225,13 @@ public sealed partial class MainPage : Page
         } catch (Exception error) { if (generation == sessionGeneration) { Error(error); progress.Text = "Stopped"; RunActivity.Title = "Agent stopped"; RunActivity.IsClosable = true; if (ReferenceEquals(Body.Content, chatView)) activityChatId = null; UpdateActivityVisibility(); } }
         finally { if (generation == sessionGeneration) { runId = null; send.IsEnabled = true; chatList.IsEnabled = true; stop.IsEnabled = false; Approval.IsOpen = false; approvalId = null; ClearApprovalDetails(); if (workspace.AccountId.Length > 0) { workspace.FlushSideTransfers(); LoadChat(); } } }
     }
-    void WorkerEvent(string id, string type, JsonNode? data) => DispatcherQueue.TryEnqueue(() => {
+    void WorkerEvent(string id, string type, JsonNode? data) {
         terminal?.Receive(id, type, data);
         if (id != runId) return;
         if (type == "approval") { approvalId = data!["id"]!.ToString(); approvalDetails = data["details"]?.DeepClone(); var target = data["target"]?.ToString() ?? ""; Approval.Message = data["action"] + " · " + (target.Length > 240 ? target[..240] + "…" : target); Approval.IsOpen = true; RunActivity.Title = "Approval needed"; }
         if (type == "chunk" && data?["type"]?.ToString() == "text") { fullResponse += data["content"]?.ToString(); if (streaming is not null) streaming.Text = fullResponse; transcript.ChangeView(null, transcript.ScrollableHeight, null); }
         if (type == "chunk" && data?["type"]?.ToString() == "tool_call") { progress.Text = "Using " + data["toolCall"]?["name"]; RunActivity.Title = progress.Text; }
-    });
+    }
     void UpdateActivityVisibility() => RunActivity.IsOpen = activityChatId is not null && !ReferenceEquals(Body.Content, chatView);
     void ActivityClosed(InfoBar sender, InfoBarClosedEventArgs args) { if (runId is null) activityChatId = null; }
     void OpenActivityChat(object sender, RoutedEventArgs args) {
