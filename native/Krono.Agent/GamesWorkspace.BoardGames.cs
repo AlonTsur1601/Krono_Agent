@@ -14,14 +14,16 @@ public sealed partial class GamesWorkspace
     BlockRound blocks = new();
     KlondikeRound cards = new();
     static readonly int[] linePoints = [0,100,300,500,800];
-    int FallingWidth => game == SandBlocks ? 20 : 10;
+    const int LegacySandWidth = 20;
+    const int SandWidth = 40;
+    int FallingWidth => game == SandBlocks ? SandWidth : 10;
     int FallingHeight => FallingWidth * 2;
-    int BlockScale => game == SandBlocks ? 2 : 1;
+    int BlockScale => FallingWidth / 10;
     static readonly string[] suits = ["♠", "♥", "♣", "♦"];
     static readonly string[] suitNames = ["spades", "hearts", "clubs", "diamonds"];
     void BuildBoardControls(StackPanel footer)
     {
-        hardDrop.Click += (_, _) => DropNow(); footer.Children.Add(fitTray); footer.Children.Add(hardDrop);
+        hardDrop.Click += (_, _) => DropNow(); footer.Children.Add(fitTray); movementControls.Children.Add(hardDrop);
         AutomationProperties.SetAutomationId(hardDrop, "HardDrop");
     }
     void ResetBoardGames()
@@ -59,14 +61,14 @@ public sealed partial class GamesWorkspace
     void SpawnBlock()
     {
         blocks.Active = blocks.Next < 0 ? BagPiece() : blocks.Next; blocks.Next = BagPiece();
-        blocks.X = game == SandBlocks ? 6 : 3; blocks.Y = blocks.Rotation = 0; blocks.Settling = false;
+        blocks.X = 3 * BlockScale; blocks.Y = blocks.Rotation = 0; blocks.Settling = false;
         if (!FitsBlock(blocks.X, blocks.Y, 0)) End("Stack reached the top");
     }
     bool FitsBlock(int x, int y, int rotation) => BlockRules.CanPlace(blocks.Grid, FallingWidth, FallingHeight, BlockRules.Falling(blocks.Active, rotation), x, y, BlockScale);
     bool StepBlock(bool soft = false)
     {
         if (blocks.Settling || ended || paused) return false;
-        if (FitsBlock(blocks.X, blocks.Y + 1, blocks.Rotation)) { blocks.Y++; if (soft) score++; return true; }
+        if (FitsBlock(blocks.X, blocks.Y + 1, blocks.Rotation)) { blocks.Y++; if (soft && (game != SandBlocks || blocks.Y % 2 == 0)) score++; return true; }
         LockBlock(); return false;
     }
     void LockBlock()
@@ -98,20 +100,23 @@ public sealed partial class GamesWorkspace
     void DropNow()
     {
         if (game is not (FallingBlocks or SandBlocks) || paused || ended || blocks.Settling) return;
-        while (FitsBlock(blocks.X, blocks.Y + 1, blocks.Rotation)) { blocks.Y++; score += 2; }
+        while (FitsBlock(blocks.X, blocks.Y + 1, blocks.Rotation)) { blocks.Y++; score += game == SandBlocks ? 1 : 2; }
         LockBlock(); Draw(); SaveCurrent();
     }
     void UpdateBoardGames()
     {
         if (game is not (FallingBlocks or SandBlocks)) return;
         if (blocks.Settling) {
-            if (!BlockRules.SettleSand(blocks.Grid, FallingWidth, FallingHeight, tick % 2 == 0)) {
+            if (!BlockRules.SettleSand(blocks.Grid, FallingWidth, FallingHeight, true) &&
+                !BlockRules.SettleSand(blocks.Grid, FallingWidth, FallingHeight, false)) {
                 var cleared = BlockRules.ClearSandSpans(blocks.Grid, FallingWidth, FallingHeight);
-                if (cleared == 0) SpawnBlock(); else { score += cleared * 5 + 100; blocks.Lines++; ClearGlow([(120, 448, 240, 32)]); }
+                if (cleared == 0) SpawnBlock(); else { score += cleared * 5 / 4 + 100; blocks.Lines++; ClearGlow([(120, 448, 240, 32)]); }
+            } else {
+                BlockRules.SettleSand(blocks.Grid, FallingWidth, FallingHeight, tick % 2 == 0);
             }
             Draw(); return;
         }
-        if (tick % Math.Max(4, (game == SandBlocks ? 15 : 22) - blocks.Lines / 3) == 0) { StepBlock(); Draw(); }
+        if (tick % Math.Max(3, (game == SandBlocks ? 5 : 12) - blocks.Lines / 3) == 0) { StepBlock(); Draw(); }
     }
     void SolitaireClick(int kind, int pile = 0, int index = 0)
     {
@@ -139,10 +144,10 @@ public sealed partial class GamesWorkspace
         Rect(left - 4, 0, 248, 480, Ink(0x435a78), 8); Rect(left, 0, 240, 480, Ink(0x18253b), 6);
         for (var x = 1; x < 10; x++) Rect(left+x*24, 0, 1, 480, Ink(0x263650), 0);
         for (var y = 1; y < 20; y++) Rect(left, y*24, 240, 1, Ink(0x263650), 0);
-        for (var i = 0; i < blocks.Grid.Length; i++) if (blocks.Grid[i] > 0) {
+        if (game == SandBlocks) DrawSand(left, (int)unit);
+        else for (var i = 0; i < blocks.Grid.Length; i++) if (blocks.Grid[i] > 0) {
             var x = left + i % FallingWidth * unit; var y = i / FallingWidth * unit; var color = PieceBrush(blocks.Grid[i]);
-            if (game == SandBlocks) { Rect(x+1, y+1, unit-1, unit-1, color, 2); Rect(x+2+i%4, y+2+(i*3)%4, 3, 2, BlockShine, 1); }
-            else Bevel(x+1, y+1, unit-2, unit-2, color, 4);
+            Bevel(x+1, y+1, unit-2, unit-2, color, 4);
         }
         if (!ended && !blocks.Settling) {
             var piece = BlockRules.Falling(blocks.Active, blocks.Rotation); var ghost = blocks.Y;
@@ -155,6 +160,38 @@ public sealed partial class GamesWorkspace
         }
         Rect(374, 10, 100, 97, Ink(0x213350), 12); Label("NEXT", 389, 22, 16);
         foreach (var cell in BlockRules.Falling(blocks.Next, 0)) Bevel(386 + cell.X * 18, 53 + cell.Y * 18, 16, 16, PieceBrush(blocks.Next % (game == SandBlocks ? 4 : 7) + 1), 4);
+    }
+    void DrawSand(int left, int unit)
+    {
+        var clusters = new GeometryGroup?[7, 3];
+        for (var i = 0; i < blocks.Grid.Length; i++) {
+            var value = blocks.Grid[i];
+            if (value == 0) continue;
+            var tone = (i * 13 ^ i / 7) % 3;
+            var x = left + i % FallingWidth * unit;
+            var y = i / FallingWidth * unit;
+            var group = clusters[value - 1, tone] ??= new GeometryGroup();
+            group.Children.Add(new RectangleGeometry { Rect = new(x + .2, y + .2, unit - .4, unit - .4) });
+        }
+        for (var i = 0; i < 7; i++) for (var tone = 0; tone < 3; tone++) {
+            if (clusters[i, tone] is not { } group) continue;
+            var color = BlockColors[i].Color;
+            var shade = 9 * (tone - 1);
+            byte Tint(byte channel) => (byte)Math.Clamp(channel + shade, 0, 255);
+            canvas.Children.Add(new Microsoft.UI.Xaml.Shapes.Path { Data = group, Fill = new SolidColorBrush(Color.FromArgb(255, Tint(color.R), Tint(color.G), Tint(color.B))), IsHitTestVisible = false });
+        }
+    }
+    static void UpgradeSandGrid(BlockRound blocks)
+    {
+        var old = blocks.Grid;
+        if (old?.Length != LegacySandWidth * LegacySandWidth * 2 ||
+            blocks.X is < 0 or >= LegacySandWidth || blocks.Y is < 0 or >= LegacySandWidth * 2) return;
+        blocks.Grid = new int[SandWidth * SandWidth * 2];
+        for (var i = 0; i < old.Length; i++) {
+            var top = i / LegacySandWidth * 2 * SandWidth + i % LegacySandWidth * 2;
+            blocks.Grid[top] = blocks.Grid[top + 1] = blocks.Grid[top + SandWidth] = blocks.Grid[top + SandWidth + 1] = old[i];
+        }
+        blocks.X *= 2; blocks.Y *= 2;
     }
     static SolidColorBrush PieceBrush(int color) => BlockColors[Math.Clamp(color - 1, 0, 6)];
     void DrawFit()
@@ -169,7 +206,7 @@ public sealed partial class GamesWorkspace
         for (var i = 0; i < 3; i++) {
             var slot = i; var piece = blocks.Tray[i]; var preview = new Canvas { Width = 70, Height = 58 };
             if (piece >= 0) foreach (var cell in BlockRules.Fit(piece)) { var square = new Microsoft.UI.Xaml.Shapes.Rectangle { Width = 12, Height = 12, RadiusX = 3, RadiusY = 3, Fill = PieceBrush(piece % 7 + 1) }; Canvas.SetLeft(square, 6 + cell.X * 14); Canvas.SetTop(square, 2 + cell.Y * 14); preview.Children.Add(square); }
-            var button = new Button { Content = preview, IsEnabled = !paused && !ended && piece >= 0, BorderThickness = new Thickness(2), BorderBrush = slot == blocks.Selected ? ReadableAccent(game) : Muted };
+            var button = new Button { Content = preview, IsEnabled = !paused && !ended && piece >= 0, BorderThickness = new Thickness(2), BorderBrush = slot == blocks.Selected ? ReadableAccent : Muted };
             AutomationProperties.SetAutomationId(button, "FitPiece" + i); AutomationProperties.SetName(button, $"Piece {i + 1}{(i == blocks.Selected ? " selected" : "")}{(piece < 0 ? " used" : "")}"); button.Click += (_, _) => PickFit(slot); fitTray.Children.Add(button);
         }
     }

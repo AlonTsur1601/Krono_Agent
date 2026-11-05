@@ -32,7 +32,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
     static readonly string[] descriptions = ["Grow without hitting the walls", "An unbeaten minimax opponent", "Slide and merge matching tiles", "Reveal safe cells and flag mines", "Four connected discs to win", "Bounce through a field of bricks", "Turn cards and match pairs", "A rally against a reactive bot", "Toggle a cross. Darken every light.", "Watch the pattern. Play it back.", "Find the tile with a different shade", "Tap inside the arc. Aim for its core.", "Capture lines. Protect the corners.", "One solution. Nine rows of possibility.", "Place, trim, and build a taller tower", "Remember five shades. Rebuild them.", "Clear the maze while ghosts give chase", "Tap to fly between the towers", "Time two axes across nine throws", "Reassemble an illustrated night valley", "Fit a tray of shapes and clear lines", "Rotate, stack and clear falling pieces", "Build a color path from settled grains", "Build four suited foundations"];
     static readonly Color[] colors = [Color.FromArgb(255,143,215,199),Color.FromArgb(255,184,161,246),Color.FromArgb(255,242,201,130),Color.FromArgb(255,133,187,237),Color.FromArgb(255,244,146,159),Color.FromArgb(255,255,173,109),Color.FromArgb(255,177,165,244),Color.FromArgb(255,125,221,217),Color.FromArgb(255,242,210,134),Color.FromArgb(255,166,174,251),Color.FromArgb(255,224,154,209),Color.FromArgb(255,134,213,234),Color.FromArgb(255,245,157,140),Color.FromArgb(255,171,181,246),Color.FromArgb(255,147,218,181),Color.FromArgb(255,235,175,222),Color.FromArgb(255,145,218,243),Color.FromArgb(255,246,190,132),Color.FromArgb(255,244,151,170),Color.FromArgb(255,158,218,205),Color.FromArgb(255,184,169,243),Color.FromArgb(255,141,219,204),Color.FromArgb(255,247,189,130),Color.FromArgb(255,240,164,186)];
     SolidColorBrush Accent => new(colors[Math.Clamp(game, 0, colors.Length - 1)]);
-    SolidColorBrush ReadableAccent(int index) { var color = colors[index]; return new(ActualTheme == ElementTheme.Light ? Color.FromArgb(255, (byte)(color.R * .42), (byte)(color.G * .42), (byte)(color.B * .42)) : color); }
+    Brush ReadableAccent => KronoDesign.ThemeBrush("KronoAccentForeground", ActualTheme);
     public GamesWorkspace(Workspace workspace) : this(workspace, -1) { }
     private GamesWorkspace(Workspace workspace, int previewIndex)
     {
@@ -48,10 +48,10 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         var pause = new Button { Content = "Pause / resume" }; pause.Click += (_, _) => { if (ended) return; paused = !paused; if (!paused) timer.Start(); else timer.Stop(); Draw(); SaveCurrent(); }; toolbar.Children.Add(pause); Children.Add(toolbar);
         var header = ScoreHeader(); Grid.SetRow(header, 1); Children.Add(header);
         var stageContent = new Grid { Width = 480, Height = 480, CornerRadius = new CornerRadius(12) }; stageContent.Children.Add(canvas); stageContent.Children.Add(effects);
-        var view = new Viewbox { Child = stageContent, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, MaxHeight = 510 };
-        var gradient = new LinearGradientBrush { StartPoint = new(0,0), EndPoint = new(1,1) };
-        gradient.GradientStops.Add(new GradientStop { Color = Ink(0x122238).Color, Offset = 0 }); gradient.GradientStops.Add(new GradientStop { Color = Ink(0x192e43).Color, Offset = 1 });
-        var stage = new Border { Child = view, Background = gradient, CornerRadius = new CornerRadius(24), Padding = new Thickness(13), BorderThickness = new Thickness(1), BorderBrush = Ink(0x3c536b), HorizontalAlignment = HorizontalAlignment.Stretch };
+        var view = new Viewbox { Child = stageContent, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center };
+        var stage = new Border { Child = view, CornerRadius = new CornerRadius(24), Padding = new Thickness(11), BorderThickness = new Thickness(1), HorizontalAlignment = HorizontalAlignment.Stretch };
+        void SetStagePalette() { stage.Background = KronoDesign.ThemeBrush("KronoSidebar", ActualTheme); stage.BorderBrush = KronoDesign.ThemeBrush("KronoBorder", ActualTheme); }
+        SetStagePalette();
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(stage, "GameStage"); Grid.SetRow(stage, 2); Children.Add(stage);
         status.FontFamily = KronoDesign.CodeFont; status.FontSize = 18; status.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
         var footer = new StackPanel { Spacing = 8 };
@@ -73,7 +73,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         }; Loaded += (_, _) => { Focus(FocusState.Programmatic); if (!paused && playScreen?.Visibility == Visibility.Visible) timer.Start(); }; Unloaded += (_, _) => PauseAndSave();
         Reset();
         BuildLibrary();
-        ActualThemeChanged += (_, _) => { status.Foreground = ReadableAccent(game); for (var i = 0; i < saveLabels.Count; i++) saveLabels[i].Foreground = ReadableAccent(i); };
+        ActualThemeChanged += (_, _) => { SetStagePalette(); status.Foreground = ReadableAccent; foreach (var label in saveLabels) label.Foreground = ReadableAccent; };
     }
     void BuildLibrary()
     {
@@ -104,7 +104,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
             card.Children.Add(BoardPreview(i));
             card.Children.Add(new TextBlock { Text = names[i], FontFamily = (FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(14, 0, 14, 0) });
             card.Children.Add(new TextBlock { Text = descriptions[i], FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.Normal, Opacity = .72, TextWrapping = TextWrapping.Wrap, MinHeight = 34, Margin = new Thickness(14, 0, 14, 6) });
-            var saveLabel = new TextBlock { Text = BestCaption(i), FontFamily = KronoDesign.CodeFont, FontSize = 10, CharacterSpacing = 85, Foreground = ReadableAccent(i), Margin = new Thickness(14, 0, 14, 14) }; saveLabels.Add(saveLabel); card.Children.Add(saveLabel);
+            var saveLabel = new TextBlock { Text = BestCaption(i), FontFamily = KronoDesign.CodeFont, FontSize = 10, CharacterSpacing = 85, Foreground = ReadableAccent, Margin = new Thickness(14, 0, 14, 14) }; saveLabels.Add(saveLabel); card.Children.Add(saveLabel);
             var button = new Button { Content = card, Padding = new Thickness(0), CornerRadius = new CornerRadius(16), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(button, "GameTile" + i);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, names[i]);
@@ -153,7 +153,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         ResetArcade();
         ResetBoardGames();
         if (game >= 12) gameHelp.Text = game switch { 12 => "Coral moves first. Bracket ivory discs along a row, column or diagonal. Dots mark legal moves; a player with no move passes. Most discs wins when both pass.", 13 => "Select an empty square; use 1–9 or the digit buttons. Erase with Backspace/Delete. Each row, column and 3×3 box contains 1–9 once. Conflicting moves are rejected.", 14 => "Space / Place block · Keep the overlap. Near-exact alignment is perfect; every three consecutive perfects restores 8% of the original width, up to the original size.", _ => "Remember five colors in order, then recreate each with the RGB fields. Each color scores 0–100 using CIE76 Delta E in D65 CIELAB; all five total up to 500." };
-        if (game >= MazeChase) gameHelp.Text = game switch { MazeChase => "Arrow keys / WASD · Clear every dot. Large dots temporarily let you catch ghosts. You have three lives.", Flap => "Space / Flap · Each tap lifts your bird. Pass between the towers without touching them or the ground.", Darts => "Space / Aim / throw · First press locks horizontal aim; second throws. Nine darts use standard singles, doubles, triples and bullseye scoring.", _ => "Select two pieces to swap them. Show reference previews the original illustration. Assemble the valley in as few moves as possible." };
+        if (game >= MazeChase) gameHelp.Text = game switch { MazeChase => "Arrow keys / WASD · Clear every dot. Large dots temporarily let you catch ghosts. You have three lives.", Flap => "Space / Flap · Each tap lifts your bird. Pass between the towers without touching them or the ground.", Darts => "Press Space or use the aim button. Lock left to right first, then lock the height to throw. You have nine darts.", _ => "Select two pieces to swap them. Show reference previews the original illustration. Assemble the valley in as few moves as possible." };
         if (game >= BlockFit) gameHelp.Text = game switch { BlockFit => "Select a tray piece (1–3), then its top-left square. Full rows and columns clear together. The tray refills when emptied; the game ends when no piece fits.", FallingBlocks => "Left/right to move, up to rotate, down to lower, Space for hard drop. Clear complete rows. The outline shows the landing position.", SandBlocks => "Move and rotate as in Falling Blocks. Locked pieces turn into grains; a connected color spanning both walls clears when the sand settles.", _ => "Draw from Stock. Select a face-up card or run, then its destination. Tableau descends in alternating colors; empty columns require kings. Foundations ascend by suit from ace to king." };
         if (!previewOnly) Draw();
     }
@@ -175,7 +175,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         UpdateArcade();
         UpdateBoardGames();
         if (game == 6 && second >= 0 && tick >= hideAt) { revealed[first] = revealed[second] = false; first = second = -1; Draw(); }
-        if (game == 0 && tick % 4 == 0) {
+        if (game == 0 && tick % Math.Max(2, 3 - score / 80) == 0) {
             turned = false;
             var x = snake[0] % 20 + dx; var y = snake[0] / 20 + dy; var next = y * 20 + x;
             if (x is < 0 or >= 20 || y is < 0 or >= 20 || snake.Take(snake.Count - (next == food ? 0 : 1)).Contains(next)) { End("Game over"); return; }
@@ -273,7 +273,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
     void Label(string text, double x, double y, double size = 26, bool dark = false) { var label = new TextBlock { Text = text, FontSize = size, FontFamily = KronoDesign.CodeFont, Foreground = dark ? Ink(0x10231f) : White, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }; Canvas.SetLeft(label, x); Canvas.SetTop(label, y); canvas.Children.Add(label); }
     void Draw()
     {
-        canvas.Children.Clear(); ArcBackdrop(); UpdateScore(); status.Foreground = ReadableAccent(game); status.FontFamily = KronoDesign.CodeFont; status.Text = ended ? endMessage + " · Score " + score : (paused ? "Paused · " : "") + "Score " + score;
+        canvas.Children.Clear(); ArcBackdrop(); UpdateScore(); status.Foreground = ReadableAccent; status.FontFamily = KronoDesign.CodeFont; status.Text = ended ? endMessage + " · Score " + score : (paused ? "Paused · " : "") + "Score " + score;
         DrawContent(); StageStatus();
     }
     void DrawContent()

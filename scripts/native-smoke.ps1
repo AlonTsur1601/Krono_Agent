@@ -84,6 +84,10 @@ function Capture([string]$Name) {
 }
 try {
     Launch
+    $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
+    if ($windowPattern.Current.WindowVisualState -ne [Windows.Automation.WindowVisualState]::Maximized) { throw 'Krono did not open maximized' }
+    Find 'EmailInput' | Out-Null
+    Capture 'native-login.png'
     SetValue 'EmailInput' 'native-fixture@example.com'
     SetValue 'PasswordInput' 'fixture-password'
     Start-Sleep -Milliseconds 150
@@ -202,7 +206,7 @@ try {
     $model = Find 'ModelSelector'
     $edit = $model.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit)))
     if (($edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).Current.Value -ne 'native-fixture-model') { throw 'Provider switching lost its model selection' }
-    foreach ($cloudProfile in @(@{Id='azure';Name='Azure OpenAI'},@{Id='xai';Name='xAI'},@{Id='groq';Name='Groq'},@{Id='mistral';Name='Mistral'},@{Id='openrouter';Name='OpenRouter'})) {
+    foreach ($cloudProfile in @(@{Id='azure';Name='Azure OpenAI'},@{Id='xai';Name='xAI (Grok)'},@{Id='groq';Name='Groq'},@{Id='mistral';Name='Mistral'},@{Id='openrouter';Name='OpenRouter'})) {
         SelectNav 'Settings'
         SelectChoice 'Provider' $cloudProfile.Name
         SetValue 'ProviderEndpoint' ($Fixture + '/cloud/' + $cloudProfile.Id + '/v1')
@@ -440,11 +444,13 @@ try {
             Capture 'native-flap.png'
         }
         if ($game -eq 'Darts') {
+            if ((Find 'GameStatus').Current.Name -notmatch '^Dart 1/9 .* Choose horizontal position') { throw 'Darts did not begin with horizontal aim' }
             Invoke 'ArcadeAction'
-            if ((Find 'GameStatus').Current.Name -notmatch 'Release') { throw 'Darts did not lock horizontal aim' }
+            if ((Find 'GameStatus').Current.Name -notmatch 'Choose height') { throw 'Darts did not lock horizontal aim' }
             Invoke 'ArcadeAction'
+            if ((Find 'GameStatus').Current.Name -notmatch '^Dart 2/9 .* Choose horizontal position') { throw 'Darts did not return to horizontal aim after throwing' }
             Invoke 'ArcadeAction'
-            if ((Find 'GameStatus').Current.Name -notmatch '^Dart 2/9 · Release') { throw 'Darts did not register the first throw' }
+            if ((Find 'GameStatus').Current.Name -notmatch '^Dart 2/9 .* Choose height') { throw 'Darts did not register the first throw' }
             Capture 'native-darts.png'
         }
         if ($game -eq 'Jigsaw') {
@@ -466,7 +472,7 @@ try {
             Invoke 'HardDrop'
             Invoke 'Pause / resume' -ByName
             $state = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq $game).state
-            $expected = if ($game -eq 'Sand Blocks') { 16 } else { 4 }
+            $expected = if ($game -eq 'Sand Blocks') { 64 } else { 4 }
             if ($state.Moves -ne 1 -or @($state.Blocks.Grid | Where-Object { $_ -gt 0 }).Count -ne $expected) { throw ('Hard drop did not lock the expected cells: ' + $game) }
             Capture ('native-' + $game.Replace(' ', '-').ToLowerInvariant() + '.png')
         }
@@ -489,7 +495,10 @@ try {
     $deadline = (Get-Date).AddSeconds(10)
     do { Start-Sleep -Milliseconds 200; $output = Find 'TerminalOutput'; $text = ($output.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).Current.Value } while ($text -notmatch '42' -and (Get-Date) -lt $deadline)
     if ($text -notmatch '42') { throw 'Native PTY did not produce 42' }
+    Capture 'native-terminal.png'
     SelectNav 'Browser'
+    Find 'Enter an address or search above.' -ByName | Out-Null
+    Capture 'native-browser-new-tab.png'
     Start-Sleep -Seconds 3
     Find 'Address or search' -ByName | Out-Null
     $deadline = (Get-Date).AddSeconds(30)
@@ -598,7 +607,7 @@ try {
     if ($state -notmatch '^(Flight ended|Wing clipped)') { throw 'Resumed Flap physics never reached a collision' }
     SelectGame 'Darts'
     Invoke 'Pause / resume' -ByName
-    if ((Find 'GameStatus').Current.Name -notmatch '^Dart 2/9 · Release') { throw 'Darts lost the locked axis on restart' }
+    if ((Find 'GameStatus').Current.Name -notmatch '^Dart 2/9 .* Choose height') { throw 'Darts lost the locked axis on restart' }
     1..15 | ForEach-Object { Invoke 'ArcadeAction' }
     if ((Find 'GameStatus').Current.Name -notmatch '^Nine darts thrown') { throw 'Darts did not complete nine throws' }
     SelectGame 'Jigsaw'

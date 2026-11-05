@@ -6,7 +6,7 @@
     "help": "Enter your resource URL ending in /openai/v1 and its API key. Use your deployment name as the model ID. Keyless Microsoft Entra authentication is not implemented yet."
   },
   "xai": {
-    "name": "xAI",
+    "name": "xAI (Grok)",
     "endpoint": "https://api.x.ai/v1",
     "requiresKey": true,
     "help": "Use an xAI API key and a chat-compatible model from its catalog. Enable tool calling only for a model that supports it. Usage follows your xAI account."

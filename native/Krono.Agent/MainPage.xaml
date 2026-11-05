@@ -1,7 +1,7 @@
 <Page x:Class="Krono_Agent.MainPage" FontFamily="{ThemeResource KronoTextFont}" FontSize="{ThemeResource KronoTextSize}" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives">
 <Grid Background="{ThemeResource KronoBackground}">
 <NavigationView x:Name="Nav" Visibility="Collapsed" IsBackButtonVisible="Collapsed" IsSettingsVisible="False" PaneDisplayMode="Auto" OpenPaneLength="240" Background="{ThemeResource KronoSidebar}" SelectionChanged="Navigate">
-<NavigationView.PaneHeader><StackPanel Orientation="Horizontal" Spacing="10" Margin="18,8,0,22"><Image Width="34" Height="34"><Image.Source><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg"/></Image.Source></Image><StackPanel><TextBlock Text="KRONO" FontSize="19" FontWeight="Bold" CharacterSpacing="160"/><TextBlock Text="WORKSPACE" FontSize="9" CharacterSpacing="220" Foreground="{ThemeResource KronoMuted}"/></StackPanel></StackPanel></NavigationView.PaneHeader>
+<NavigationView.PaneHeader><StackPanel Orientation="Horizontal" Spacing="5" Margin="18,8,0,22" AutomationProperties.Name="Krono Agent"><Image Width="34" Height="34"><Image.Source><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg"/></Image.Source></Image><StackPanel VerticalAlignment="Center"><TextBlock Text="KRONO" FontSize="19" FontWeight="Bold" CharacterSpacing="160"/><TextBlock Text="AGENT" FontSize="9" CharacterSpacing="220" Foreground="{ThemeResource KronoMuted}"/></StackPanel></StackPanel></NavigationView.PaneHeader>
 <NavigationView.MenuItems>
 <NavigationViewItem Content="Chats" Icon="Message" Tag="chats" IsSelected="True"/>
 <NavigationViewItem Content="Projects &amp; memory" Icon="Folder" Tag="projects"/>
@@ -23,17 +23,23 @@
 </Grid>
 </Grid></NavigationView>
 <ProgressRing x:Name="StartupProgress" IsActive="True" Width="36" Height="36" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-<ScrollViewer x:Name="SignIn" Visibility="Collapsed" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="440" Padding="32"><StackPanel Spacing="16" Width="350">
+<ScrollViewer x:Name="SignIn" Visibility="Collapsed" VerticalScrollBarVisibility="Hidden" VerticalContentAlignment="Stretch" HorizontalContentAlignment="Stretch">
+<Grid Padding="24">
+<Grid.Background>
+<LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="{ThemeResource KronoLoginStart}" Offset="0"/><GradientStop Color="{ThemeResource KronoLoginEnd}" Offset="1"/></LinearGradientBrush>
+</Grid.Background>
+<Border MaxWidth="440" HorizontalAlignment="Stretch" VerticalAlignment="Center" Padding="32" CornerRadius="22" Background="{ThemeResource KronoSurface}" BorderBrush="{ThemeResource KronoBorder}" BorderThickness="1">
+<StackPanel Spacing="14">
 <Image Width="72" Height="72" HorizontalAlignment="Left"><Image.Source><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg"/></Image.Source></Image>
 <TextBlock Text="Welcome to Krono" FontFamily="{ThemeResource KronoDisplayFont}" Style="{ThemeResource TitleTextBlockStyle}"/>
 <TextBlock Text="Sign in to your workspace." Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-<TextBox x:Name="EmailInput" Header="Email" PlaceholderText="you@example.com" InputScope="EmailSmtpAddress"/>
+<TextBox x:Name="EmailInput" Header="Email" InputScope="EmailSmtpAddress"/>
 <PasswordBox x:Name="PasswordInput" Header="Password"/>
-<Button x:Name="LoginButton" Content="Sign in" Style="{ThemeResource AccentButtonStyle}" HorizontalAlignment="Stretch" Click="Login"/>
+<Button x:Name="LoginButton" Content="Sign in" Style="{StaticResource KronoPrimaryButton}" HorizontalAlignment="Stretch" Click="Login"/>
 <Button x:Name="RegisterButton" Content="Create an account" HorizontalAlignment="Stretch" Click="Register"/>
-<ProgressRing x:Name="AuthProgress" IsActive="False" Width="24" Height="24"/>
+<ProgressRing x:Name="AuthProgress" Visibility="Collapsed" IsActive="False" Width="24" Height="24"/>
 <TextBlock x:Name="AuthError" TextWrapping="Wrap" Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
 <TextBlock Text="Your sign-in is encrypted on this Windows account and remembered until you sign out." TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-</StackPanel></ScrollViewer>
+</StackPanel></Border></Grid></ScrollViewer>
 </Grid></Page>
 

@@ -9,23 +9,25 @@ public sealed class BrowserWorkspace : Grid, IDisposable
 {
     readonly Workspace workspace;
     readonly MainPage owner;
-    readonly TabView tabs = new() { IsAddTabButtonVisible = true };
-    readonly TextBox address = new() { PlaceholderText = "Address or search", MinWidth = 240 };
+    readonly TabView tabs = new() { IsAddTabButtonVisible = true, VerticalAlignment = VerticalAlignment.Stretch };
+    readonly TextBox address = new() { PlaceholderText = "Address or search", MinWidth = 120 };
     readonly AppBarButton go;
     readonly Dictionary<TabViewItem, WebView2> views = new();
     readonly HashSet<TabViewItem> privateTabs = new();
+    readonly HashSet<WebView2> readyViews = new();
     WebView2? Current => tabs.SelectedItem is TabViewItem tab ? views.GetValueOrDefault(tab) : null;
     public BrowserWorkspace(Workspace workspace, MainPage owner)
     {
         this.workspace = workspace; this.owner = owner;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(address, "BrowserAddress");
         RowSpacing = 12; RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition());
-        var bar = new CommandBar { DefaultLabelPosition = CommandBarDefaultLabelPosition.Right };
+        var bar = new CommandBar { DefaultLabelPosition = CommandBarDefaultLabelPosition.Collapsed, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         bar.PrimaryCommands.Add(Action("Back", Symbol.Back, () => { if (Current?.CanGoBack == true) Current.GoBack(); }));
         bar.PrimaryCommands.Add(Action("Forward", Symbol.Forward, () => { if (Current?.CanGoForward == true) Current.GoForward(); }));
         bar.PrimaryCommands.Add(Action("Reload", Symbol.Refresh, () => Current?.Reload()));
         bar.Content = address; address.KeyDown += (_, e) => { if (e.Key == Windows.System.VirtualKey.Enter) Go(); };
         go = Action("Go", Symbol.Go, Go); bar.PrimaryCommands.Add(go);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(go, "Go");
         bar.SecondaryCommands.Add(Action("Private tab", Symbol.Permissions, () => _ = Open("about:blank", true)));
         bar.SecondaryCommands.Add(Action("Find on page", Symbol.Find, async () => {
             var input = new TextBox { PlaceholderText = "Find text" };
@@ -43,24 +45,52 @@ public sealed class BrowserWorkspace : Grid, IDisposable
         bar.SecondaryCommands.Add(Action("Zoom out", Symbol.ZoomOut, () => _ = Current?.ExecuteScriptAsync("document.body.style.zoom=Math.max(.3,(parseFloat(document.body.style.zoom)||1)-0.1)")));
         Children.Add(bar); Grid.SetRow(tabs, 1); Children.Add(tabs);
         tabs.AddTabButtonClick += (_, _) => _ = Open("about:blank");
-        tabs.TabCloseRequested += (_, args) => { if (args.Tab is TabViewItem tab) { views[tab].Close(); views.Remove(tab); privateTabs.Remove(tab); tabs.TabItems.Remove(tab); } };
-        tabs.SelectionChanged += (_, _) => address.Text = Current?.Source?.ToString() ?? "";
+        tabs.TabCloseRequested += (sender, args) => {
+            if (args.Tab is not TabViewItem tab || !views.Remove(tab, out var view)) return;
+            readyViews.Remove(view); view.Close(); privateTabs.Remove(tab); tabs.TabItems.Remove(tab);
+            if (tabs.TabItems.Count == 0) _ = Open("about:blank");
+        };
+        tabs.SelectionChanged += (_, _) => UpdateAddress();
         Loaded += async (_, _) => { if (tabs.TabItems.Count == 0) await Open("about:blank"); };
     }
     static AppBarButton Action(string label, Symbol symbol, Action action) { var button = new AppBarButton { Label = label, Icon = new SymbolIcon(symbol) }; button.Click += (_, _) => action(); return button; }
-    void Go() { try { var input = address.Text.Trim(); var url = Uri.TryCreate(input, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? input : "https://www.google.com/search?q=" + Uri.EscapeDataString(input); if (Current is { } view) view.Source = new Uri(url); } catch (Exception error) { owner.Error(error); } }
+    void UpdateAddress()
+    {
+        address.Text = Current?.Source is { Scheme: "http" or "https" } source ? source.ToString() : "";
+        address.IsEnabled = go.IsEnabled = Current is { } view && readyViews.Contains(view);
+    }
+    void Go()
+    {
+        var input = address.Text.Trim();
+        if (input.Length == 0 || Current is not { } view || !readyViews.Contains(view)) return;
+        try {
+            if (!input.Contains(' ') && input.Contains('.') && !input.Contains("://")) input = "https://" + input;
+            var url = Uri.TryCreate(input, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? uri : new Uri("https://www.google.com/search?q=" + Uri.EscapeDataString(input));
+            view.Source = url;
+        } catch (Exception error) { owner.Error(error); }
+    }
     async Task Open(string url, bool isPrivate = false)
     {
         try {
-            var view = new WebView2(); var tab = new TabViewItem { Header = isPrivate ? "Private tab" : "New tab", Content = view };
-            address.IsEnabled = false; go.IsEnabled = false;
+            var view = new WebView2 { Visibility = Visibility.Collapsed };
+            var tabName = isPrivate ? "Private tab" : "New tab";
+            var start = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Spacing = 12 };
+            start.Children.Add(new SymbolIcon(isPrivate ? Symbol.Permissions : Symbol.World));
+            start.Children.Add(new TextBlock { Text = tabName, FontSize = 28, TextAlignment = TextAlignment.Center });
+            start.Children.Add(new TextBlock { Text = "Enter an address or search above.", TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Opacity = .72 });
+            var content = new Grid { Background = KronoDesign.ThemeBrush("KronoBackground", ActualTheme), Padding = new Thickness(16) };
+            content.Children.Add(start); content.Children.Add(view);
+            var tab = new TabViewItem { Header = tabName, Content = content };
             views[tab] = view; if (isPrivate) privateTabs.Add(tab); tabs.TabItems.Add(tab); tabs.SelectedItem = tab;
             var folder = Path.Combine(Workspace.Home, "native-browser", workspace.AccountId, "default");
             var environment = await CoreWebView2Environment.CreateWithOptionsAsync(null, folder, null);
+            if (!views.ContainsKey(tab)) return;
             var options = environment.CreateCoreWebView2ControllerOptions();
             options.IsInPrivateModeEnabled = isPrivate;
             options.ProfileName = isPrivate ? "Private" : "Default";
             await view.EnsureCoreWebView2Async(environment, options);
+            if (!views.ContainsKey(tab)) return;
+            view.CoreWebView2.NavigationStarting += (_, _) => { content.Padding = new Thickness(0); start.Visibility = Visibility.Collapsed; view.Visibility = Visibility.Visible; };
             view.CoreWebView2.DocumentTitleChanged += (_, _) => tab.Header = (isPrivate ? "Private · " : "") + view.CoreWebView2.DocumentTitle;
             view.CoreWebView2.NavigationCompleted += (_, args) => {
                 if (Current == view && view.Source?.ToString() != "about:blank") address.Text = view.Source?.ToString() ?? "";
@@ -70,10 +100,11 @@ public sealed class BrowserWorkspace : Grid, IDisposable
             view.CoreWebView2.NewWindowRequested += (sender, args) => { args.Handled = true; if (Uri.TryCreate(args.Uri, UriKind.Absolute, out var target) && target.Scheme is "http" or "https") _ = Open(args.Uri, isPrivate); };
             view.CoreWebView2.PermissionRequested += async (_, args) => { using var deferral = args.GetDeferral(); args.State = CoreWebView2PermissionState.Deny; try { if (await owner.Confirm("Website permission", args.Uri + " requests " + args.PermissionKind)) args.State = CoreWebView2PermissionState.Allow; } catch { args.State = CoreWebView2PermissionState.Deny; } };
             view.CoreWebView2.DownloadStarting += async (_, args) => { using var deferral = args.GetDeferral(); args.Cancel = true; try { args.Cancel = !await owner.Confirm("Download file", Path.GetFileName(args.ResultFilePath) + " from " + args.DownloadOperation.Uri); } catch { args.Cancel = true; } };
-            view.Source = new Uri(url);
-            address.IsEnabled = true; go.IsEnabled = true;
-        } catch (Exception error) { address.IsEnabled = true; go.IsEnabled = true; owner.Error(error); }
+            readyViews.Add(view);
+            if (url != "about:blank") view.Source = new Uri(url);
+            if (Current == view) { UpdateAddress(); if (url == "about:blank") address.Focus(FocusState.Programmatic); }
+        } catch (Exception error) { UpdateAddress(); owner.Error(error); }
     }
-    public void Dispose() { foreach (var view in views.Values) view.Close(); views.Clear(); tabs.TabItems.Clear(); }
+    public void Dispose() { foreach (var view in views.Values) view.Close(); views.Clear(); readyViews.Clear(); privateTabs.Clear(); tabs.TabItems.Clear(); }
 }
 

@@ -8,7 +8,7 @@ namespace Krono_Agent;
 public sealed class TerminalWorkspace : Grid, IDisposable
 {
     readonly AgentWorker worker;
-    readonly TabView tabs = new();
+    readonly TabView tabs = new() { VerticalAlignment = VerticalAlignment.Stretch };
     readonly Dictionary<string, TerminalBuffer> buffers = new();
     readonly Dictionary<string, (TabViewItem Tab, TextBox Output)> terminals = new();
     readonly TextBox input = new() { PlaceholderText = "PowerShell input · Enter to send", FontFamily = KronoDesign.CodeFont };
@@ -17,11 +17,22 @@ public sealed class TerminalWorkspace : Grid, IDisposable
         this.worker = worker;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(input, "TerminalInput");
         RowSpacing = 10; RowDefinitions.Add(new RowDefinition()); RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        void SetTabPalette()
+        {
+            var surface = KronoDesign.ThemeBrush("KronoSurface", ActualTheme);
+            tabs.Resources["TabViewItemHeaderBackgroundSelected"] = surface;
+            tabs.Resources["TabViewBorderBrush"] = surface;
+        }
+        SetTabPalette();
+        ActualThemeChanged += (_, _) => SetTabPalette();
         Children.Add(tabs);
-        var commands = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        input.MinWidth = 350; commands.Children.Add(input);
-        var send = new Button { Content = "Run input" }; send.Click += async (_, _) => await WriteInput(); commands.Children.Add(send);
-        var interrupt = new Button { Content = "Interrupt" }; interrupt.Click += async (_, _) => { var id = SelectedId(); if (id is not null) await worker.Request(Guid.NewGuid().ToString(), "terminal:write", new { id, content = "\u0003" }); }; commands.Children.Add(interrupt);
+        var commands = new Grid { ColumnSpacing = 8 };
+        commands.ColumnDefinitions.Add(new ColumnDefinition());
+        commands.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        commands.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        commands.Children.Add(input);
+        var send = new Button { Content = "Run input" }; send.Click += async (_, _) => await WriteInput(); Grid.SetColumn(send, 1); commands.Children.Add(send);
+        var interrupt = new Button { Content = "Interrupt" }; interrupt.Click += async (_, _) => { var id = SelectedId(); if (id is not null) await worker.Request(Guid.NewGuid().ToString(), "terminal:write", new { id, content = "\u0003" }); }; Grid.SetColumn(interrupt, 2); commands.Children.Add(interrupt);
         Grid.SetRow(commands, 1); Children.Add(commands);
         tabs.AddTabButtonClick += async (_, _) => await Create();
         tabs.TabCloseRequested += async (_, args) => { var entry = terminals.FirstOrDefault(t => t.Value.Tab == args.Tab); if (entry.Key is not null) { await worker.Request(Guid.NewGuid().ToString(), "terminal:close", new { id = entry.Key }); terminals.Remove(entry.Key); tabs.TabItems.Remove(args.Tab); } };
@@ -36,7 +47,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
     async Task Create()
     {
         var id = Guid.NewGuid().ToString();
-        var output = new TextBox { IsReadOnly = true, AcceptsReturn = true, FontFamily = KronoDesign.CodeFont, FontSize = KronoDesign.CodeSize, TextWrapping = TextWrapping.NoWrap, BorderThickness = new Thickness(0) };
+        var output = new TextBox { IsReadOnly = true, AcceptsReturn = true, FontFamily = KronoDesign.CodeFont, FontSize = KronoDesign.CodeSize, TextWrapping = TextWrapping.NoWrap, BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(0, 0, 10, 10) };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(output, "TerminalOutput");
         var tab = new TabViewItem { Header = "PowerShell", Content = output }; terminals[id] = (tab, output); buffers[id] = new TerminalBuffer(); tabs.TabItems.Add(tab); tabs.SelectedItem = tab;
         try { await worker.Request(id, "terminal:create", new { }); } catch (Exception error) { output.Text = error.Message; }

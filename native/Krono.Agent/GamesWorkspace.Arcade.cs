@@ -24,9 +24,10 @@ public sealed partial class GamesWorkspace
     void ResetArcade()
     {
         arcade = new ArcadeSave();
+        arcadeAction.IsEnabled = true;
         arcadeAction.Visibility = game is Flap or Darts ? Visibility.Visible : Visibility.Collapsed;
         jigsawPreview.Visibility = game == Jigsaw ? Visibility.Visible : Visibility.Collapsed; jigsawPreview.IsChecked = false;
-        arcadeAction.Content = game == Flap ? "Flap" : "Aim / throw";
+        arcadeAction.Content = game == Flap ? "Flap" : "Lock horizontal aim";
         if (game == MazeChase) arcade.Pellets = ArcadeRules.Maze.Select(c => c == '.' ? 1 : c == 'o' ? 2 : 0).ToArray();
         if (game == Flap) arcade.Pipes.Add([420, 245, 0]);
         if (game == Jigsaw) { int[] pieces; do { pieces = Enumerable.Range(0, 16).OrderBy(_ => random.Next()).ToArray(); } while (pieces.Select((piece, i) => piece == i).All(v => v)); Array.Copy(pieces, board, 16); }
@@ -36,13 +37,13 @@ public sealed partial class GamesWorkspace
         if (ended || paused) return;
         if (game == Flap) { arcade.FlapStarted = true; arcade.BirdVelocity = -7.6; }
         if (game == Darts) {
-            if (!arcade.XLocked) { arcade.DartX = AimX; arcade.XLocked = true; }
+            if (!arcade.XLocked) { arcade.DartX = AimX; arcade.DartAxisTick = tick; arcade.XLocked = true; }
             else { var y = AimY; var points = ArcadeRules.DartScore(arcade.DartX, y); arcade.Hits.Add([arcade.DartX, y]); arcade.XLocked = false; score += points; gameMessage = $"Last dart {points}"; if (arcade.Hits.Count == 9) End("Nine darts thrown"); }
         }
         Draw(); SaveCurrent();
     }
     double AimX => Math.Sin(tick * .113) * 187;
-    double AimY => Math.Sin(tick * .137 + .9) * 187;
+    double AimY => Math.Sin((tick - arcade.DartAxisTick) * .137) * 187;
     void UpdateArcade()
     {
         if (game == MazeChase && tick % 5 == 0 && arcade.WantedDirection != 0) {
@@ -115,10 +116,28 @@ public sealed partial class GamesWorkspace
             Rect(105, arcade.BirdY - 12, 29, 24, Accent, 12); Rect(107, arcade.BirdY, 17, 9, White, 6); Rect(125, arcade.BirdY - 6, 5, 5, Muted, 2); Rect(134, arcade.BirdY, 9, 5, new SolidColorBrush(colors[2]), 2);
         }
         if (game == Darts) {
-            if (running) status.Text = $"Dart {arcade.Hits.Count + 1}/9 · {(arcade.XLocked ? "Release" : "Lock horizontal aim")} · Score {score}";
+            arcadeAction.Content = arcade.XLocked ? "Lock height & throw" : "Lock horizontal aim";
+            arcadeAction.IsEnabled = running;
+            if (running) status.Text = $"Dart {arcade.Hits.Count + 1}/9 · {(arcade.XLocked ? "2/2 Choose height" : "1/2 Choose horizontal position")} · Score {score}";
             dartboard ??= MakeDartboard(); canvas.Children.Add(dartboard);
-            foreach (var hit in arcade.Hits) Rect(237 + hit[0], 237 + hit[1], 6, 6, White, 3);
-            if (!ended) { var x = arcade.XLocked ? arcade.DartX : AimX; var y = AimY; Rect(239 + x, 48, 2, 384, Accent, 0); if (arcade.XLocked) Rect(48, 239 + y, 384, 2, Accent, 0); }
+            for (var i = 0; i < arcade.Hits.Count; i++) {
+                var hit = arcade.Hits[i]; var x = 240 + hit[0]; var y = 240 + hit[1];
+                var latest = i == arcade.Hits.Count - 1;
+                Rect(x - 5, y - 5, 10, 10, Ink(0x1b1717), 5);
+                canvas.Children.Add(new Line { X1 = x, Y1 = y, X2 = x + 12, Y2 = y - 15, Stroke = latest ? Ink(0xf6be84) : White, StrokeThickness = 2 });
+                Rect(x + 8, y - 19, 10, 7, latest ? Ink(0xf6be84) : Ink(0xb7a79a), 2);
+            }
+            if (!ended) {
+                var x = 240 + (arcade.XLocked ? arcade.DartX : AimX);
+                var y = 240 + AimY;
+                var guide = Ink(0x91efba);
+                Rect(x - 1, 52, 2, 376, arcade.XLocked ? Ink(0x96a5a1) : guide, 0);
+                if (arcade.XLocked) {
+                    Rect(52, y - 1, 376, 2, guide, 0);
+                    var target = new Ellipse { Width = 20, Height = 20, Stroke = guide, StrokeThickness = 3 };
+                    Canvas.SetLeft(target, x - 10); Canvas.SetTop(target, y - 10); canvas.Children.Add(target);
+                }
+            }
         }
         if (game == Jigsaw) {
             if (running) status.Text = $"Moves {moves} · Swap two pieces";
@@ -136,13 +155,13 @@ public sealed partial class GamesWorkspace
     Canvas MakeDartboard()
     {
         var result = new Canvas { Width = 480, Height = 480, IsHitTestVisible = false };
-        var rim = new Ellipse { Width = 376, Height = 376, Fill = Ink(0x202e43), Stroke = Ink(0x627690), StrokeThickness = 3 }; Canvas.SetLeft(rim, 52); Canvas.SetTop(rim, 52); result.Children.Add(rim);
-        var ringA = new SolidColorBrush(Color.FromArgb(255, 179, 73, 100)); var ringB = new SolidColorBrush(Color.FromArgb(255, 63, 149, 132));
+        var rim = new Ellipse { Width = 376, Height = 376, Fill = Ink(0x211d1c), Stroke = Ink(0x8b7159), StrokeThickness = 4 }; Canvas.SetLeft(rim, 52); Canvas.SetTop(rim, 52); result.Children.Add(rim);
+        var ringA = Ink(0xb8494e); var ringB = Ink(0x358463);
         for (var i = 0; i < 20; i++) {
             var center = i * 18 - 90; var band = i % 2 == 0 ? ringA : ringB;
-            Segment(16, 170, center, i % 2 == 0 ? Muted : new SolidColorBrush(Color.FromArgb(255, 83, 96, 111)));
+            Segment(16, 170, center, i % 2 == 0 ? Ink(0x312c2b) : Ink(0xe2ceaa));
             Segment(156, 170, center, band); Segment(96, 108, center, band);
-            var p = At(200, center); var label = new TextBlock { Text = ArcadeRules.DartSectors[i].ToString(), FontFamily = KronoDesign.CodeFont, FontSize = 18, Foreground = White }; Canvas.SetLeft(label, p.X - 10); Canvas.SetTop(label, p.Y - 13); result.Children.Add(label);
+            var p = At(200, center); var label = new TextBlock { Text = ArcadeRules.DartSectors[i].ToString(), FontFamily = KronoDesign.CodeFont, FontSize = 18, Foreground = Ink(0xf1e1c7), Width = 30, TextAlignment = TextAlignment.Center }; Canvas.SetLeft(label, p.X - 15); Canvas.SetTop(label, p.Y - 12); result.Children.Add(label);
         }
         foreach (var (radius, fill) in new[] { (16, ringB), (6, ringA) }) { var circle = new Ellipse { Width = 2 * radius, Height = 2 * radius, Fill = fill }; Canvas.SetLeft(circle, 240 - radius); Canvas.SetTop(circle, 240 - radius); result.Children.Add(circle); }
         return result;
@@ -186,6 +205,7 @@ public sealed partial class GamesWorkspace
         public bool FlapStarted { get; set; }
         public List<double[]> Pipes { get; set; } = [];
         public bool XLocked { get; set; }
+        public int DartAxisTick { get; set; }
         public double DartX { get; set; }
         public List<double[]> Hits { get; set; } = [];
         public int Piece { get; set; } = -1;
@@ -196,7 +216,7 @@ public sealed partial class GamesWorkspace
         return game switch {
             MazeChase => a.Pellets?.Length == ArcadeRules.Maze.Length && a.Pellets.All(n => n is >= 0 and <= 2) && ArcadeRules.MazeOpen(a.MazePlayer) && a.Ghosts?.Length == 2 && a.Ghosts.All(ArcadeRules.MazeOpen) && a.Lives is >= 0 and <= 3 && a.Power is >= 0 and <= 24 && a.MazeDirection is >= 0 and <= 4 && a.WantedDirection is >= 0 and <= 4,
             Flap => double.IsFinite(a.BirdY) && a.BirdY is >= 0 and <= 490 && double.IsFinite(a.BirdVelocity) && a.BirdVelocity is >= -12 and <= 12 && a.Pipes is { Count: > 0 and <= 4 } && a.Pipes.All(p => p?.Length == 3 && p[0] is >= -60 and <= 480 && p[1] is >= 140 and <= 340 && p[2] is 0 or 1),
-            Darts => a.DartX is >= -187 and <= 187 && a.Hits is { Count: <= 9 } && a.Hits.All(p => p?.Length == 2 && p.All(n => n is >= -187 and <= 187)),
+            Darts => a.DartAxisTick >= 0 && a.DartAxisTick <= s.Tick && a.DartX is >= -187 and <= 187 && a.Hits is { Count: <= 9 } && a.Hits.All(p => p?.Length == 2 && p.All(n => n is >= -187 and <= 187)),
             Jigsaw => a.Piece is >= -1 and < 16 && s.Board.Take(16).Order().SequenceEqual(Enumerable.Range(0, 16)),
             _ => false
         };

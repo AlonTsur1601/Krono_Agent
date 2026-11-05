@@ -37,8 +37,10 @@ public sealed partial class GamesWorkspace
         var score = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
         score.Children.Add(new TextBlock { Text = "SCORE", CharacterSpacing = 160, FontSize = 10, VerticalAlignment = VerticalAlignment.Center, Opacity = .72 });
         score.Children.Add(scoreReadout); pointsGain.VerticalAlignment = VerticalAlignment.Center; score.Children.Add(pointsGain);
-        var badge = new Border { Padding = new Thickness(13, 5, 12, 5), CornerRadius = new CornerRadius(12), Child = score,
-            Background = new SolidColorBrush(Color.FromArgb(30, 115, 175, 167)) };
+        var badge = new Border { Padding = new Thickness(13, 5, 12, 5), CornerRadius = new CornerRadius(12), Child = score };
+        void SetPalette() => badge.Background = KronoDesign.ThemeBrush("KronoSurface", ActualTheme);
+        SetPalette();
+        ActualThemeChanged += (_, _) => SetPalette();
         Grid.SetColumn(badge, 1); header.Children.Add(badge); AutomationProperties.SetAutomationId(scoreReadout, "GameScore");
         return header;
     }
@@ -46,7 +48,7 @@ public sealed partial class GamesWorkspace
     {
         if (previewOnly || shownScore == score) return;
         scoreReadout.FontFamily = pointsGain.FontFamily = KronoDesign.CodeFont;
-        scoreReadout.Foreground = pointsGain.Foreground = ReadableAccent(game);
+        scoreReadout.Foreground = pointsGain.Foreground = ReadableAccent;
         scoreReadout.Text = score.ToString("00");
         var difference = score - shownScore; var visible = shownScore >= 0 && difference > 0;
         shownScore = score; pointsGain.Text = visible ? "+" + difference : "";
@@ -152,8 +154,7 @@ public sealed partial class GamesWorkspace
             var tone = value == 1 ? Ink(0x84e5cd) : Ink(0xf7a7c3);
             if (value == 1) { Mark(39, 39, 107, 107); Mark(107, 39, 39, 107); }
             else if (value == 2) { var ring = new Ellipse { Width = 88, Height = 88, StrokeThickness = 15, Stroke = tone }; Canvas.SetLeft(ring, 29); Canvas.SetTop(ring, 29); surface.Children.Add(ring); }
-            else { var dot = new Ellipse { Width = 7, Height = 7, Fill = Ink(0x4a5977) }; Canvas.SetLeft(dot, 69); Canvas.SetTop(dot, 69); surface.Children.Add(dot); }
-            var tile = GameTileButton(i, x + 7, y + 7, 146, 146, surface, value == 1 ? "X" : value == 2 ? "O" : "empty", Ink(winning.Contains(i) ? 0x34524f : 0x25334c), 19);
+            var tile = GameTileButton(i, x + 7, y + 7, 146, 146, surface, value == 1 ? "X" : value == 2 ? "O" : "empty", Ink(winning.Contains(i) ? 0x34524f : 0x25334c), 14);
             if (winning.Contains(i)) { tile.BorderBrush = tone; tile.BorderThickness = new Thickness(3); }
             tile.Click += (_, _) => PlayAt(x + 80, y + 80);
             void Mark(double ax, double ay, double bx, double by) => surface.Children.Add(new Line { X1 = ax, Y1 = ay, X2 = bx, Y2 = by, Stroke = tone, StrokeThickness = 16, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round });

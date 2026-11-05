@@ -77,7 +77,7 @@ public sealed partial class GamesWorkspace
     }
     void UpdateAdvanced()
     {
-        if (game == 14) { stackX += stackDirection * Math.Min(8, 2 + stackLevel * .12); if (stackX < 0 || stackX + stackWidth > 480) { stackX = Math.Clamp(stackX, 0, 480 - stackWidth); stackDirection *= -1; } Draw(); }
+        if (game == 14) { stackX += stackDirection * Math.Min(12, 5 + stackLevel * .28); if (stackX < 0 || stackX + stackWidth > 480) { stackX = Math.Clamp(stackX, 0, 480 - stackWidth); stackDirection *= -1; } Draw(); }
         if (game == 15 && tick <= colorStart) Draw();
     }
     void PlaceStack()

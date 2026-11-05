@@ -93,6 +93,7 @@ public sealed partial class GamesWorkspace
         GameSave? state = null;
         try { var json = row["state"]!.ToString(); if (json.Length <= 65536) state = JsonSerializer.Deserialize<GameSave>(json); }
         catch (JsonException) { }
+        if (game == SandBlocks && state?.Blocks is { } sand) UpgradeSandGrid(sand);
         if (state is null || !Valid(state)) {
             workspace.Execute("DELETE FROM game_saves WHERE id=$p0 AND account_id=$p1", SaveId(game), workspace.AccountId);
             gameHelp.Text = "The previous save was invalid. A new game has been started."; return false;

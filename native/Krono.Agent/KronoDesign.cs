@@ -27,21 +27,41 @@ public static class KronoDesign
     public static void ApplyPalette(bool halloween)
     {
         var resources = Application.Current.Resources;
-        var dark = (ResourceDictionary)resources.ThemeDictionaries["Default"];
+        var dark = (ColorPaletteResources)resources.ThemeDictionaries["Default"];
+        dark.Accent = Parse(halloween ? "F49750" : "51BB82");
         Set(dark, "KronoBackground", halloween ? "15101D" : "10151D");
         Set(dark, "KronoSidebar", halloween ? "1D1528" : "141B24");
         Set(dark, "KronoSurface", halloween ? "2B1D39" : "1B2532");
         Set(dark, "KronoBorder", halloween ? "442D56" : "2B3B4C");
         Set(dark, "ButtonBackgroundPointerOver", halloween ? "3B284B" : "293D48");
         Set(dark, "ButtonBackgroundPressed", halloween ? "503460" : "344D59");
-        Set(resources, "AccentFillColorDefaultBrush", halloween ? "FF9B50" : "8FD7C7");
-        Set(resources, "AccentFillColorSecondaryBrush", halloween ? "E88C48" : "76C6B5");
-        Set(resources, "NavigationViewSelectionIndicatorForeground", halloween ? "FF9B50" : "8FD7C7");
+        Set(dark, "KronoMuted", halloween ? "CEAEDF" : "9AABBF");
+        Set(dark, "KronoAccentForeground", halloween ? "FFAD62" : "84E6B1");
+        Set(dark, "KronoAccentFill", halloween ? "FFAD62" : "84E6B1");
+        Set(dark, "KronoAccentHover", halloween ? "FFC590" : "A0F0C5");
+        Set(dark, "KronoAccentPressed", halloween ? "F49750" : "70D39F");
+        Set(dark, "AccentFillColorDefaultBrush", halloween ? "FFAD62" : "84E6B1");
+        Set(dark, "AccentFillColorSecondaryBrush", halloween ? "F49750" : "70D39F");
+        Set(dark, "AccentFillColorTertiaryBrush", halloween ? "E88749" : "5CC08C");
+        Set(dark, "AccentTextFillColorPrimaryBrush", halloween ? "FFAD62" : "84E6B1");
+        Set(dark, "AccentTextFillColorSecondaryBrush", halloween ? "FFC590" : "A0F0C5");
+        Set(dark, "AccentTextFillColorTertiaryBrush", halloween ? "F49750" : "70D39F");
+        Set(dark, "NavigationViewSelectionIndicatorForeground", halloween ? "FFAD62" : "84E6B1");
         static void Set(ResourceDictionary dictionary, string key, string hex)
         {
-            var color = Windows.UI.Color.FromArgb(255, Convert.ToByte(hex[..2], 16), Convert.ToByte(hex[2..4], 16), Convert.ToByte(hex[4..6], 16));
-            ((SolidColorBrush)dictionary[key]).Color = color;
+            ((SolidColorBrush)dictionary[key]).Color = Parse(hex);
         }
+        static Windows.UI.Color Parse(string hex) => Windows.UI.Color.FromArgb(255, Convert.ToByte(hex[..2], 16), Convert.ToByte(hex[2..4], 16), Convert.ToByte(hex[4..6], 16));
+    }
+    public static Brush ThemeBrush(string key, ElementTheme theme)
+    {
+        var dictionaries = Application.Current.Resources.ThemeDictionaries;
+        return (Brush)((ResourceDictionary)dictionaries[theme == ElementTheme.Light ? "Light" : "Default"])[key];
+    }
+    public static void ApplyPrimaryStates(Button button)
+    {
+        button.Resources["AccentButtonBackgroundPointerOver"] = ThemeBrush("KronoAccentHover", ElementTheme.Dark);
+        button.Resources["AccentButtonBackgroundPressed"] = ThemeBrush("KronoAccentPressed", ElementTheme.Dark);
     }
     public static void ApplyTypography(Workspace workspace, FrameworkElement root)
     {

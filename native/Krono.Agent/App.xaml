@@ -10,7 +10,7 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
             <ResourceDictionary.ThemeDictionaries>
-                <ResourceDictionary x:Key="Default">
+                <ColorPaletteResources x:Key="Default" Accent="#51BB82">
                     <SolidColorBrush x:Key="KronoBackground" Color="#10151D" />
                     <SolidColorBrush x:Key="KronoSidebar" Color="#141B24" />
                     <SolidColorBrush x:Key="KronoSurface" Color="#1B2532" />
@@ -18,8 +18,21 @@
                     <SolidColorBrush x:Key="KronoMuted" Color="#9AABBF" />
                     <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#293D48" />
                     <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#344D59" />
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="KronoAccentForeground" Color="#84E6B1" />
+                    <SolidColorBrush x:Key="KronoAccentFill" Color="#84E6B1" />
+                    <SolidColorBrush x:Key="KronoAccentHover" Color="#A0F0C5" />
+                    <SolidColorBrush x:Key="KronoAccentPressed" Color="#70D39F" />
+                    <Color x:Key="KronoLoginStart">#10151D</Color>
+                    <Color x:Key="KronoLoginEnd">#17342B</Color>
+                    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#84E6B1" />
+                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#70D39F" />
+                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#5CC08C" />
+                    <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#84E6B1" />
+                    <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#A0F0C5" />
+                    <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#70D39F" />
+                    <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="#84E6B1" />
+                </ColorPaletteResources>
+                <ColorPaletteResources x:Key="Light" Accent="#278254">
                     <SolidColorBrush x:Key="KronoBackground" Color="#F2F5F7" />
                     <SolidColorBrush x:Key="KronoSidebar" Color="#E7EEF0" />
                     <SolidColorBrush x:Key="KronoSurface" Color="#FFFFFF" />
@@ -27,12 +40,23 @@
                     <SolidColorBrush x:Key="KronoMuted" Color="#536D78" />
                     <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#D8E9E5" />
                     <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#C3DDD6" />
-                </ResourceDictionary>
+                    <SolidColorBrush x:Key="KronoAccentForeground" Color="#17613E" />
+                    <SolidColorBrush x:Key="KronoAccentFill" Color="#84E6B1" />
+                    <SolidColorBrush x:Key="KronoAccentHover" Color="#A0F0C5" />
+                    <SolidColorBrush x:Key="KronoAccentPressed" Color="#70D39F" />
+                    <Color x:Key="KronoLoginStart">#F2F5F7</Color>
+                    <Color x:Key="KronoLoginEnd">#D3EDE0</Color>
+                    <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#84E6B1" />
+                    <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#70D39F" />
+                    <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#5CC08C" />
+                    <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#17613E" />
+                    <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#145437" />
+                    <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#236D49" />
+                    <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="#21774F" />
+                </ColorPaletteResources>
             </ResourceDictionary.ThemeDictionaries>
-            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#8FD7C7" />
-            <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#76C6B5" />
-            <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#10231F" />
-            <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="#8FD7C7" />
+            <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#10231F" />
+            <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#10231F" />
             <FontFamily x:Key="KronoTextFont">ms-appx:///Assets/Fonts/Rubik.ttf#Rubik</FontFamily>
             <FontFamily x:Key="KronoDisplayFont">ms-appx:///Assets/Fonts/SpaceGrotesk.ttf#Space Grotesk</FontFamily>
             <FontFamily x:Key="KronoCodeFont">ms-appx:///Assets/Fonts/JetBrainsMono.ttf#JetBrains Mono</FontFamily>
@@ -47,6 +71,13 @@
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Background" Value="{ThemeResource KronoSurface}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
+            </Style>
+            <Style x:Key="KronoPrimaryButton" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+                <Setter Property="Background" Value="{ThemeResource KronoAccentFill}" />
+                <Setter Property="Foreground" Value="#10231F" />
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="Padding" Value="16,10" />
+                <Setter Property="FontWeight" Value="SemiBold" />
             </Style>
             <Style TargetType="TextBox">
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />

@@ -39,6 +39,8 @@ public sealed partial class MainPage : Page
     public MainPage()
     {
         InitializeComponent(); transcript = new ScrollViewer { Content = messages, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Nav.Resources["NavigationViewSelectionIndicatorForeground"] = KronoDesign.ThemeBrush("KronoAccentFill", ElementTheme.Dark);
+        KronoDesign.ApplyPrimaryStates(LoginButton);
         InitializeSync(); InitializeSchedule();
         AutomationProperties.SetAutomationId(composer, "Composer");
         modelChoice.Click += (_, _) => Nav.SelectedItem = Nav.FooterMenuItems.OfType<NavigationViewItem>().First(item => item.Tag?.ToString() == "settings");
@@ -60,10 +62,10 @@ public sealed partial class MainPage : Page
     async void Register(object sender, RoutedEventArgs e) => await Authenticate(true);
     async Task Authenticate(bool register)
     {
-        LoginButton.IsEnabled = RegisterButton.IsEnabled = false; AuthProgress.IsActive = true; AuthError.Text = "";
+        LoginButton.IsEnabled = RegisterButton.IsEnabled = false; AuthProgress.Visibility = Visibility.Visible; AuthProgress.IsActive = true; AuthError.Text = "";
         try { await workspace.Login(EmailInput.Text.Trim(), PasswordInput.Password, register); PasswordInput.Password = ""; Enter(); }
         catch (Exception error) { AuthError.Text = error.Message; }
-        finally { LoginButton.IsEnabled = RegisterButton.IsEnabled = true; AuthProgress.IsActive = false; }
+        finally { LoginButton.IsEnabled = RegisterButton.IsEnabled = true; AuthProgress.IsActive = false; AuthProgress.Visibility = Visibility.Collapsed; }
     }
     void Enter()
     {
@@ -160,7 +162,7 @@ public sealed partial class MainPage : Page
             conversation.Children.Add(toolbar); Grid.SetRow(transcript, 1); conversation.Children.Add(transcript);
             Grid.SetRow(progress, 2); conversation.Children.Add(progress);
             var input = new StackPanel { Spacing = 10 }; input.Children.Add(attachmentTray); input.Children.Add(composer); var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
-            send.Style = (Style)Application.Current.Resources["AccentButtonStyle"]; send.Click += async (_, _) => await SendMessage();
+            send.Style = (Style)Application.Current.Resources["KronoPrimaryButton"]; KronoDesign.ApplyPrimaryStates(send); send.Click += async (_, _) => await SendMessage();
             stop.Click += async (_, _) => { if (scheduledRun is not null) await StopScheduledRun(); else if (runId is not null) await worker!.Send(Guid.NewGuid().ToString(), "cancel", new { id = runId }); };
             var primaryActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 }; primaryActions.Children.Add(send); primaryActions.Children.Add(stop);
             var secondaryActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 }; modelChoice.MaxWidth = 170; secondaryActions.Children.Add(modelChoice); secondaryActions.Children.Add(Button("Attach files…", PickAttachments)); secondaryActions.Children.Add(Button("Side chat", OpenSideChat));
@@ -262,9 +264,10 @@ public sealed partial class MainPage : Page
     }
     void ApplyTheme(string value)
     {
+        KronoDesign.ApplyPalette(value == "halloween");
         RequestedTheme = value == "light" ? ElementTheme.Light : value is "dark" or "halloween" ? ElementTheme.Dark : ElementTheme.Default;
         if (MainWindow.Instance?.Content is FrameworkElement root) root.RequestedTheme = RequestedTheme;
-        KronoDesign.ApplyPalette(value == "halloween");
+        MainWindow.Instance?.ShowHalloween(value == "halloween");
     }
     bool CompatibleEndpoint => ProviderCatalog.Compatible(provider);
     string ProviderEndpoint => workspace.Setting("native.endpoint." + provider) is { Length: > 0 } endpoint ? endpoint : ProviderCatalog.Endpoint(provider);
@@ -283,13 +286,13 @@ public sealed partial class MainPage : Page
         panel.Children.Add(new TextBlock { Text = workspace.Email, Opacity = .65 });
         panel.Children.Add(Button("Sign out on all devices", async () => { if (await Confirm("Sign out on all devices", "End this account's refresh sessions on all devices?")) await Leave(true); }));
         panel.Children.Add(Choices("Appearance", ["system", "dark", "light", "halloween"], workspace.Setting("native.theme") is { Length: > 0 } t ? t : "system", value => { workspace.SetSetting("native.theme", value); ApplyTheme(value); }));
-        var secret = new PasswordBox { Header = "Provider API key · optional for local servers", MinWidth = 420, HorizontalAlignment = HorizontalAlignment.Stretch };
-        var endpoint = new TextBox { Header = "Server base URL · include /v1", Text = ProviderEndpoint, MinWidth = 420 };
+        var secret = new PasswordBox { Header = "Provider API key · optional for local servers", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var endpoint = new TextBox { Header = "Server base URL · include /v1", Text = ProviderEndpoint };
         AutomationProperties.SetAutomationId(endpoint, "ProviderEndpoint");
         var tools = new CheckBox { Content = "This model supports tool calling", IsChecked = ProviderToolsEnabled };
         AutomationProperties.SetAutomationId(tools, "ProviderTools");
         var connectionStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .7 }; AutomationProperties.SetAutomationId(connectionStatus, "ProviderConnectionStatus");
-        var models = new ComboBox { Header = "Model", MinWidth = 420, HorizontalAlignment = HorizontalAlignment.Stretch, IsEditable = true, Text = model };
+        var models = new ComboBox { Header = "Model", HorizontalAlignment = HorizontalAlignment.Stretch, IsEditable = true, Text = model };
         var profileHelp = new TextBlock { Text = ProviderCatalog.Help(provider), TextWrapping = TextWrapping.Wrap, Opacity = .65 };
         var saveEndpoint = Button("Save endpoint", () => { try {
             var url = ProviderCatalog.ParseEndpoint(endpoint.Text);
