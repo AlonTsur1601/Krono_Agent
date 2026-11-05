@@ -39,6 +39,8 @@ public sealed partial class MainPage : Page
     public MainPage()
     {
         InitializeComponent(); transcript = new ScrollViewer { Content = messages, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        WorkspacePattern.Children.Add(new GameBackdrop());
+        LoginPattern.Children.Add(new GameBackdrop());
         Nav.Resources["NavigationViewSelectionIndicatorForeground"] = KronoDesign.ThemeBrush("KronoAccentFill", ElementTheme.Dark);
         Nav.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => {
             SignOutLabel.Visibility = Nav.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
