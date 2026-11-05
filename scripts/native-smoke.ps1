@@ -124,6 +124,57 @@ try {
     $model = Find 'ModelSelector'
     $edit = $model.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit)))
     if (($edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).Current.Value -ne 'native-fixture-model') { throw 'Provider switching lost its model selection' }
+    SelectNav 'Chats'
+    SelectChoice 'Mode' 'chat'
+    SetValue 'Composer' 'NATIVE_PARENT_WAIT'
+    Invoke 'Send' -ByName
+    $deadline = (Get-Date).AddSeconds(10)
+    do { Start-Sleep -Milliseconds 100; $proof = Invoke-RestMethod ($Fixture + '/side-proof') } while (!$proof.parentHeld -and (Get-Date) -lt $deadline)
+    if (!$proof.parentHeld) { throw 'Parent fixture stream did not start' }
+    Invoke 'Side chat' -ByName
+    Find 'SideComposer' | Out-Null
+    $proof = Invoke-RestMethod ($Fixture + '/side-proof')
+    if (!$proof.snapshot -or $proof.sideCount -ne 1) { throw 'Side chat did not copy its parent context' }
+    $resumedSide = $proof.activeSide
+    Invoke 'Close side chat' -ByName
+    Invoke 'Side chat' -ByName
+    Find 'SideComposer' | Out-Null
+    $proof = Invoke-RestMethod ($Fixture + '/side-proof')
+    if ($proof.activeSide -ne $resumedSide -or $proof.sideCount -ne 1) { throw 'Reopening a side chat created a duplicate instead of resuming it' }
+    SetValue 'SideComposer' 'NATIVE_SIDE_QUESTION'
+    Invoke 'SideSend'
+    $deadline = (Get-Date).AddSeconds(10)
+    do { Start-Sleep -Milliseconds 200; $sideState = (Find 'SideStatus').Current.Name } while ($sideState -ne 'Done' -and (Get-Date) -lt $deadline)
+    $proof = Invoke-RestMethod ($Fixture + '/side-proof')
+    if (!$proof.sideNoTools -or !$proof.parentHeld -or $sideState -ne 'Done') { throw 'Independent side conversation did not complete with tools omitted' }
+    Capture 'native-side-chat.png'
+    Invoke 'Transfer latest reply…' -ByName
+    Find 'SideTransferPreview' | Out-Null
+    Invoke 'Transfer' -ByName
+    $deadline = (Get-Date).AddSeconds(5)
+    do { Start-Sleep -Milliseconds 100; $proof = Invoke-RestMethod ($Fixture + '/side-proof') } while ($proof.queued -eq 0 -and $proof.transferred -eq 0 -and (Get-Date) -lt $deadline)
+    if ($proof.queued -ne 1 -or $proof.transferred -ne 0 -or !$proof.parentHeld) { Capture 'native-side-transfer-failed.png'; throw 'Side transfer interrupted its parent instead of queuing' }
+    Invoke-RestMethod -Method Post ($Fixture + '/release-parent') | Out-Null
+    $deadline = (Get-Date).AddSeconds(10)
+    do { Start-Sleep -Milliseconds 200; $proof = Invoke-RestMethod ($Fixture + '/side-proof') } while ($proof.queued -gt 0 -and (Get-Date) -lt $deadline)
+    if ($proof.queued -ne 0 -or $proof.transferred -ne 1) { throw 'Side transfer did not append after the safe boundary' }
+    Invoke 'Keep as independent chat' -ByName
+    $proof = Invoke-RestMethod ($Fixture + '/side-proof')
+    if (!$proof.kept -or $proof.sideCount -ne 0) { throw 'Keep did not preserve the independent chat or remove its expiry' }
+    Invoke 'Side chat from this message' -ByName
+    Find 'SideComposer' | Out-Null
+    $proof = Invoke-RestMethod ($Fixture + '/side-proof')
+    if ($proof.sideMessageCount -ne 1) { throw 'Message branch included later conversation messages' }
+    SetValue 'SideComposer' 'NATIVE_SIDE_WAIT'
+    Invoke 'SideSend'
+    $deadline = (Get-Date).AddSeconds(10)
+    do { Start-Sleep -Milliseconds 100; $proof = Invoke-RestMethod ($Fixture + '/side-proof') } while (!$proof.sideStreamActive -and (Get-Date) -lt $deadline)
+    if (!$proof.sideStreamActive) { throw 'Side expiry fixture did not start an active stream' }
+    Invoke-RestMethod -Method Post ($Fixture + '/expire-side') | Out-Null
+    $deadline = (Get-Date).AddSeconds(10)
+    do { Start-Sleep -Milliseconds 200; $proof = Invoke-RestMethod ($Fixture + '/side-proof') } while ((!$proof.sideCancelled -or $proof.sideCount -gt 0) -and (Get-Date) -lt $deadline)
+    if (!$proof.sideCancelled -or $proof.sideCount -ne 0 -or !$proof.kept -or (Find 'SideComposer').Current.IsEnabled) { throw 'Expiry did not cancel/delete the temporary chat and retain the kept one' }
+    Invoke 'Close side chat' -ByName
     SelectNav 'Games'
     (Find 'GameTile0').SetFocus()
     Capture 'native-game-library.png'
@@ -222,9 +273,16 @@ try {
     do { Start-Sleep -Milliseconds 100; $assertions = Invoke-RestMethod ($Fixture + '/assertions') } while (!$assertions.browserIsolated -and (Get-Date) -lt $deadline)
     if (!$assertions.browserIsolated) { throw 'Browser fixture did not prove host API / Node isolation' }
     if (!(Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin'))) { throw 'Encrypted session missing' }
+    SelectNav 'Chats'
+    Invoke 'Side chat' -ByName
+    Find 'SideComposer' | Out-Null
+    Invoke 'Close side chat' -ByName
     CloseApp
+    Invoke-RestMethod -Method Post ($Fixture + '/expire-side') | Out-Null
     Launch
     Find 'Sign out' -ByName | Out-Null
+    $proof = Invoke-RestMethod ($Fixture + '/side-proof')
+    if ($proof.sideCount -ne 0 -or !$proof.kept) { throw 'Startup did not purge expired side chats while preserving kept history' }
     SelectNav 'Sign out'
     Find 'LoginButton' | Out-Null
     if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin')) { throw 'Logout retained local session' }
@@ -232,10 +290,18 @@ try {
     SetValue 'PasswordInput' 'fixture-password'
     Invoke 'LoginButton'
     Find 'Sign out' -ByName | Out-Null
+    Find 'Composer' | Out-Null
+    $before = (Invoke-RestMethod ($Fixture + '/assertions')).completions
+    if (!(Find 'Chats' -ByName).GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected) { throw 'Re-login left the navigation on Sign out' }
+    SetValue 'Composer' 'Native after manual login'
+    Invoke 'Send' -ByName
+    $deadline = (Get-Date).AddSeconds(10)
+    do { Start-Sleep -Milliseconds 100; $after = (Invoke-RestMethod ($Fixture + '/assertions')).completions } while ($after -le $before -and (Get-Date) -lt $deadline)
+    if ($after -le $before) { throw 'Chat no longer worked after manual logout and login' }
     Invoke-RestMethod -Method Post ($Fixture + '/revoke') | Out-Null
     CloseApp
     Launch
     Find 'LoginButton' | Out-Null
     if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin')) { throw 'Revoked session was retained after restart' }
-    Write-Output 'NATIVE_SMOKE_PASS: native auth, scoped projects/memory, streamed cloud/local endpoint, tool omission and key isolation, approved file write, twelve games with Lights Out solution/Simon pattern/Odd Color scoring/Orbit input, PTY 42, WebView2 navigation, restart, logout, remote-revocation rejection'
+    Write-Output 'NATIVE_SMOKE_PASS: native auth, scoped projects/memory, streamed cloud/local endpoint, side snapshot/independent run/queued transfer/keep/expiry cancellation, approved file write, twelve games with puzzle actions, PTY 42, WebView2 navigation, restart, logout, remote-revocation rejection'
 } finally { CloseApp }

@@ -10,6 +10,8 @@ namespace Krono_Agent;
 public static class KronoDesign
 {
     public static readonly TimeSpan PageMotion = TimeSpan.FromMilliseconds(160);
+    public static FontFamily TextFont => (FontFamily)Application.Current.Resources["KronoTextFont"];
+    public static double TextSize => (double)Application.Current.Resources["KronoTextSize"];
     public static FontFamily CodeFont => (FontFamily)Application.Current.Resources["KronoCodeFont"];
     public static double CodeSize => (double)Application.Current.Resources["KronoCodeSize"];
     public static void ApplyPalette(bool halloween)

@@ -1,4 +1,4 @@
-<Page x:Class="Krono_Agent.MainPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<Page x:Class="Krono_Agent.MainPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives">
 <Grid Background="{ThemeResource KronoBackground}">
 <NavigationView x:Name="Nav" Visibility="Collapsed" IsBackButtonVisible="Collapsed" IsSettingsVisible="False" PaneDisplayMode="Auto" OpenPaneLength="240" Background="{ThemeResource KronoSidebar}" SelectionChanged="Navigate">
 <NavigationView.PaneHeader><StackPanel Orientation="Horizontal" Spacing="10" Margin="18,8,0,22"><Image Width="34" Height="34"><Image.Source><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg"/></Image.Source></Image><StackPanel><TextBlock Text="KRONO" FontSize="19" FontWeight="Bold" CharacterSpacing="160"/><TextBlock Text="WORKSPACE" FontSize="9" CharacterSpacing="220" Foreground="{ThemeResource KronoMuted}"/></StackPanel></StackPanel></NavigationView.PaneHeader>
@@ -13,7 +13,11 @@
 <Grid Padding="28,20,28,24" RowSpacing="12" Background="{ThemeResource KronoBackground}"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
 <InfoBar x:Name="Notice" IsOpen="False" IsClosable="True" Severity="Error"/>
 <InfoBar x:Name="Approval" Grid.Row="1" IsOpen="False" IsClosable="False" Severity="Warning" Title="Agent action needs approval"><StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Allow once" Click="Approve"/><Button Content="Deny" Click="Deny"/></StackPanel></InfoBar>
-<ContentControl x:Name="Body" Grid.Row="2" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+<Grid Grid.Row="2"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition x:Name="SideColumn" Width="0"/></Grid.ColumnDefinitions>
+<ContentControl x:Name="Body" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+<primitives:Thumb x:Name="SideGrip" Grid.Column="1" Width="8" Margin="8,0" Background="{ThemeResource KronoBorder}" Visibility="Collapsed" DragDelta="ResizeSideChat"/>
+<Border x:Name="SideSurface" Grid.Column="2" Visibility="Collapsed" CornerRadius="18" BorderThickness="1" BorderBrush="{ThemeResource KronoBorder}" Background="{ThemeResource KronoSidebar}" Padding="16"><ContentControl x:Name="SideBody" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/></Border>
+</Grid>
 </Grid></NavigationView>
 <ProgressRing x:Name="StartupProgress" IsActive="True" Width="36" Height="36" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 <ScrollViewer x:Name="SignIn" Visibility="Collapsed" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="440" Padding="32"><StackPanel Spacing="16" Width="350">

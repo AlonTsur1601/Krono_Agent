@@ -1,7 +1,7 @@
 # Krono Agent — repository structure
 
 - native/Krono.Agent: C#/XAML Windows UI, accounts/database, browser, terminal,
-  native game rendering and native Markdown.
+  native game rendering, native Markdown and expiring side conversations.
 - src/agent: provider adapters, agent execution and file tools, with unit tests.
 - src/sidecar: private stdio worker and PTY lifetime management.
 - src/db/schema.sql: authoritative local SQL schema; native build copies it.

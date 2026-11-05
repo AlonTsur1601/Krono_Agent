@@ -23,6 +23,7 @@ const Request = z.object({ id: z.string(), method: z.enum(['models','test','run'
 readline.createInterface({ input: process.stdin }).on('line', line => {
   void (async () => {
     let id = ''
+    let cleanupRun: (() => void) | undefined
     try {
       const request = Request.parse(JSON.parse(line)); id = request.id
       const { method, data } = request
@@ -46,12 +47,16 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       const compatible = ['ollama','lmstudio','custom'].includes(provider)
       const runtime = createRuntime()
       const toolsEnabled = !compatible || data.toolsEnabled === true
+      const controller = new AbortController()
+      if (method === 'run') {
+        active.set(id, controller)
+        const deadline = setTimeout(() => controller.abort(), 30 * 60 * 1000)
+        cleanupRun = () => { clearTimeout(deadline); controller.abort(); active.delete(id) }
+      }
       await runtime.configureProvider(provider, compatible ? z.string().parse(data.apiKey) : z.string().min(1).parse(data.apiKey), compatible ? { endpoint: z.string().parse(data.endpoint), toolsEnabled } : {})
       if (method === 'models') { send({ id, result: await runtime.getProvider(provider)!.listModels() }); return }
       if (method === 'test') { send({ id, result: await runtime.getProvider(provider)!.testConnection() }); return }
-      const controller = new AbortController(); active.set(id, controller)
-      const deadline = setTimeout(() => controller.abort(), 30 * 60 * 1000)
-      try {
+      {
         const config = z.object({ mode: z.enum(['chat','plan','agent','goal']), permissions: z.enum(['ask','project','full']), modelId: z.string().min(1), projectDirs: z.array(z.string()), instructions: z.string(), memories: z.array(z.string()) }).parse(data)
         const messages = z.array(z.object({ role: z.enum(['user','assistant','system']), content: z.string() })).parse(data.messages)
         for await (const chunk of runtime.execute(messages, { ...config, toolsEnabled, providerId: provider, signal: controller.signal, requestApproval: async action => {
@@ -65,8 +70,9 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
           })
         } })) send({ id, event: 'chunk', data: chunk })
         send({ id, result: true })
-      } finally { clearTimeout(deadline); controller.abort(); active.delete(id) }
+      }
     } catch (error) { send({ id, error: error instanceof Error ? error.message : 'Worker request failed' }) }
+    finally { cleanupRun?.() }
   })()
 })
 process.stdin.on('end', () => { for (const controller of active.values()) controller.abort(); for (const terminal of terminals.values()) terminal.kill(); process.exit(0) })

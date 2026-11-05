@@ -110,6 +110,21 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 
 -- Indexes
+-- Temporary local branches are excluded from normal chat lists and future sync.
+CREATE TABLE IF NOT EXISTS side_chats (
+  chat_id TEXT PRIMARY KEY REFERENCES chats(id) ON DELETE CASCADE,
+  parent_chat_id TEXT NOT NULL REFERENCES chats(id),
+  context TEXT NOT NULL DEFAULT '{}',
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_side_chats_expiry ON side_chats(expires_at);
+CREATE TABLE IF NOT EXISTS side_transfers (
+  id TEXT PRIMARY KEY,
+  parent_chat_id TEXT NOT NULL REFERENCES chats(id),
+  content TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_chats_account ON chats(account_id);
 CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id);
 CREATE INDEX IF NOT EXISTS idx_projects_account ON projects(account_id);

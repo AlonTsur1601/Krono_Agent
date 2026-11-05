@@ -14,6 +14,10 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 - Private bundled Node worker over stdio preserves the existing provider
   adapters, tool validation, project file boundaries, approvals and cancellation.
 - Existing per-account SQLite databases and account-service.json paths are retained.
+- Native resizable side conversations copy the transcript/project context at a
+  conversation or message branch, run independently with no tools, and expire
+  24 hours after accepted user/completed assistant messages. Kept branches become
+  normal chats; previewed transfers queue until the parent's run is finished.
 - Native sessions/keys use Windows DPAPI. Configure them once in the new UI;
   existing legacy encrypted files are not deleted.
 
@@ -27,6 +31,9 @@ native C#/WinUI 3. This is not completion of the full original product scope.
   twelve game initializations and board moves, real PTY output 42, WebView2 page
   navigation and absence of host/Node APIs, process restart, manual logout,
   and rejection of a remotely revoked refresh session on restart.
+- Side-chat fixtures verify independent completion while a parent stream waits,
+  snapshot scope, omitted tools, durable queued transfer, promotion, active expiry
+  cancellation/deletion, startup cleanup, and chat use after manual re-login.
 - Ollama, LM Studio and custom OpenAI-compatible endpoints now have native
   setup, discovery/manual model IDs, connection testing, streaming, cancellation
   and opt-in tool support. Real HTTP and native fixtures cover the protocol and
@@ -40,7 +47,7 @@ native C#/WinUI 3. This is not completion of the full original product scope.
   expanded published-app Windows CI also passed on 31e4825. That run failed
   overall because GitHub could not provision its macOS ARM runner; a supported
   Intel runner now replaces that infrastructure leg. All three CI legs and Pages
-  passed on ae25dc5, including the published Windows fixture (see .kiro review).
+  passed on 1971a31, including the published Windows fixture (see .kiro review).
 - npm audit: zero vulnerabilities after removing legacy UI/build dependencies
   and validating the remaining modern minimatch callers against patched 11.0.4.
 - NuGet audit: no vulnerable direct/transitive packages reported.
@@ -48,8 +55,9 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 ## Remaining product requirements
 
 - Live owner auth/provider acceptance, cloud record/attachment synchronization,
-  OAuth, scheduled tasks, side chats, plugins/import, app connections, local
-  bundled local inference/model downloads, media generation, agent browser/terminal/computer-use tools,
+  OAuth, scheduled tasks, side-chat attachment references/sync, plugins/import,
+  app connections, bundled local inference/model downloads, media generation,
+  agent browser/terminal/computer-use tools,
   automatic memory proposals and twelve additional games remain incomplete.
 - macOS/Linux desktop UIs are not implemented after the owner's explicit
   choice of native Windows UI. Agent unit checks remain cross-platform.

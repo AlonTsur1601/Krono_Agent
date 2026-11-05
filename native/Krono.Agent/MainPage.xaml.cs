@@ -23,7 +23,8 @@ public sealed partial class MainPage : Page
     readonly Button send = new() { Content = "Send" };
     readonly Button stop = new() { Content = "Stop", IsEnabled = false };
     Grid? chatView;
-    ComboBox? permissionSelector;
+    ComboBox? permissionSelector, modeSelector;
+    int sessionGeneration;
     string? loadedContext;
     TextBlock? streaming;
     string fullResponse = "";
@@ -36,7 +37,7 @@ public sealed partial class MainPage : Page
     {
         InitializeComponent(); transcript = new ScrollViewer { Content = messages, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         AutomationProperties.SetAutomationId(composer, "Composer");
-        modelChoice.Click += (_, _) => ShowSettings();
+        modelChoice.Click += (_, _) => Nav.SelectedItem = Nav.FooterMenuItems.OfType<NavigationViewItem>().First(item => item.Tag?.ToString() == "settings");
         sessionTimer.Tick += async (_, _) => {
             if (refreshingSession || workspace.AccountId.Length == 0) return;
             refreshingSession = true;
@@ -49,7 +50,7 @@ public sealed partial class MainPage : Page
             catch (Exception error) { AuthError.Text = error.Message; }
             finally { StartupProgress.IsActive = false; StartupProgress.Visibility = Visibility.Collapsed; if (Nav.Visibility != Visibility.Visible) SignIn.Visibility = Visibility.Visible; }
         };
-        Unloaded += (_, _) => { sessionTimer.Stop(); worker?.Dispose(); browser?.Dispose(); terminal?.Dispose(); games?.Dispose(); workspace.Dispose(); };
+        Unloaded += (_, _) => { sessionGeneration++; sessionTimer.Stop(); sideChat?.Dispose(); worker?.Dispose(); browser?.Dispose(); terminal?.Dispose(); games?.Dispose(); workspace.Dispose(); };
     }
     async void Login(object sender, RoutedEventArgs e) => await Authenticate(false);
     async void Register(object sender, RoutedEventArgs e) => await Authenticate(true);
@@ -66,7 +67,7 @@ public sealed partial class MainPage : Page
         SignIn.Visibility = Visibility.Collapsed; Nav.Visibility = Visibility.Visible;
         provider = workspace.Setting("native.provider"); if (provider.Length == 0) provider = "openai";
         model = workspace.Setting("native.model." + provider); if (model.Length == 0 && !CompatibleEndpoint) { model = workspace.Setting("native.model"); workspace.SetSetting("native.model." + provider, model); workspace.SetSetting("native.model", ""); } KronoDesign.ApplyTypography(workspace, this); ApplyTheme(workspace.Setting("native.theme"));
-        ShowChats();
+        workspace.FlushSideTransfers(); ShowChats();
         if (workspace.IsOfflineSession) progress.Text = "Offline · local workspace restored; account validation will retry.";
         sessionTimer.Start();
     }
@@ -89,9 +90,16 @@ public sealed partial class MainPage : Page
     public void Error(Exception error) { Notice.Message = error.Message; Notice.IsOpen = true; }
     async Task Leave(bool allDevices)
     {
+        sessionGeneration++;
+        CloseSideChat();
         sessionTimer.Stop(); worker?.Dispose(); worker = null; browser?.Dispose(); browser = null; terminal?.Dispose(); terminal = null; games?.Dispose(); games = null;
         try { await workspace.Logout(allDevices); }
-        finally { chatId = runId = loadedContext = null; chatView = null; messages.Children.Clear(); Approval.IsOpen = false; Nav.Visibility = Visibility.Collapsed; SignIn.Visibility = Visibility.Visible; }
+        finally {
+            chatId = runId = loadedContext = approvalId = null; Body.Content = null; chatList.ItemsSource = null; chatList.IsEnabled = send.IsEnabled = true; stop.IsEnabled = false;
+            messages.Children.Clear(); composer.Text = fullResponse = progress.Text = ""; streaming = null; model = ""; modelChoice.Content = "Choose model";
+            mode = "chat"; permissions = "ask"; if (modeSelector is not null) modeSelector.SelectedItem = mode; if (permissionSelector is not null) permissionSelector.SelectedItem = permissions;
+            Approval.IsOpen = Notice.IsOpen = false; Nav.Visibility = Visibility.Collapsed; SignIn.Visibility = Visibility.Visible;
+        }
     }
     public async Task<bool> Confirm(string title, string message)
     {
@@ -119,7 +127,7 @@ public sealed partial class MainPage : Page
             var conversation = new Grid { RowSpacing = 12 }; Grid.SetColumn(conversation, 1); chatView.Children.Add(conversation);
             foreach (var height in new[] { GridLength.Auto, new GridLength(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto }) conversation.RowDefinitions.Add(new RowDefinition { Height = height });
             var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-            toolbar.Children.Add(Choices("Mode", ["chat", "plan", "agent", "goal"], mode, value => mode = value)); permissionSelector = Choices("Permissions", ["ask", "project", "full"], permissions, value => permissions = value); toolbar.Children.Add(permissionSelector);
+            modeSelector = Choices("Mode", ["chat", "plan", "agent", "goal"], mode, value => mode = value); modeSelector.MinWidth = 110; toolbar.Children.Add(modeSelector); permissionSelector = Choices("Permissions", ["ask", "project", "full"], permissions, value => permissions = value); permissionSelector.MinWidth = 110; toolbar.Children.Add(permissionSelector);
             toolbar.Children.Add(Button("Project…", async () => {
                 if (chatId is null || runId is not null) return;
                 var projects = workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name");
@@ -134,13 +142,18 @@ public sealed partial class MainPage : Page
             var input = new StackPanel { Spacing = 10 }; input.Children.Add(composer); var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
             send.Style = (Style)Application.Current.Resources["AccentButtonStyle"]; send.Click += async (_, _) => await SendMessage();
             stop.Click += async (_, _) => { if (runId is not null) await worker!.Send(Guid.NewGuid().ToString(), "cancel", new { id = runId }); };
-            actions.Children.Add(send); actions.Children.Add(stop); actions.Children.Add(modelChoice); input.Children.Add(actions); Grid.SetRow(input, 3); conversation.Children.Add(input);
+            var primaryActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 }; primaryActions.Children.Add(send); primaryActions.Children.Add(stop);
+            var secondaryActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 }; modelChoice.MaxWidth = 210; secondaryActions.Children.Add(modelChoice); secondaryActions.Children.Add(Button("Side chat", OpenSideChat));
+            actions.Children.Add(primaryActions); actions.Children.Add(secondaryActions); actions.SizeChanged += (_, args) => actions.Orientation = args.NewSize.Width < 500 ? Orientation.Vertical : Orientation.Horizontal;
+            input.Children.Add(actions); Grid.SetRow(input, 3); conversation.Children.Add(input);
         }
         modelChoice.Content = model.Length == 0 ? "Choose model" : provider + " / " + (model.Length > 24 ? model[..24] + "…" : model);
+        ToolTipService.SetToolTip(modelChoice, provider + " / " + model);
         KronoDesign.Present(Body, chatView); ReloadChats(); if (runId is null) LoadChat();
+        Nav.SelectedItem = Nav.MenuItems.OfType<NavigationViewItem>().First(item => item.Tag?.ToString() == "chats");
     }
     record ChatItem(string Id, string Name);
-    void ReloadChats() { chatList.ItemsSource = workspace.Query("SELECT id,name FROM chats WHERE deleted_at IS NULL ORDER BY updated_at DESC").Select(row => new ChatItem(row["id"]!.ToString(), row["name"]!.ToString())).ToList(); }
+    void ReloadChats() { chatList.ItemsSource = workspace.Query("SELECT id,name FROM chats WHERE deleted_at IS NULL AND id NOT IN (SELECT chat_id FROM side_chats) ORDER BY updated_at DESC").Select(row => new ChatItem(row["id"]!.ToString(), row["name"]!.ToString())).ToList(); }
     void LoadChat()
     {
         messages.Children.Clear();
@@ -159,12 +172,15 @@ public sealed partial class MainPage : Page
             permissions = config?["permissions"]?.ToString() ?? "ask";
             if (permissionSelector is not null) permissionSelector.SelectedItem = permissions;
         }
-        foreach (var message in workspace.Query("SELECT role,content FROM messages WHERE chat_id=$p0 AND deleted_at IS NULL ORDER BY created_at", chatId)) AddBubble(message["role"]!.ToString(), message["content"]?.ToString() ?? "");
+        foreach (var message in workspace.Query("SELECT id,role,content FROM messages WHERE chat_id=$p0 AND deleted_at IS NULL ORDER BY created_at,rowid", chatId)) AddBubble(message["role"]!.ToString(), message["content"]?.ToString() ?? "", message["id"]!.ToString());
     }
-    void AddBubble(string role, string text)
+    void AddBubble(string role, string text, string messageId)
     {
         var box = new StackPanel { Spacing = 8 };
-        box.Children.Add(new TextBlock { Text = role == "user" ? "You" : "Krono", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Opacity = .6 });
+        var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+        header.Children.Add(new TextBlock { Text = role == "user" ? "You" : "Krono", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Opacity = .6, VerticalAlignment = VerticalAlignment.Center });
+        var branch = Button("Branch", () => OpenSideChatFrom(messageId)); branch.Padding = new Thickness(8, 3, 8, 3); branch.FontSize = 11;
+        AutomationProperties.SetName(branch, "Side chat from this message"); header.Children.Add(branch); box.Children.Add(header);
         box.Children.Add(Markdown(text));
         if (role == "user") messages.Children.Add(new Border { Child = box, Padding = new Thickness(18, 14, 18, 14), CornerRadius = new CornerRadius(16), Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 143, 215, 199)), BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(60, 143, 215, 199)), BorderThickness = new Thickness(1) });
         else messages.Children.Add(box);
@@ -178,6 +194,7 @@ public sealed partial class MainPage : Page
     async Task SendMessage()
     {
         if (runId is not null || string.IsNullOrWhiteSpace(composer.Text)) return;
+        var generation = sessionGeneration;
         try {
             var apiKey = workspace.Key(provider); if ((!CompatibleEndpoint && apiKey.Length == 0) || model.Length == 0) throw new InvalidOperationException("Choose a provider and model in Settings first.");
             chatId ??= workspace.CreateChat(); var text = composer.Text; composer.Text = "";
@@ -190,9 +207,10 @@ public sealed partial class MainPage : Page
             runId = Guid.NewGuid().ToString(); send.IsEnabled = false; chatList.IsEnabled = false; stop.IsEnabled = true; progress.Text = "Working…";
             var history = workspace.Query("SELECT role,content FROM messages WHERE chat_id=$p0 AND deleted_at IS NULL ORDER BY created_at", chatId).Select(p => new { role = p["role"]!.ToString(), content = p["content"]!.ToString() }).ToArray();
             await worker!.Request(runId, "run", new { providerId = provider, apiKey, endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled, modelId = model, mode, permissions, messages = history, projectDirs = dirs, instructions = config?["instructions"]?.ToString() ?? "", memories });
+            if (generation != sessionGeneration) return;
             workspace.AddMessage(chatId, "assistant", fullResponse); progress.Text = "Done";
-        } catch (Exception error) { Error(error); progress.Text = "Stopped"; }
-        finally { runId = null; send.IsEnabled = true; chatList.IsEnabled = true; stop.IsEnabled = false; Approval.IsOpen = false; LoadChat(); }
+        } catch (Exception error) { if (generation == sessionGeneration) { Error(error); progress.Text = "Stopped"; } }
+        finally { if (generation == sessionGeneration) { runId = null; send.IsEnabled = true; chatList.IsEnabled = true; stop.IsEnabled = false; Approval.IsOpen = false; if (workspace.AccountId.Length > 0) { workspace.FlushSideTransfers(); LoadChat(); } } }
     }
     void WorkerEvent(string id, string type, JsonNode? data) => DispatcherQueue.TryEnqueue(() => {
         terminal?.Receive(id, type, data);

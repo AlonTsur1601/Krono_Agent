@@ -10,7 +10,7 @@ using System.Collections.Concurrent;
 
 namespace Krono_Agent;
 
-public sealed class Workspace : IDisposable
+public sealed partial class Workspace : IDisposable
 {
     public static readonly string Home = Environment.GetEnvironmentVariable("KRONO_USER_DATA") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "krono-agent");
     private readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(30) };
@@ -83,6 +83,7 @@ public sealed class Workspace : IDisposable
         Execute("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
         Execute(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Engine", "schema.sql")));
         Execute("INSERT INTO accounts(id,email,created_at) VALUES($p0,$p1,$p2) ON CONFLICT(id) DO UPDATE SET email=excluded.email", AccountId, Email, Now);
+        PurgeExpiredSideChats();
     }
     public static long Now => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     public void Execute(string sql, params object?[] args) { using var command = Command(sql, args); command.ExecuteNonQuery(); }
@@ -97,7 +98,11 @@ public sealed class Workspace : IDisposable
     public void SaveKey(string provider, string secret) => Protect(Path.Combine(Home, "native-credentials", AccountId, provider + ".bin"), secret);
     public string Key(string provider) => Unprotect(Path.Combine(Home, "native-credentials", AccountId, provider + ".bin")) ?? "";
     public string CreateChat(string? project = null) { var id = Guid.NewGuid().ToString("N"); Execute("INSERT INTO chats(id,account_id,project_id,name,created_at,updated_at) VALUES($p0,$p1,$p2,'New chat',$p3,$p3)", id, AccountId, project, Now); return id; }
-    public void AddMessage(string chat, string role, string content) { Execute("INSERT INTO messages(id,chat_id,role,content,created_at) VALUES($p0,$p1,$p2,$p3,$p4)", Guid.NewGuid().ToString("N"), chat, role, content, Now); Execute("UPDATE chats SET updated_at=$p0 WHERE id=$p1", Now, chat); }
+    public void AddMessage(string chat, string role, string content) {
+        if (Query("SELECT id FROM chats WHERE id=$p0 AND deleted_at IS NULL", chat).Count == 0 || Query("SELECT chat_id FROM side_chats WHERE chat_id=$p0 AND expires_at<=$p1", chat, Now).Count > 0) throw new InvalidOperationException("This conversation is no longer available.");
+        Execute("INSERT INTO messages(id,chat_id,role,content,created_at) VALUES($p0,$p1,$p2,$p3,$p4)", Guid.NewGuid().ToString("N"), chat, role, content, Now); Execute("UPDATE chats SET updated_at=$p0 WHERE id=$p1", Now, chat);
+        if (role is "user" or "assistant") Execute("UPDATE side_chats SET expires_at=$p0 WHERE chat_id=$p1", Now + SideLifetime, chat);
+    }
     public void Dispose() { db?.Dispose(); http.Dispose(); }
 }
 

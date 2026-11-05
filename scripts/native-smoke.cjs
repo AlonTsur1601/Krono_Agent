@@ -5,6 +5,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { spawn } = require('child_process')
+const { DatabaseSync } = require('node:sqlite')
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'krono-native-'))
 const user = { id: '33333333-3333-4333-8333-333333333333', email: 'native-fixture@example.com' }
 const requests = []
@@ -12,8 +13,38 @@ let revoked = false
 let browserIsolated = false
 let localNoTools = false
 let localKeyIsolated = false
+let sideNoTools = false, sideCancelled = false, sideStreamActive = false
+const heldParents = new Set()
+let keptSideId = ''
+function fixtureDb(action) {
+  const db = new DatabaseSync(path.join(home, 'databases', user.id + '.db'))
+  try { db.exec('PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON'); return action(db) } finally { db.close() }
+}
+function complete(response, text) {
+  response.write('data: ' + JSON.stringify({ type: 'response.output_text.delta', delta: text }) + '\n\n')
+  response.end('data: ' + JSON.stringify({ type: 'response.completed', response: { usage: { input_tokens: 1, output_tokens: 1 } } }) + '\n\n')
+}
 const server = http.createServer((request, response) => {
-  if (request.url === '/local/v1/models') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ data: [{ id: 'local-fixture-model' }] })) }
+  if (request.url === '/side-proof') {
+    const proof = fixtureDb(db => {
+      const side = db.prepare('SELECT * FROM side_chats ORDER BY rowid DESC LIMIT 1').get()
+      const queued = db.prepare('SELECT count(*) AS n FROM side_transfers').get().n
+      const transferred = db.prepare("SELECT count(*) AS n FROM messages WHERE content LIKE 'Context transferred from a side chat:%'").get().n
+      let snapshot = false
+      if (side) {
+        const parent = db.prepare('SELECT role,content FROM messages WHERE chat_id=? ORDER BY created_at,rowid').all(side.parent_chat_id)
+        const child = db.prepare('SELECT role,content FROM messages WHERE chat_id=? ORDER BY created_at,rowid').all(side.chat_id)
+        snapshot = JSON.stringify(parent) === JSON.stringify(child.slice(0, parent.length))
+        if (!keptSideId) keptSideId = side.chat_id
+      }
+      const kept = keptSideId && !!db.prepare('SELECT id FROM chats WHERE id=?').get(keptSideId) && !db.prepare('SELECT chat_id FROM side_chats WHERE chat_id=?').get(keptSideId)
+      return { sideCount: db.prepare('SELECT count(*) AS n FROM side_chats').get().n, sideMessageCount: side ? db.prepare('SELECT count(*) AS n FROM messages WHERE chat_id=?').get(side.chat_id).n : 0, queued, transferred, snapshot, kept, activeSide: side?.chat_id, expiresAt: side?.expires_at }
+    })
+    response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ ...proof, sideNoTools, sideCancelled, sideStreamActive, parentHeld: heldParents.size > 0 }))
+  }
+  else if (request.url === '/expire-side') { fixtureDb(db => db.prepare('UPDATE side_chats SET expires_at=?').run(Date.now() - 1)); response.end('ok') }
+  else if (request.url === '/release-parent') { for (const held of heldParents) complete(held, 'Native parent continued.'); heldParents.clear(); response.end('ok') }
+  else if (request.url === '/local/v1/models') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ data: [{ id: 'local-fixture-model' }] })) }
   else if (request.url === '/local/v1/chat/completions') {
     let body = ''; request.on('data', chunk => body += chunk); request.on('end', () => {
       const input = JSON.parse(body)
@@ -30,6 +61,10 @@ const server = http.createServer((request, response) => {
       const input = JSON.parse(body); requests.push(input)
       fs.writeFileSync(path.join(home, 'provider-fixture-requests.json'), JSON.stringify(requests, null, 2))
       response.setHeader('Content-Type', 'text/event-stream')
+      const last = input.input.at(-1)?.content
+      if (last === 'NATIVE_PARENT_WAIT') { response.flushHeaders(); heldParents.add(response); response.on('close', () => heldParents.delete(response)); return }
+      if (last === 'NATIVE_SIDE_WAIT') { sideStreamActive = true; response.flushHeaders(); response.write('data: ' + JSON.stringify({ type: 'response.output_text.delta', delta: 'Side stream started.' }) + '\n\n'); response.on('close', () => { sideCancelled = true; sideStreamActive = false }); return }
+      if (last === 'NATIVE_SIDE_QUESTION') { sideNoTools = !input.tools && input.input[0].content.includes('Native project memory fixture') && input.input.some(message => message.content === 'Native test message'); complete(response, 'Native side reply.'); return }
       if (input.tools?.length && !input.input.some(i => i.type === 'function_call_output')) {
         response.write('data: ' + JSON.stringify({ type: 'response.output_item.done', item: { type: 'function_call', call_id: 'native-file-call', name: 'write_file', arguments: JSON.stringify({ path: path.join(home, 'native-tool-proof.txt'), content: 'native approved write' }) } }) + '\n\n')
       } else response.write('data: ' + JSON.stringify({ type: 'response.output_text.delta', delta: 'Native fixture response.' }) + '\n\n')
