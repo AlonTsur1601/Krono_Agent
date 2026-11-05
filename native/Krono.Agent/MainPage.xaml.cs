@@ -98,6 +98,7 @@ public sealed partial class MainPage : Page
         } catch (Exception error) { Error(error); }
     }
     public void Error(Exception error) { Notice.Message = error.Message; Notice.IsOpen = true; }
+    public void PauseGames() => games?.PauseAndSave();
     async Task Leave(bool allDevices)
     {
         sessionGeneration++;

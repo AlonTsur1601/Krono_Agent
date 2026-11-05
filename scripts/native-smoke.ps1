@@ -374,6 +374,57 @@ try {
     Invoke 'Save typography' -ByName
     $fontProof = Invoke-RestMethod ($Fixture + '/font-proof')
     if ($fontProof.text -ne '14' -or $fontProof.code -ne '14') { throw 'Non-finite font sizes prevented recovery to valid defaults' }
+    $savedGames = (Invoke-RestMethod ($Fixture + '/game-proof')).saves
+    if ($savedGames.Count -ne 12) { throw 'Not all twelve games were persisted' }
+    SelectNav 'Games'
+    Invoke 'GameTile1'
+    if ((Find 'GameStatus').Current.Name -notmatch '^Paused') { throw 'Restored game started without resume consent' }
+    if ((Find 'GameCell0').Current.Name -ne 'Cell 1: X') { throw 'Tic-tac-toe move was lost across process restart' }
+    Invoke 'GameCell1'
+    if ((Find 'GameCell1').Current.Name -eq 'Cell 2: X') { throw 'Paused game accepted a move' }
+    Invoke 'Pause / resume' -ByName
+    $empty = 1..8 | Where-Object { (Find ('GameCell' + $_)).Current.Name -match 'empty$' } | Select-Object -First 1
+    Invoke ('GameCell' + $empty)
+    if ((Find ('GameCell' + $empty)).Current.Name -ne ('Cell ' + ($empty + 1) + ': X')) { throw 'Resumed game did not accept input' }
+    foreach ($game in @('2048','Minesweeper','Memory Match','Lights Out','Simon','Odd Color','Orbit')) {
+        SelectChoice 'GameSelector' $game
+        $saved = ($savedGames | Where-Object game -eq $game).state
+        if ($game -in @('2048','Memory Match')) {
+            foreach ($i in 0..15) {
+                $expected = if ($game -eq '2048') { if ($saved.Board[$i] -gt 0) { [string]$saved.Board[$i] } else { 'empty' } } else { if ($saved.Revealed[$i]) { [string]$saved.Board[$i] } else { '?' } }
+                if ((Find ('GameCell' + $i)).Current.Name -ne ('Cell ' + ($i + 1) + ': ' + $expected)) { throw ('Restored board mismatch: ' + $game + ' cell ' + $i) }
+            }
+        }
+        if ($game -eq 'Lights Out' -and (Find 'GameStatus').Current.Name -notmatch '^All lights out') { throw 'Completed game result was lost on restart' }
+        if ($game -eq 'Odd Color' -and (Find 'GameStatus').Current.Name -notmatch '^Different shade missed') { throw 'Ended color game was not retained' }
+        if ($game -eq 'Simon') {
+            if ((Find 'GameStatus').Current.Name -notmatch '^Paused') { throw 'Simon replay advanced without resume' }
+            Invoke 'Pause / resume' -ByName
+            $deadline = (Get-Date).AddSeconds(5)
+            do { Start-Sleep -Milliseconds 100; $state = (Find 'GameStatus').Current.Name } while ($state -notmatch '^Your turn' -and (Get-Date) -lt $deadline)
+            if ($state -notmatch '^Your turn') { throw 'Restored Simon timer did not resume' }
+            $start = $saved.SimonInput
+            for ($i = $start; $i -lt $saved.Sequence.Count; $i++) { Invoke ('GameCell' + $saved.Sequence[$i]) }
+            if ((Find 'GameStatus').Current.Name -notmatch 'Score 30') { throw 'Restored Simon sequence did not retain its next round' }
+        }
+    }
+    SelectChoice 'GameSelector' 'Snake'
+    Invoke 'Restart' -ByName
+    Invoke 'Pause / resume' -ByName
+    SelectNav 'Chats'
+    $beforeSnake = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
+    Start-Sleep -Seconds 2
+    $afterSnake = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
+    if ($beforeSnake.Tick -ne $afterSnake.Tick) { throw 'Hidden moving game continued ticking' }
+    Invoke-RestMethod -Method Post ($Fixture + '/corrupt-game') | Out-Null
+    CloseApp
+    Launch
+    Find 'Sign out' -ByName | Out-Null
+    SelectNav 'Games'
+    Invoke 'GameTile0'
+    $repaired = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
+    if ($repaired.Version -ne 1 -or $repaired.Snake.Count -ne 3) { throw 'Invalid game save did not recover safely' }
+    Capture 'native-restored-game.png'
     SelectNav 'Sign out'
     Find 'LoginButton' | Out-Null
     if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin')) { throw 'Logout retained local session' }

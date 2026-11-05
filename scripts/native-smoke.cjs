@@ -41,6 +41,8 @@ const server = http.createServer((request, response) => {
     })
   }
   else if (request.url === '/cloud-proof') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ accepted: [...cloudAccepted] })) }
+  else if (request.url === '/game-proof') { const saves = fixtureDb(db => db.prepare('SELECT game_id,state FROM game_saves WHERE account_id=? ORDER BY game_id').all(user.id).map(row => ({ game: row.game_id, state: JSON.parse(row.state) }))); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ saves })) }
+  else if (request.url === '/corrupt-game') { fixtureDb(db => db.prepare("UPDATE game_saves SET state='{}' WHERE game_id='Snake'").run()); response.end('ok') }
   else if (request.url === '/poison-font-sizes') { fixtureDb(db => { db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('native.textSize','NaN')").run(); db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('native.codeSize','Infinity')").run() }); response.end('ok') }
   else if (request.url === '/font-proof') { const proof = fixtureDb(db => ({ text: db.prepare("SELECT value FROM settings WHERE key='native.textSize'").get()?.value, code: db.prepare("SELECT value FROM settings WHERE key='native.codeSize'").get()?.value })); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(proof)) }
   else if (request.url === '/side-proof') {

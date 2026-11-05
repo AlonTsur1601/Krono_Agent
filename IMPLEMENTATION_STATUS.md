@@ -63,7 +63,7 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 - Live owner auth/provider acceptance, cloud record/attachment synchronization,
   OAuth, scheduled tasks, side-chat attachment references/sync, plugins/import,
   app connections, bundled local inference/model downloads, media generation,
-  agent browser/terminal/computer-use tools,
+  agent browser/computer-use tools and durable terminal jobs,
   automatic memory proposals and twelve additional games remain incomplete.
 - GitHub Copilot integration, capability-adaptive composer controls, dictation,
   attachments and durable goal/task execution remain incomplete. GitHub Models
@@ -82,7 +82,7 @@ are by Codex, authorized by the owner. See .kiro review logs for provenance.
   Chat and Plan omit command execution. This is not an OS sandbox or durable job
   manager; detached background services remain unsupported.
 - Native run/approval/response activity while playing, with return-to-chat pausing
-  the current game in memory. Disk game-state persistence remains incomplete.
+  the current game. Versioned local SQLite saves now restore all twelve games paused; cross-device save synchronization remains incomplete.
 - Cached chat/terminal typography updates preserve separate text/code fonts.
 - 34 core tests passed. Published native fixture 97jxma passed actual command
   approval/execution, game/response coexistence and cached font-role checks,

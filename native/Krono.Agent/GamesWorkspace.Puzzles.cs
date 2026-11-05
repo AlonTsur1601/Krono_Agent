@@ -71,6 +71,7 @@ public sealed partial class GamesWorkspace
             else { score += 100; if (oddRound++ == 20) End("20 shades found"); else NextOddColor(); }
         }
         Draw();
+        SaveCurrent();
     }
     void HitOrbit()
     {
@@ -79,6 +80,7 @@ public sealed partial class GamesWorkspace
         if (difference > 32) End("Outside the arc");
         else { score += difference <= 7 ? 25 : 10; orbitTarget = (orbitTarget + random.Next(80, 281)) % 360; orbitSpeed = Math.Min(12, orbitSpeed + .35); }
         Draw();
+        SaveCurrent();
     }
     void DrawPuzzles()
     {
