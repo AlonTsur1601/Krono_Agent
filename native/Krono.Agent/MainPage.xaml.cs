@@ -102,11 +102,13 @@ public sealed partial class MainPage : Page
                 confirmingSignOut = true;
                 var account = workspace.AccountId;
                 try {
-                    Nav.SelectedItem = lastPage;
-                    if (await Confirm("Sign out of Krono Agent?", "You’ll need to sign in again to open your workspace on this device.", "Sign out") &&
+                    if (await Confirm("Sign out of Krono Agent?", "You’ll need to sign in again to open your workspace on this device.", "Sign out now") &&
                         workspace.AccountId == account)
                         await Leave(false);
-                } finally { confirmingSignOut = false; }
+                } finally {
+                    Nav.SelectedItem = lastPage;
+                    confirmingSignOut = false;
+                }
                 return;
             }
             if (confirmingSignOut) return;

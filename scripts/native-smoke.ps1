@@ -679,8 +679,9 @@ try {
     Invoke 'Cancel' -ByName
     Find 'GameStatus' | Out-Null
     if (!(Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin'))) { throw 'Canceling sign-out removed the local session' }
+    if (!(Find 'Games' -ByName).GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected) { throw 'Canceling sign-out lost the selected page' }
     SelectNav 'Sign out'
-    Invoke 'PrimaryButton'
+    Invoke 'Sign out now' -ByName
     Find 'LoginButton' | Out-Null
     if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin')) { throw 'Logout retained local session' }
     SetValue 'EmailInput' 'native-fixture@example.com'
