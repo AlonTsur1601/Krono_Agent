@@ -23,20 +23,28 @@ jobs:
       - run: dotnet run --project native/Krono.Sync.Tests/Krono.Sync.Tests.csproj
       - run: npm run test:native
       - run: npm run package:win
-      - name: Archive native Windows distribution
+      - name: Build Windows installer
         shell: pwsh
         run: |
-          Compress-Archive -LiteralPath release/Krono-Agent -DestinationPath release/Krono-Agent-Windows-x64.zip
-          $kronoReleaseCheck = Join-Path $env:RUNNER_TEMP 'krono-release-check'
-          Expand-Archive -LiteralPath release/Krono-Agent-Windows-x64.zip -DestinationPath $kronoReleaseCheck
-          $env:KRONO_SMOKE_EXE = Join-Path $kronoReleaseCheck 'Krono-Agent/KronoAgent.exe'
+          choco install innosetup -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+          ./scripts/build-installer.ps1
+      - name: Verify installed distribution
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'Krono install test'
+          $desktop = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'Krono Agent.lnk'
+          $setup = Start-Process -FilePath (Resolve-Path release/Krono-Agent-Setup-x64.exe) -ArgumentList ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=desktopicon /DIR="' + $target + '"') -WindowStyle Hidden -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw 'Installation failed.' }
+          $env:KRONO_SMOKE_EXE = Join-Path $target 'KronoAgent.exe'
+          $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($desktop)
+          if (!(Test-Path -LiteralPath $desktop) -or $shortcut.TargetPath -ne $env:KRONO_SMOKE_EXE) { throw 'Desktop shortcut has the wrong target.' }
           node scripts/native-smoke.cjs
-          if ($LASTEXITCODE -ne 0) { throw 'Extracted release distribution failed native acceptance.' }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Krono-Agent-Windows-x64
-          path: release/Krono-Agent-Windows-x64.zip
+          if ($LASTEXITCODE -ne 0) { throw 'Installed app failed native acceptance.' }
+          $uninstall = Start-Process -FilePath (Join-Path $target 'unins000.exe') -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -WindowStyle Hidden -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0 -or (Test-Path -LiteralPath $desktop) -or (Test-Path -LiteralPath $env:KRONO_SMOKE_EXE)) { throw 'Uninstall failed.' }
       - uses: softprops/action-gh-release@v2
         with:
-          files: release/Krono-Agent-Windows-x64.zip
+          files: release/Krono-Agent-Setup-x64.exe
+          fail_on_unmatched_files: true
           prerelease: ${{ contains(github.ref_name, '-') }}

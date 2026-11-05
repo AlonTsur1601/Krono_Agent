@@ -14,9 +14,8 @@ if (error || values.has('access_token')) {
 }
 </script><span class="badge">In development</span><div style="display:flex;align-items:center;gap:20px"><img src="https://raw.githubusercontent.com/AlonTsur1601/Krono_Agent/main/assets/logo/logo.svg" width="72" height="72" alt=""><h1>Krono Agent</h1></div>
 <p>A native Windows agent workspace with games to play while tasks run.</p>
-<p>The application is being implemented and reviewed. There is no verified
-production installer available yet. Windows is the primary target;
-the interface uses WinUI 3, and macOS/Linux desktop interfaces are not implemented.</p>
+<p><a href="https://github.com/AlonTsur1601/Krono_Agent/releases/latest/download/Krono-Agent-Setup-x64.exe" style="display:inline-block;background:#8fd7c7;color:#111316;padding:10px 18px;border-radius:8px;font-weight:700;text-decoration:none">Download for Windows (x64)</a></p>
+<p>The installer lets you choose an installation folder and add a desktop shortcut. Krono Agent is in development and uses WinUI 3.</p>
 <p>Development checks include account-ownership policy tests and an integrated PowerShell terminal and isolated WebView2 browsing. The WinUI interface includes local project and memory management, native Markdown and 24 games with actual gameplay previews, personal bests, favorites, search and category filters. Ollama, LM Studio and custom OpenAI-compatible servers can be configured; local model downloads and inference hardware acceptance are not bundled or verified yet. Full release acceptance is still pending.</p>
 <p>Temporary side conversations keep a context snapshot, run independently in Chat mode, expire after 24 hours of message inactivity, and can be kept or transferred back to their parent at a safe boundary. They are stored locally; cross-device synchronization and attachments remain in development.</p>
 <p>Provider setup includes OpenAI, Anthropic, Google, Azure OpenAI, xAI, Groq, Mistral and OpenRouter. Compatible endpoints use opt-in tool support per model. Credentials and real provider quotas are supplied by the user's account; fixture checks do not establish live provider acceptance.</p>
