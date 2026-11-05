@@ -20,6 +20,7 @@ jobs:
       - run: npm run typecheck && npm test
       - run: npm run build
       - run: dotnet run --project native/Krono.Rules.Tests/Krono.Rules.Tests.csproj
+      - run: dotnet run --project native/Krono.Sync.Tests/Krono.Sync.Tests.csproj
       - run: npm run test:native
       - run: npm run package:win
       - name: Archive native Windows distribution

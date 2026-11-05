@@ -16,9 +16,12 @@ let localKeyIsolated = false
 let localModelBNoTools = false
 let sideNoTools = false, sideCancelled = false, sideStreamActive = false
 let commandRan = false
+let attachmentAccepted = false
 const heldParents = new Set()
 const cloudAccepted = new Set()
 let keptSideId = ''
+const syncRows = new Map()
+const syncKeys = { projects:'id', chats:'id', messages:'id', memories:'id', account_settings:'key', game_scores:'id', game_saves:'game_id' }
 function fixtureDb(action) {
   const db = new DatabaseSync(path.join(home, 'databases', user.id + '.db'))
   try { db.exec('PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON'); return action(db) } finally { db.close() }
@@ -28,6 +31,24 @@ function complete(response, text) {
   response.end('data: ' + JSON.stringify({ type: 'response.completed', response: { usage: { input_tokens: 1, output_tokens: 1 } } }) + '\n\n')
 }
 const server = http.createServer((request, response) => {
+  const rest = request.url.match(/^\/rest\/v1\/([a-z_]+)\?/)
+  if (rest) {
+    const table = rest[1]; const key = syncKeys[table]; const filters = new URL(request.url, 'http://localhost').searchParams
+    const json = data => { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(data)) }
+    if (!key || request.headers.authorization !== 'Bearer native-fixture-access' || request.headers.apikey !== 'native-public-fixture') { response.writeHead(403); json({ error:'fixture account mismatch' }); return }
+    const value = name => { const filter = filters.get(name)?.slice(3) || ''; return filter.startsWith('"') ? JSON.parse(filter) : filter }
+    if (request.method === 'GET') {
+      if (value('account_id') !== user.id) { response.writeHead(403); json([]); return }
+      const cursor = value(key)
+      json([...syncRows.entries()].filter(([id, row]) => id.startsWith(table + ':') && row[key] > cursor).map(([,row]) => row).sort((a,b) => a[key] > b[key] ? 1 : -1).slice(0,200)); return
+    }
+    let body = ''; request.on('data', chunk => body += chunk); request.on('end', () => {
+      const row = JSON.parse(body); const id = table + ':' + row[key]; const existing = syncRows.get(id)
+      if (row.account_id !== user.id) { response.writeHead(403); json([]); return }
+      if (request.method === 'POST' && existing || request.method === 'PATCH' && (!existing || String(existing.version) !== value('version') || value(key) !== row[key] || value('account_id') !== user.id)) { json([]); return }
+      syncRows.set(id,row); json([row])
+    }); return
+  }
   const cloud = request.url.match(/^\/cloud\/(azure|xai|groq|mistral|openrouter)\/v1\/(models|chat\/completions)$/)
   if (cloud) {
     const id = cloud[1]
@@ -41,6 +62,12 @@ const server = http.createServer((request, response) => {
     })
   }
   else if (request.url === '/cloud-proof') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ accepted: [...cloudAccepted] })) }
+  else if (request.url === '/sync-proof') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ memory: syncRows.get('memories:global')?.content, games: [...syncRows.keys()].filter(key => key.startsWith('game_saves:')).length, sideLeaked: [...syncRows.values()].some(row => row.name?.startsWith('Side · ') && row.name?.includes('expire')) })) }
+  else if (request.url === '/sync-remote-memory') { const memory = syncRows.get('memories:global'); memory.content = 'Cloud fixture memory'; memory.version++; response.end('ok') }
+  else if (request.url === '/schedule-proof') {
+    const proof = fixtureDb(db => ({ runs: db.prepare('SELECT state,chat_id FROM scheduled_runs').all(), response: db.prepare("SELECT content FROM messages WHERE role='assistant' AND content='Native scheduled result.'").get()?.content })); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(proof))
+  }
+  else if (request.url === '/attachment-proof') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ accepted: attachmentAccepted })) }
   else if (request.url === '/game-proof') { const saves = fixtureDb(db => db.prepare('SELECT game_id,state FROM game_saves WHERE account_id=? ORDER BY game_id').all(user.id).map(row => ({ game: row.game_id, state: JSON.parse(row.state) }))); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ saves })) }
   else if (request.url === '/local-reply-proof') { const count = fixtureDb(db => db.prepare("SELECT count(*) AS n FROM messages WHERE role='assistant' AND content='Native local endpoint reply.'").get().n); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ count })) }
   else if (request.url === '/corrupt-game') { fixtureDb(db => db.prepare("UPDATE game_saves SET state='{}' WHERE game_id='Snake'").run()); response.end('ok') }
@@ -93,6 +120,11 @@ const server = http.createServer((request, response) => {
       response.setHeader('Content-Type', 'text/event-stream')
       const last = input.input.at(-1)?.content
       const lastUser = input.input.filter(message => message.role === 'user').at(-1)?.content
+      if (lastUser?.startsWith('Use the selected fixture file')) {
+        attachmentAccepted = !input.tools && lastUser.includes('fixture-attachment.txt') && lastUser.includes('ATTACHMENT_PROOF_TEXT שלום') && !lastUser.includes(home)
+        complete(response, 'Native attachment fixture result.'); return
+      }
+      if (lastUser === 'NATIVE_SCHEDULE_PROOF') { if (input.tools) { response.writeHead(400); response.end(); return }; complete(response, 'Native scheduled result.'); return }
       if (lastUser === 'NATIVE_COMMAND_PROOF') {
         const result = input.input.find(message => message.type === 'function_call_output' && message.call_id === 'native-command-call')
         if (!result) {

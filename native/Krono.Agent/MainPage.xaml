@@ -8,6 +8,7 @@
 <NavigationViewItem Content="Browser" Icon="World" Tag="browser"/>
 <NavigationViewItem Content="Games" Icon="Play" Tag="games"/>
 <NavigationViewItem Content="Terminal" Icon="Document" Tag="terminal"/>
+<NavigationViewItem Content="Scheduled tasks" Icon="Clock" Tag="schedule"/>
 </NavigationView.MenuItems>
 <NavigationView.FooterMenuItems><NavigationViewItem Content="Settings" Icon="Setting" Tag="settings"/><NavigationViewItem Content="Sign out" Icon="LeaveChat" Tag="logout"/></NavigationView.FooterMenuItems>
 <Grid Padding="28,20,28,24" RowSpacing="12" Background="{ThemeResource KronoBackground}"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>

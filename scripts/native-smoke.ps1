@@ -33,7 +33,7 @@ function SelectNav([string]$Name) { $element = Find $Name -ByName; $pattern = $e
 function SelectChoice([string]$Id, [string]$Name) { $box = Find $Id; ($box.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand(); $item = Find $Name -ByName; ($item.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)).Select() }
 function FindOptional([string]$Id) {
     $condition = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::AutomationIdProperty, $Id)
-    $script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+    try { $script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition) } catch { if ($_.FullyQualifiedErrorId -notmatch 'ElementNotAvailableException') { throw } }
 }
 function OpenGameTile([int]$Index, [string]$Choice = 'Continue saved game', [switch]$RequireChoice) {
     Invoke ('GameTile' + $Index)
@@ -54,12 +54,23 @@ function SelectGame([string]$Name) {
 }
 function Toggle([string]$Id) { (Find $Id).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle(); Start-Sleep -Milliseconds 150 }
 function GameCards {
-    $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.AutomationId -match '^GameTile[0-9]+$' } | ForEach-Object { $_.Current.AutomationId } | Select-Object -Unique
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        try {
+            $ids = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.AutomationId -match '^GameTile[0-9]+$' } | ForEach-Object { $_.Current.AutomationId } | Select-Object -Unique
+            return $ids
+        } catch { if ($_.FullyQualifiedErrorId -notmatch 'ElementNotAvailableException') { throw }; Start-Sleep -Milliseconds 100 }
+    }
 }
 function AssertGameCards([string[]]$Expected, [string]$Label) {
     $target = ($Expected | Sort-Object) -join ','; $deadline = (Get-Date).AddSeconds(4)
     do { $actual = ((GameCards) | Sort-Object) -join ','; if ($actual -eq $target) { return }; Start-Sleep -Milliseconds 100 } while ((Get-Date) -lt $deadline)
     throw ('Unexpected ' + $Label + ' cards: ' + $actual)
+}
+function AttachFixture([string]$Path) {
+    Invoke 'Attach files…' -ByName
+    SetValue 'AttachmentPath' $Path
+    Invoke 'Attach path' -ByName
+    Find ('Remove ' + [IO.Path]::GetFileName($Path)) -ByName | Out-Null
 }
 function CloseApp { if ($script:process -and !$script:process.HasExited) { $script:process.CloseMainWindow() | Out-Null; if (!$script:process.WaitForExit(5000)) { Stop-Process -Id $script:process.Id } } }
 function Capture([string]$Name) {
@@ -666,10 +677,61 @@ try {
     $deadline = (Get-Date).AddSeconds(10)
     do { Start-Sleep -Milliseconds 100; $after = (Invoke-RestMethod ($Fixture + '/assertions')).completions } while ($after -le $before -and (Get-Date) -lt $deadline)
     if ($after -le $before) { throw 'Chat no longer worked after manual logout and login' }
+    SelectNav 'Settings'
+    Toggle 'AccountSyncEnabled'
+    $deadline = (Get-Date).AddSeconds(20)
+    do { Start-Sleep -Milliseconds 150; $sync = (Find 'AccountSyncStatus').Current.Name } while ($sync -notmatch '^Account data is up to date' -and (Get-Date) -lt $deadline)
+    if ($sync -notmatch '^Account data is up to date') { throw ('Native account sync did not complete: ' + $sync) }
+    $syncProof = Invoke-RestMethod ($Fixture + '/sync-proof')
+    if ($syncProof.memory -ne 'Native global memory fixture' -or $syncProof.games -ne 24 -or $syncProof.sideLeaked) { throw 'Native account sync did not upload the expected data scope' }
+    Invoke-RestMethod -Method Post ($Fixture + '/sync-remote-memory') | Out-Null
+    SelectNav 'Projects & memory'
+    SetValue 'GlobalMemory' 'Local fixture memory edit'
+    Invoke 'Save global memory' -ByName
+    SelectNav 'Settings'
+    Invoke 'Sync now' -ByName
+    Find 'Review differences' -ByName | Out-Null
+    Invoke 'Review differences' -ByName
+    Find 'Resolve account differences' -ByName | Out-Null
+    Invoke 'Use cloud' -ByName
+    $deadline = (Get-Date).AddSeconds(10)
+    do { Start-Sleep -Milliseconds 150; $sync = (Find 'AccountSyncStatus').Current.Name } while ($sync -notmatch '^Account data is up to date' -and (Get-Date) -lt $deadline)
+    if ($sync -notmatch '^Account data is up to date') { throw ('Native conflict choice did not resolve: ' + $sync) }
+    SelectNav 'Projects & memory'
+    if ((Find 'GlobalMemory').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value -ne 'Cloud fixture memory') { throw 'Native conflict choice did not restore the cloud memory' }
+    Capture 'native-synced-memory.png'
+    SelectNav 'Chats'
+    SetValue 'Composer' 'Unsent draft during a scheduled run'
+    SelectNav 'Scheduled tasks'
+    SetValue 'ScheduleName' 'Native scheduled fixture'
+    SetValue 'SchedulePrompt' 'NATIVE_SCHEDULE_PROOF'
+    SelectChoice 'ScheduleProvider' 'OpenAI'
+    SetValue 'ScheduleModel' 'native-fixture-model'
+    SetValue 'ScheduleFirstRun' ((Get-Date).AddDays(-1).ToString('yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture))
+    Invoke 'Save schedule' -ByName
+    if (@((Invoke-RestMethod ($Fixture + '/schedule-proof')).runs).Count -ne 0) { throw 'Scheduled task ran before opting in' }
+    Toggle 'ScheduleEnabled'
+    Find 'Scheduled result ready' -ByName | Out-Null
+    $scheduled = Invoke-RestMethod ($Fixture + '/schedule-proof')
+    if ($scheduled.runs.Count -ne 1 -or $scheduled.runs[0].state -ne 'completed' -or $scheduled.response -ne 'Native scheduled result.') { throw 'Due scheduled task did not complete exactly once' }
+    Find 'Open run conversation' -ByName | Out-Null
+    Capture 'native-scheduled-task.png'
+    Invoke 'Open run conversation' -ByName
+    if ((Find 'Composer').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value -ne 'Unsent draft during a scheduled run') { throw 'Scheduled task overwrote the unsent draft' }
+    $attachment = Join-Path $ReportDirectory 'fixture-attachment.txt'
+    [IO.File]::WriteAllText($attachment, 'ATTACHMENT_PROOF_TEXT שלום', [Text.UTF8Encoding]::new($false))
+    AttachFixture $attachment
+    Capture 'native-attachment.png'
+    SelectChoice 'Mode' 'chat'
+    SetValue 'Composer' 'Use the selected fixture file'
+    Invoke 'Send' -ByName
+    $deadline = (Get-Date).AddSeconds(10)
+    do { Start-Sleep -Milliseconds 150; $attachmentProof = Invoke-RestMethod ($Fixture + '/attachment-proof') } while (!$attachmentProof.accepted -and (Get-Date) -lt $deadline)
+    if (!$attachmentProof.accepted) { throw 'Attachment content did not reach Chat mode without its local path or tools' }
     Invoke-RestMethod -Method Post ($Fixture + '/revoke') | Out-Null
     CloseApp
     Launch
     Find 'LoginButton' | Out-Null
     if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin')) { throw 'Revoked session was retained after restart' }
-    Write-Output 'NATIVE_SMOKE_PASS: native auth, scoped memory, cloud/local profiles, complete streams, command approval/PowerShell 42, side chats, 24 durable games and filters, PTY, WebView2, restart, re-login, revocation'
+    Write-Output 'NATIVE_SMOKE_PASS: native auth, account sync/conflict UI, scheduled result, scoped memory, cloud/local profiles, complete streams, command approval, side chats, 24 games, PTY, WebView2, restart and revocation'
 } finally { CloseApp }

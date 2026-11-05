@@ -81,6 +81,32 @@ CREATE TABLE IF NOT EXISTS outbox (
   retries INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS sync_checkpoints (
+  table_name TEXT NOT NULL, record_id TEXT NOT NULL, revision INTEGER NOT NULL,
+  payload TEXT NOT NULL, PRIMARY KEY(table_name, record_id)
+);
+
+CREATE TABLE IF NOT EXISTS sync_conflicts (
+  table_name TEXT NOT NULL, record_id TEXT NOT NULL, cloud_revision INTEGER NOT NULL,
+  cloud_payload TEXT, local_payload TEXT NOT NULL, detected_at INTEGER NOT NULL,
+  PRIMARY KEY(table_name, record_id)
+);
+
+CREATE TABLE IF NOT EXISTS scheduled_tasks (
+  id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id),
+  name TEXT NOT NULL, prompt TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL,
+  mode TEXT NOT NULL, permissions TEXT NOT NULL, project_id TEXT,
+  recurrence TEXT NOT NULL, time_zone TEXT NOT NULL, interval_minutes INTEGER NOT NULL,
+  clock_minutes INTEGER NOT NULL, next_run INTEGER NOT NULL, state TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS scheduled_runs (
+  id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES scheduled_tasks(id),
+  due_at INTEGER NOT NULL, started_at INTEGER NOT NULL, heartbeat_at INTEGER NOT NULL,
+  finished_at INTEGER, state TEXT NOT NULL, chat_id TEXT REFERENCES chats(id), error TEXT,
+  UNIQUE(task_id,due_at)
+);
+CREATE INDEX IF NOT EXISTS scheduled_tasks_due ON scheduled_tasks(account_id,state,next_run);
+
 -- Game Scores
 CREATE TABLE IF NOT EXISTS game_scores (
   id TEXT PRIMARY KEY,

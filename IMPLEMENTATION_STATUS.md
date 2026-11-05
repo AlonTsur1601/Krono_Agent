@@ -60,13 +60,13 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 
 ## Remaining product requirements
 
-- Live owner auth/provider acceptance, cloud record/attachment synchronization,
-  OAuth, scheduled tasks, side-chat attachment references/sync, plugins/import,
+- Live owner auth/provider and production sync acceptance, attachment synchronization,
+  OAuth, closed-app scheduled execution, side-chat attachment references/sync, plugins/import,
   app connections, bundled local inference/model downloads, media generation,
   agent browser/computer-use tools and durable terminal jobs,
   automatic memory proposals remain incomplete.
 - GitHub Copilot integration, capability-adaptive composer controls, dictation,
-  attachments and durable goal/task execution remain incomplete. GitHub Models
+  image/PDF/binary attachments and durable goal execution remain incomplete. GitHub Models
   retired on 2026-07-30; its discontinued API is not offered as a working profile.
 - macOS/Linux desktop UIs are not implemented after the owner's explicit
   choice of native Windows UI. Agent unit checks remain cross-platform.
@@ -82,7 +82,7 @@ are by Codex, authorized by the owner. See .kiro review logs for provenance.
   Chat and Plan omit command execution. This is not an OS sandbox or durable job
   manager; detached background services remain unsupported.
 - Native run/approval/response activity while playing, with return-to-chat pausing
-  the current game. Versioned local SQLite saves now restore all twenty-four games paused; cross-device save synchronization remains incomplete.
+  the current game. Versioned local SQLite saves now restore all twenty-four games paused; optional account sync also includes game saves.
 - Cached chat/terminal typography updates preserve separate text/code fonts.
 - 34 core tests passed. Published native fixture 97jxma passed actual command
   approval/execution, game/response coexistence and cached font-role checks,
@@ -106,4 +106,19 @@ are by Codex, authorized by the owner. See .kiro review logs for provenance.
   The redesigned play surfaces share a score HUD, responsive board framing and
   motion that honors the Windows animation preference. Native debug fixture
   WRYJzT passed the 24-game flows. Audio, additional bot difficulty options and
-  desktop-control coordination still need work; local data is not cloud sync.
+  desktop-control coordination still need work.
+
+- Account sync over the existing Supabase tables covers normal chats/messages,
+  projects/instructions, memories, portable appearance and game data. Enable
+  it per device in Settings. Durable outbox, CAS edits and tombstones passed
+  the two-device REST/SQLite fixture; native UI also verified enabling sync
+  and choosing the cloud copy of a conflicting memory (Aj138w). Production
+  credentials/data and file attachment sync have not been accepted.
+
+- Opt-in one-time, interval and daily schedules run on this device while
+  Krono is open and signed in. The local scheduler records one missed run,
+  prevents duplicate claims, handles timezone/DST and keeps result history.
+  An OS service that runs while Krono is closed is not installed.
+- The composer accepts up to four bounded text/code snapshots. File content
+  becomes part of the message; source paths are not transmitted. Original
+  binary files, images and PDFs are outside this increment.

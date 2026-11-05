@@ -53,6 +53,10 @@ jobs:
         if: runner.os == 'Windows'
         run: dotnet run --project native/Krono.Rules.Tests/Krono.Rules.Tests.csproj
 
+      - name: Account sync across isolated devices
+        if: runner.os == 'Windows'
+        run: dotnet run --project native/Krono.Sync.Tests/Krono.Sync.Tests.csproj
+
       - name: Native Windows UI integration
         if: runner.os == 'Windows'
         run: npm run test:native

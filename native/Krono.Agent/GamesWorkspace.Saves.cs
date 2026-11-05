@@ -60,6 +60,7 @@ public sealed partial class GamesWorkspace
         paused = true; timer.Stop(); SaveCurrent(); Draw();
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(status, reason);
     }
+    public void DiscardCachedView() { disposed = true; timer.Stop(); }
     void SaveCurrent()
     {
         if (disposed || !stateReady) return;
