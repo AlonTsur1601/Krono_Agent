@@ -13,6 +13,9 @@ public sealed partial class MainPage : Page
     readonly Workspace workspace = new();
     AgentWorker? worker;
     string? chatId, runId, approvalId;
+    JsonNode? approvalDetails;
+    ContentDialog? approvalDialog;
+    string? activityChatId;
     string provider = "openai", model = "", mode = "chat", permissions = "ask";
     readonly ListView chatList = new() { Width = 220, SelectionMode = ListViewSelectionMode.Single };
     readonly StackPanel messages = new() { Spacing = 20, MaxWidth = 850, HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -91,12 +94,14 @@ public sealed partial class MainPage : Page
                 case "logout":
                     await Leave(false); break;
             }
+            UpdateActivityVisibility();
         } catch (Exception error) { Error(error); }
     }
     public void Error(Exception error) { Notice.Message = error.Message; Notice.IsOpen = true; }
     async Task Leave(bool allDevices)
     {
         sessionGeneration++;
+        ClearApprovalDetails();
         CloseSideChat();
         sessionTimer.Stop(); worker?.Dispose(); worker = null; browser?.Dispose(); browser = null; terminal?.Dispose(); terminal = null; games?.Dispose(); games = null;
         try { await workspace.Logout(allDevices); }
@@ -104,7 +109,7 @@ public sealed partial class MainPage : Page
             chatId = runId = loadedContext = approvalId = null; Body.Content = null; chatList.ItemsSource = null; chatList.IsEnabled = send.IsEnabled = true; stop.IsEnabled = false;
             messages.Children.Clear(); composer.Text = fullResponse = progress.Text = ""; streaming = null; model = ""; modelChoice.Content = "Choose model";
             mode = "chat"; permissions = "ask"; if (modeSelector is not null) modeSelector.SelectedItem = mode; if (permissionSelector is not null) permissionSelector.SelectedItem = permissions;
-            Approval.IsOpen = Notice.IsOpen = false; Nav.Visibility = Visibility.Collapsed; SignIn.Visibility = Visibility.Visible;
+            activityChatId = null; RunActivity.IsOpen = false; Approval.IsOpen = Notice.IsOpen = false; Nav.Visibility = Visibility.Collapsed; SignIn.Visibility = Visibility.Visible;
         }
     }
     public async Task<bool> Confirm(string title, string message)
@@ -134,6 +139,7 @@ public sealed partial class MainPage : Page
             foreach (var height in new[] { GridLength.Auto, new GridLength(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto }) conversation.RowDefinitions.Add(new RowDefinition { Height = height });
             var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
             modeSelector = Choices("Mode", ["chat", "plan", "agent", "goal"], mode, value => mode = value); modeSelector.MinWidth = 110; toolbar.Children.Add(modeSelector); permissionSelector = Choices("Permissions", ["ask", "project", "full"], permissions, value => permissions = value); permissionSelector.MinWidth = 110; toolbar.Children.Add(permissionSelector);
+            ToolTipService.SetToolTip(permissionSelector, "Ask: approve changes/commands. Project: bounded file tools; no shell or desktop execution. Full: supplied tools run with your Windows account.");
             toolbar.Children.Add(Button("Project…", async () => {
                 if (chatId is null || runId is not null) return;
                 var projects = workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name");
@@ -157,6 +163,7 @@ public sealed partial class MainPage : Page
         ToolTipService.SetToolTip(modelChoice, ProviderCatalog.Name(provider) + " / " + model);
         KronoDesign.Present(Body, chatView); ReloadChats(); if (runId is null) LoadChat();
         Nav.SelectedItem = Nav.MenuItems.OfType<NavigationViewItem>().First(item => item.Tag?.ToString() == "chats");
+        UpdateActivityVisibility();
     }
     record ChatItem(string Id, string Name);
     void ReloadChats() { chatList.ItemsSource = workspace.Query("SELECT id,name FROM chats WHERE deleted_at IS NULL AND id NOT IN (SELECT chat_id FROM side_chats) ORDER BY updated_at DESC").Select(row => new ChatItem(row["id"]!.ToString(), row["name"]!.ToString())).ToList(); }
@@ -185,7 +192,7 @@ public sealed partial class MainPage : Page
         var box = new StackPanel { Spacing = 8 };
         var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
         header.Children.Add(new TextBlock { Text = role == "user" ? "You" : "Krono", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Opacity = .6, VerticalAlignment = VerticalAlignment.Center });
-        var branch = Button("Branch", () => OpenSideChatFrom(messageId)); branch.Padding = new Thickness(8, 3, 8, 3); branch.FontSize = 11;
+        var branch = Button("Branch", () => OpenSideChatFrom(messageId)); branch.Padding = new Thickness(8, 3, 8, 3); branch.FontSize = 11; branch.Tag = "caption";
         AutomationProperties.SetName(branch, "Side chat from this message"); header.Children.Add(branch); box.Children.Add(header);
         box.Children.Add(Markdown(text));
         if (role == "user") messages.Children.Add(new Border { Child = box, Padding = new Thickness(18, 14, 18, 14), CornerRadius = new CornerRadius(16), Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 143, 215, 199)), BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(60, 143, 215, 199)), BorderThickness = new Thickness(1) });
@@ -208,23 +215,39 @@ public sealed partial class MainPage : Page
             var dirs = project is null ? [] : workspace.Query("SELECT path FROM project_directories WHERE project_id=$p0", project).Select(p => p["path"]!.ToString()).ToArray();
             var memories = workspace.Query("SELECT content FROM memories WHERE deleted_at IS NULL AND (project_id IS NULL OR project_id=$p0)", project).Select(p => p["content"]!.ToString()).ToArray();
             runId = Guid.NewGuid().ToString(); send.IsEnabled = false; chatList.IsEnabled = false; stop.IsEnabled = true; progress.Text = "Working…";
+            activityChatId = chatId; RunActivity.Title = "Agent running"; RunActivity.Message = workspace.Query("SELECT name FROM chats WHERE id=$p0", chatId).First()["name"]?.ToString(); RunActivity.IsClosable = false; UpdateActivityVisibility();
             var history = workspace.Query("SELECT role,content FROM messages WHERE chat_id=$p0 AND deleted_at IS NULL ORDER BY created_at", chatId).Select(p => new { role = p["role"]!.ToString(), content = p["content"]!.ToString() }).ToArray();
             await worker!.Request(runId, "run", new { providerId = provider, apiKey, endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled, modelId = model, mode, permissions, messages = history, projectDirs = dirs, instructions = config?["instructions"]?.ToString() ?? "", memories });
             if (generation != sessionGeneration) return;
             workspace.AddMessage(chatId, "assistant", fullResponse); progress.Text = "Done";
-        } catch (Exception error) { if (generation == sessionGeneration) { Error(error); progress.Text = "Stopped"; } }
-        finally { if (generation == sessionGeneration) { runId = null; send.IsEnabled = true; chatList.IsEnabled = true; stop.IsEnabled = false; Approval.IsOpen = false; if (workspace.AccountId.Length > 0) { workspace.FlushSideTransfers(); LoadChat(); } } }
+            RunActivity.Title = "Response ready"; RunActivity.IsClosable = true; if (ReferenceEquals(Body.Content, chatView)) activityChatId = null; UpdateActivityVisibility();
+        } catch (Exception error) { if (generation == sessionGeneration) { Error(error); progress.Text = "Stopped"; RunActivity.Title = "Agent stopped"; RunActivity.IsClosable = true; if (ReferenceEquals(Body.Content, chatView)) activityChatId = null; UpdateActivityVisibility(); } }
+        finally { if (generation == sessionGeneration) { runId = null; send.IsEnabled = true; chatList.IsEnabled = true; stop.IsEnabled = false; Approval.IsOpen = false; approvalId = null; ClearApprovalDetails(); if (workspace.AccountId.Length > 0) { workspace.FlushSideTransfers(); LoadChat(); } } }
     }
     void WorkerEvent(string id, string type, JsonNode? data) => DispatcherQueue.TryEnqueue(() => {
         terminal?.Receive(id, type, data);
         if (id != runId) return;
-        if (type == "approval") { approvalId = data!["id"]!.ToString(); Approval.Message = data["action"] + " · " + data["target"]; Approval.IsOpen = true; }
+        if (type == "approval") { approvalId = data!["id"]!.ToString(); approvalDetails = data["details"]?.DeepClone(); var target = data["target"]?.ToString() ?? ""; Approval.Message = data["action"] + " · " + (target.Length > 240 ? target[..240] + "…" : target); Approval.IsOpen = true; RunActivity.Title = "Approval needed"; }
         if (type == "chunk" && data?["type"]?.ToString() == "text") { fullResponse += data["content"]?.ToString(); if (streaming is not null) streaming.Text = fullResponse; transcript.ChangeView(null, transcript.ScrollableHeight, null); }
-        if (type == "chunk" && data?["type"]?.ToString() == "tool_call") progress.Text = "Using " + data["toolCall"]?["name"];
+        if (type == "chunk" && data?["type"]?.ToString() == "tool_call") { progress.Text = "Using " + data["toolCall"]?["name"]; RunActivity.Title = progress.Text; }
     });
-    async void Approve(object sender, RoutedEventArgs args) => await AnswerApproval(true);
-    async void Deny(object sender, RoutedEventArgs args) => await AnswerApproval(false);
-    async Task AnswerApproval(bool approved) { if (approvalId is null) return; await worker!.Send(Guid.NewGuid().ToString(), "approve", new { id = approvalId, approved }); approvalId = null; Approval.IsOpen = false; }
+    void UpdateActivityVisibility() => RunActivity.IsOpen = activityChatId is not null && !ReferenceEquals(Body.Content, chatView);
+    void ActivityClosed(InfoBar sender, InfoBarClosedEventArgs args) { if (runId is null) activityChatId = null; }
+    void OpenActivityChat(object sender, RoutedEventArgs args) {
+        try { if (activityChatId is null) return; var id = activityChatId; games?.PauseForAgent(); OpenNormalChat(id); if (runId is null) activityChatId = null; UpdateActivityVisibility(); }
+        catch (Exception error) { Error(error); }
+    }
+    async void Approve(object sender, RoutedEventArgs args) { try { await AnswerApproval(true); } catch (Exception error) { Error(error); } }
+    async void Deny(object sender, RoutedEventArgs args) { try { await AnswerApproval(false); } catch (Exception error) { Error(error); } }
+    async Task AnswerApproval(bool approved) { if (approvalId is null) return; await worker!.Send(Guid.NewGuid().ToString(), "approve", new { id = approvalId, approved }); approvalId = null; ClearApprovalDetails(); Approval.IsOpen = false; }
+    void ClearApprovalDetails() { if (approvalDialog?.Content is TextBox content) content.Text = ""; approvalDialog?.Hide(); approvalDialog = null; approvalDetails = null; }
+    async void ReviewApproval(object sender, RoutedEventArgs args) {
+        if (approvalDetails is null || approvalDialog is not null) return;
+        var details = new TextBox { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinWidth = 350, MaxHeight = 480, FontFamily = KronoDesign.CodeFont, FontSize = KronoDesign.CodeSize, Text = approvalDetails.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) };
+        AutomationProperties.SetAutomationId(details, "ToolApprovalDetails");
+        var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Action details", Content = details, CloseButtonText = "Close details" }; approvalDialog = dialog;
+        try { await dialog.ShowAsync(); } catch (Exception error) { Error(error); } finally { if (ReferenceEquals(approvalDialog, dialog)) approvalDialog = null; }
+    }
     void ApplyTheme(string value)
     {
         RequestedTheme = value == "light" ? ElementTheme.Light : value is "dark" or "halloween" ? ElementTheme.Dark : ElementTheme.Default;
@@ -278,6 +301,7 @@ public sealed partial class MainPage : Page
         panel.Children.Add(profileHelp);
         var textFont = new TextBox { Header = "Text font", Text = workspace.Setting("native.textFont") is { Length: > 0 } tf ? tf : "Rubik" };
         var codeFont = new TextBox { Header = "Code font", Text = workspace.Setting("native.codeFont") is { Length: > 0 } cf ? cf : "JetBrains Mono" };
+        AutomationProperties.SetAutomationId(textFont, "TextFontFamily"); AutomationProperties.SetAutomationId(codeFont, "CodeFontFamily");
         var textSize = new NumberBox { Header = "Text size", Minimum = 11, Maximum = 28, Value = KronoDesign.TextSize };
         var codeSize = new NumberBox { Header = "Code size", Minimum = 10, Maximum = 26, Value = KronoDesign.CodeSize };
         AutomationProperties.SetAutomationId(textSize, "TextFontSize"); AutomationProperties.SetAutomationId(codeSize, "CodeFontSize");

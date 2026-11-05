@@ -74,3 +74,16 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 
 Initial specs/work used Kiro Crew. Native migration and subsequent implementation
 are by Codex, authorized by the owner. See .kiro review logs for provenance.
+
+## Latest verified increment
+
+- Bounded agent PowerShell commands with detailed Ask approval, cancellation,
+  timeout, process-tree termination and known-secret output redaction. Project,
+  Chat and Plan omit command execution. This is not an OS sandbox or durable job
+  manager; detached background services remain unsupported.
+- Native run/approval/response activity while playing, with return-to-chat pausing
+  the current game in memory. Disk game-state persistence remains incomplete.
+- Cached chat/terminal typography updates preserve separate text/code fonts.
+- 34 core tests passed. Published native fixture 97jxma passed actual command
+  approval/execution, game/response coexistence and cached font-role checks,
+  alongside account, side-chat, twelve-game, PTY and WebView2 checks.

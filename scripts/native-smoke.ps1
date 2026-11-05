@@ -95,6 +95,21 @@ try {
     $graphics.CopyFromScreen([int]$bounds.X, [int]$bounds.Y, 0, 0, $bitmap.Size)
     $bitmap.Save((Join-Path $ReportDirectory 'native-workspace.png'), [Drawing.Imaging.ImageFormat]::Png)
     $graphics.Dispose(); $bitmap.Dispose()
+    $deadline = (Get-Date).AddSeconds(10)
+    while (!(Find 'Send' -ByName).Current.IsEnabled -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+    SetValue 'Composer' 'NATIVE_COMMAND_PROOF'
+    Invoke 'Send' -ByName
+    Find 'Allow once' -ByName | Out-Null
+    if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-command-proof.txt')) { throw 'Agent command ran before approval' }
+    Invoke 'Review details' -ByName
+    $details = (Find 'ToolApprovalDetails').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
+    if ($details -notmatch '6\*7') { throw 'Command approval did not show its full script' }
+    Capture 'native-command-approval.png'
+    Invoke 'Close details' -ByName
+    Invoke 'Allow once' -ByName
+    $deadline = (Get-Date).AddSeconds(15)
+    do { Start-Sleep -Milliseconds 100; $assertions = Invoke-RestMethod ($Fixture + '/assertions') } while (!$assertions.commandRan -and (Get-Date) -lt $deadline)
+    if (!$assertions.commandRan) { throw 'Approved agent command did not write its marker and return 42 to the model' }
     SelectNav 'Settings'
     SelectChoice 'Provider' 'Ollama'
     SetValue 'ProviderEndpoint' ($Fixture + '/local/v1')
@@ -193,10 +208,22 @@ try {
     $deadline = (Get-Date).AddSeconds(5)
     do { Start-Sleep -Milliseconds 100; $proof = Invoke-RestMethod ($Fixture + '/side-proof') } while ($proof.queued -eq 0 -and $proof.transferred -eq 0 -and (Get-Date) -lt $deadline)
     if ($proof.queued -ne 1 -or $proof.transferred -ne 0 -or !$proof.parentHeld) { Capture 'native-side-transfer-failed.png'; throw 'Side transfer interrupted its parent instead of queuing' }
+    Invoke 'Close side chat' -ByName
+    SelectNav 'Games'
+    Invoke 'GameTile1'
+    Invoke 'GameCell0'
+    if ((Find 'GameCell0').Current.Name -ne 'Cell 1: X') { throw 'Game was not playable while the parent agent waited' }
+    Find 'Agent running' -ByName | Out-Null
     Invoke-RestMethod -Method Post ($Fixture + '/release-parent') | Out-Null
     $deadline = (Get-Date).AddSeconds(10)
     do { Start-Sleep -Milliseconds 200; $proof = Invoke-RestMethod ($Fixture + '/side-proof') } while ($proof.queued -gt 0 -and (Get-Date) -lt $deadline)
     if ($proof.queued -ne 0 -or $proof.transferred -ne 1) { throw 'Side transfer did not append after the safe boundary' }
+    Find 'Response ready' -ByName | Out-Null
+    Invoke 'GameCell1'
+    if ((Find 'GameCell1').Current.Name -ne 'Cell 2: X') { throw 'Agent completion interrupted or reset the game' }
+    Capture 'native-game-agent-ready.png'
+    Invoke 'Open chat' -ByName
+    Invoke 'Side chat' -ByName
     Invoke 'Keep as independent chat' -ByName
     $proof = Invoke-RestMethod ($Fixture + '/side-proof')
     if (!$proof.kept -or $proof.sideCount -ne 0) { throw 'Keep did not preserve the independent chat or remove its expiry' }
@@ -215,6 +242,8 @@ try {
     if (!$proof.sideCancelled -or $proof.sideCount -ne 0 -or !$proof.kept -or (Find 'SideComposer').Current.IsEnabled) { throw 'Expiry did not cancel/delete the temporary chat and retain the kept one' }
     Invoke 'Close side chat' -ByName
     SelectNav 'Games'
+    if ((Find 'GameStatus').Current.Name -notmatch '^Paused') { throw 'Returning to chat did not pause the active game' }
+    Invoke 'GameLibraryBack'
     (Find 'GameTile0').SetFocus()
     Capture 'native-game-library.png'
     Invoke 'GameTile0'
@@ -312,6 +341,23 @@ try {
     do { Start-Sleep -Milliseconds 100; $assertions = Invoke-RestMethod ($Fixture + '/assertions') } while (!$assertions.browserIsolated -and (Get-Date) -lt $deadline)
     if (!$assertions.browserIsolated) { throw 'Browser fixture did not prove host API / Node isolation' }
     if (!(Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin'))) { throw 'Encrypted session missing' }
+    SelectNav 'Settings'
+    SetValue 'TextFontFamily' 'Space Grotesk'
+    SetValue 'CodeFontFamily' 'Rubik'
+    Invoke 'Save typography' -ByName
+    SelectNav 'Chats'
+    SetValue 'Composer' 'Typography sample'
+    $font = (Find 'Composer').GetCurrentPattern([Windows.Automation.TextPattern]::Pattern).DocumentRange.GetAttributeValue([Windows.Automation.TextPattern]::FontNameAttribute)
+    if ($font -notmatch 'Space Grotesk') { throw ('Cached chat did not update its text font: ' + $font) }
+    SetValue 'Composer' ''
+    SelectNav 'Terminal'
+    $font = (Find 'TerminalOutput').GetCurrentPattern([Windows.Automation.TextPattern]::Pattern).DocumentRange.GetAttributeValue([Windows.Automation.TextPattern]::FontNameAttribute)
+    if ($font -notmatch 'Rubik') { throw ('Cached terminal did not update its independent code font: ' + $font) }
+    Capture 'native-typography-roles.png'
+    SelectNav 'Settings'
+    SetValue 'TextFontFamily' 'Rubik'
+    SetValue 'CodeFontFamily' 'JetBrains Mono'
+    Invoke 'Save typography' -ByName
     SelectNav 'Chats'
     Invoke 'Side chat' -ByName
     Find 'SideComposer' | Out-Null
@@ -348,5 +394,5 @@ try {
     Launch
     Find 'LoginButton' | Out-Null
     if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin')) { throw 'Revoked session was retained after restart' }
-    Write-Output 'NATIVE_SMOKE_PASS: native auth, scoped projects/memory, streamed cloud/local endpoint, side snapshot/independent run/queued transfer/keep/expiry cancellation, approved file write, twelve games with puzzle actions, PTY 42, WebView2 navigation, restart, logout, remote-revocation rejection'
+    Write-Output 'NATIVE_SMOKE_PASS: native auth, scoped memory, cloud/local profiles, command approval/PowerShell 42, side snapshots/queue/expiry, twelve games, PTY, WebView2, restart, re-login, revocation'
 } finally { CloseApp }

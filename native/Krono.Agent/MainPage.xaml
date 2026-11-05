@@ -11,8 +11,10 @@
 </NavigationView.MenuItems>
 <NavigationView.FooterMenuItems><NavigationViewItem Content="Settings" Icon="Setting" Tag="settings"/><NavigationViewItem Content="Sign out" Icon="LeaveChat" Tag="logout"/></NavigationView.FooterMenuItems>
 <Grid Padding="28,20,28,24" RowSpacing="12" Background="{ThemeResource KronoBackground}"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-<InfoBar x:Name="Notice" IsOpen="False" IsClosable="True" Severity="Error"/>
-<InfoBar x:Name="Approval" Grid.Row="1" IsOpen="False" IsClosable="False" Severity="Warning" Title="Agent action needs approval"><StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Allow once" Click="Approve"/><Button Content="Deny" Click="Deny"/></StackPanel></InfoBar>
+<StackPanel Spacing="8"><InfoBar x:Name="Notice" IsOpen="False" IsClosable="True" Severity="Error"/>
+<InfoBar x:Name="RunActivity" IsOpen="False" IsClosable="False" IsIconVisible="False" Background="{ThemeResource KronoSurface}" BorderBrush="{ThemeResource KronoBorder}" Closed="ActivityClosed"><InfoBar.ActionButton><Button Content="Open chat" Click="OpenActivityChat"/></InfoBar.ActionButton></InfoBar>
+</StackPanel>
+<InfoBar x:Name="Approval" Grid.Row="1" IsOpen="False" IsClosable="False" Severity="Warning" Title="Agent action needs approval"><StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Review details" Click="ReviewApproval"/><Button Content="Allow once" Click="Approve"/><Button Content="Deny" Click="Deny"/></StackPanel></InfoBar>
 <Grid Grid.Row="2"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition x:Name="SideColumn" Width="0"/></Grid.ColumnDefinitions>
 <ContentControl x:Name="Body" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
 <primitives:Thumb x:Name="SideGrip" Grid.Column="1" Width="8" Margin="8,0" Background="{ThemeResource KronoBorder}" Visibility="Collapsed" DragDelta="ResizeSideChat"/>

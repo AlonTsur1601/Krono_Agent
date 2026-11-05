@@ -57,22 +57,29 @@ public static class KronoDesign
         Application.Current.Resources["KronoCodeFont"] = code;
         Application.Current.Resources["KronoTextSize"] = textSize;
         Application.Current.Resources["KronoCodeSize"] = codeSize;
+        RefreshTypography(MainWindow.Instance?.Content is DependencyObject windowRoot ? windowRoot : root);
+    }
+    static void RefreshTypography(DependencyObject root)
+    {
+        var text = TextFont; var code = CodeFont; var textSize = TextSize; var codeSize = CodeSize;
         Refresh(root);
-        void Refresh(DependencyObject element)
+        void Refresh(DependencyObject element, bool codeContext = false)
         {
+            var isCode = codeContext;
             if (element is Control control) {
                 var id = Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(control);
-                var isCode = id is "TerminalInput" or "TerminalOutput";
+                isCode |= id is "TerminalInput" or "TerminalOutput" or "ToolApprovalDetails";
                 control.FontFamily = isCode ? code : text;
-                if (control is TextBox or PasswordBox or ComboBox or NumberBox or Button) control.FontSize = isCode ? codeSize : textSize;
+                if (!id.StartsWith("GameCell", StringComparison.Ordinal) && control is TextBox or PasswordBox or ComboBox or NumberBox or Button) control.FontSize = isCode ? codeSize : control.Tag?.ToString() == "caption" ? Math.Max(11, textSize - 3) : textSize;
             }
-            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++) Refresh(VisualTreeHelper.GetChild(element, i));
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++) Refresh(VisualTreeHelper.GetChild(element, i), isCode);
         }
     }
     public static void Present(ContentControl host, FrameworkElement content)
     {
-        if (ReferenceEquals(host.Content, content)) return;
+        if (ReferenceEquals(host.Content, content)) { RefreshTypography(content); return; }
         host.Content = content;
+        RefreshTypography(content);
         if (!new UISettings().AnimationsEnabled) return;
         var visual = ElementCompositionPreview.GetElementVisual(host);
         var animation = visual.Compositor.CreateScalarKeyFrameAnimation();

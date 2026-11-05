@@ -111,6 +111,9 @@ export interface ToolCapabilities {
 export interface ExecutionContext {
   projectDirs: string[]
   permissions: 'ask' | 'project' | 'full'
+  signal?: AbortSignal
+  // Private redaction values; never serialize into model/tool requests.
+  redactValues?: readonly string[]
   requestApproval(action: ApprovalRequest): Promise<ApprovalResult>
   emitProgress(progress: Progress): void
 }

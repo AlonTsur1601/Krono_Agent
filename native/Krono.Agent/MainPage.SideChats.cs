@@ -35,8 +35,8 @@ public sealed partial class MainPage
     {
         if (workspace.Query("SELECT id FROM chats WHERE id=$p0 AND deleted_at IS NULL", id).Count == 0) throw new InvalidOperationException("The parent conversation is no longer available.");
         ReloadChats();
-        if (runId is not null) return; // Never replace a running parent's view or context.
-        chatId = id; CloseSideChat(); ShowChats();
+        if (runId is not null && id != chatId) return; // Never replace a running parent's context.
+        chatId = id; if (sideChat?.ParentChatId != id) CloseSideChat(); ShowChats();
     }
     void ResizeSideChat(object sender, DragDeltaEventArgs args)
     {

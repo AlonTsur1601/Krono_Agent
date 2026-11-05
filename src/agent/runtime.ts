@@ -11,6 +11,7 @@ import type {
 } from './types'
 import { OpenAIProvider } from './providers/openai'
 import { FILE_TOOLS } from './tools/files'
+import { runCommandTool, sensitiveVariable } from './tools/commands'
 
 interface AgentConfig {
   mode: 'chat' | 'plan' | 'agent' | 'goal'
@@ -30,6 +31,7 @@ interface AgentConfig {
 export class AgentRuntime {
   private providers: Map<string, ProviderAdapter> = new Map()
   private tools: Map<string, ToolDefinition> = new Map()
+  private providerKeys: Map<string, string> = new Map()
 
   constructor() {
     // Register default provider
@@ -37,6 +39,7 @@ export class AgentRuntime {
 
     // Register tools
     this.registerTools(FILE_TOOLS)
+    this.registerTools([runCommandTool])
   }
 
   getProvider(id: string): ProviderAdapter | undefined { return this.providers.get(id) }
@@ -58,6 +61,7 @@ export class AgentRuntime {
     }
 
     await provider.configure({ ...options, apiKey })
+    this.providerKeys.set(providerId, apiKey)
   }
 
   async *execute(
@@ -119,18 +123,23 @@ export class AgentRuntime {
         const context: ExecutionContext = {
           projectDirs: config.projectDirs ?? (config.projectPath ? [config.projectPath] : []),
           permissions: config.permissions,
+          signal: config.signal,
+          redactValues: [...new Set([this.providerKeys.get(config.providerId), ...Object.entries(process.env).filter(([name]) => sensitiveVariable.test(name)).map(([, value]) => value)].filter((value): value is string => !!value && value.length >= 4))].sort((a, b) => b.length - a.length),
           requestApproval: config.requestApproval ?? (async () => ({ approved: false })),
           emitProgress: () => {},
         }
         const permission = tool.capabilities.requiresPermission
         if (permission !== 'none' && permission !== 'read' && config.permissions === 'ask') {
-          const approval = await context.requestApproval({ id: call.id, action: call.name, target: String(call.arguments.path ?? ''), details: call.arguments })
-          if (!approval.approved) throw new Error('Tool execution requires user approval')
+          const details = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : call.arguments
+          const approval = await context.requestApproval({ id: call.id, action: call.name, target: String(details.command ?? details.path ?? ''), details })
+          if (!approval.approved) throw new Error(config.signal?.aborted ? 'Run cancelled' : 'Tool execution requires user approval')
           // Approval is bound to this one action, not future calls.
           context.requestApproval = async () => ({ approved: true })
         }
         yield { type: 'tool_call', toolCall: call }
-        const result = await tool.execute(parsed, context)
+        const raw = await tool.execute(parsed, context)
+        const redact = (value: string | undefined) => context.redactValues!.reduce((text, secret) => text?.split(secret).join('[redacted]'), value)
+        const result = { ...raw, output: redact(raw.output), error: redact(raw.error), artifacts: raw.artifacts?.map(artifact => ({ ...artifact, name: redact(artifact.name)!, content: redact(artifact.content)! })) }
         const step = call.name + JSON.stringify(call.arguments, Object.keys(call.arguments).sort())
         if (!result.success) {
           const count = (failures.get(step) ?? 0) + 1; failures.set(step, count)
@@ -154,11 +163,11 @@ export class AgentRuntime {
         break
       case 'agent':
         prompt +=
-          ' You can use tools to read and write files, run commands, and perform actions within the authorized permission scope.'
+          ' Use the tools supplied for this run to carry out the user task within the authorized permission scope.'
         break
       case 'goal':
         prompt +=
-          ' You are working on a persistent multi-step goal. Break down complex tasks and track progress.'
+          ' You are working on a multi-step goal in this run. Break down complex tasks and track progress.'
         break
     }
 
@@ -170,6 +179,7 @@ export class AgentRuntime {
         prompt += ` You have permission to work within the project directory${
           config.projectPath ? ` at ${config.projectPath}` : ''
         }.`
+        prompt += ' Shell commands and desktop tools are unavailable in Project mode because no OS sandbox is configured. File tools enforce project-folder boundaries.'
         break
       case 'full':
         prompt += ' Your permission ceiling permits access beyond project directories. Use only the tools explicitly supplied for this run.'
@@ -177,6 +187,7 @@ export class AgentRuntime {
     }
 
     if (config.projectDirs?.length) prompt += '\nProject folders:\n' + config.projectDirs.join('\n')
+    if (['agent','goal'].includes(config.mode) && config.permissions !== 'project') prompt += '\nExecution environment: ' + process.platform + '. Command shell: ' + (process.platform === 'win32' ? 'Windows PowerShell' : '/bin/sh') + '.'
     if (config.instructions) prompt += '\nUser project instructions:\n' + config.instructions
     if (config.memories?.length) prompt += '\nUser-saved memories:\n' + config.memories.join('\n')
     if (config.mode === 'chat') prompt += '\nChat mode deliberately provides no tools. Permission selections do not enable actions in this mode. Answer from the supplied conversation context only; do not request tool execution or claim to inspect files, browse, run commands or control the computer.'
@@ -185,7 +196,7 @@ export class AgentRuntime {
 
   private getToolsForMode(
     mode: AgentConfig['mode'],
-    _permissions: AgentConfig['permissions']
+    permissions: AgentConfig['permissions']
   ): ToolDefinition[] {
     switch (mode) {
       case 'chat':
@@ -203,7 +214,7 @@ export class AgentRuntime {
       case 'agent':
       case 'goal':
         // All tools available
-        return Array.from(this.tools.values())
+        return Array.from(this.tools.values()).filter(tool => permissions !== 'project' || !['execute', 'desktop'].includes(tool.capabilities.requiresPermission))
 
       default:
         return []

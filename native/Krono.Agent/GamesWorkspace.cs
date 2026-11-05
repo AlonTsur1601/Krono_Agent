@@ -38,6 +38,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         RowSpacing = 16; RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition()); RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
         var back = new Button { Content = "‹ Game library" }; back.Click += (_, _) => { if (library is not null && playScreen is not null) { timer.Stop(); playScreen.Visibility = Visibility.Collapsed; library.Visibility = Visibility.Visible; } }; toolbar.Children.Add(back); toolbar.Children.Add(picker);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(back, "GameLibraryBack");
         var restart = new Button { Content = "Restart" }; restart.Click += (_, _) => Reset(); toolbar.Children.Add(restart);
         var pause = new Button { Content = "Pause / resume" }; pause.Click += (_, _) => { paused = !paused; Draw(); }; toolbar.Children.Add(pause); Children.Add(toolbar);
         Grid.SetRow(status, 1); Children.Add(status);
@@ -236,5 +237,6 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         }
         if (game is 5 or 7) { Rect(ballX - 6, ballY - 6, 12, 12, White, 6); if (game == 5) { Rect(paddle - 45, 450, 90, 12, Mint); foreach (var brick in bricks) Rect(brick.X, brick.Y, 54, 18, new SolidColorBrush(colors[(int)((brick.Y-30)/25)+1]),5); } else { for(var y=8;y<480;y+=28) Rect(239,y,2,14,Muted,1); Rect(20, paddle - 45, 12, 90, Accent,6); Rect(448, enemy - 45, 12, 90, White,6); } }
     }
+    public void PauseForAgent() { if (playScreen?.Visibility == Visibility.Visible) { paused = true; timer.Stop(); Draw(); } }
     public void Dispose() => timer.Stop();
 }

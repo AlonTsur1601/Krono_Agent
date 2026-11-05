@@ -15,6 +15,7 @@ let localNoTools = false
 let localKeyIsolated = false
 let localModelBNoTools = false
 let sideNoTools = false, sideCancelled = false, sideStreamActive = false
+let commandRan = false
 const heldParents = new Set()
 const cloudAccepted = new Set()
 let keptSideId = ''
@@ -80,6 +81,20 @@ const server = http.createServer((request, response) => {
       fs.writeFileSync(path.join(home, 'provider-fixture-requests.json'), JSON.stringify(requests, null, 2))
       response.setHeader('Content-Type', 'text/event-stream')
       const last = input.input.at(-1)?.content
+      const lastUser = input.input.filter(message => message.role === 'user').at(-1)?.content
+      if (lastUser === 'NATIVE_COMMAND_PROOF') {
+        const result = input.input.find(message => message.type === 'function_call_output' && message.call_id === 'native-command-call')
+        if (!result) {
+          const proof = path.join(home, 'native-command-proof.txt').replace(/'/g, "''")
+          response.write('data: ' + JSON.stringify({ type: 'response.output_item.done', item: { type: 'function_call', call_id: 'native-command-call', name: 'run_command', arguments: JSON.stringify({ command: `[IO.File]::WriteAllText('${proof}','native command proof'); Write-Output (6*7)`, cwd: home, timeout_ms: 10000 }) } }) + '\n\n')
+          response.end('data: ' + JSON.stringify({ type: 'response.completed', response: {} }) + '\n\n')
+        } else {
+          const output = JSON.parse(result.output)
+          commandRan = output.success && output.output.includes('42') && fs.readFileSync(path.join(home, 'native-command-proof.txt'), 'utf8') === 'native command proof'
+          complete(response, 'Native command fixture response.')
+        }
+        return
+      }
       if (last === 'NATIVE_PARENT_WAIT') { response.flushHeaders(); heldParents.add(response); response.on('close', () => heldParents.delete(response)); return }
       if (last === 'NATIVE_SIDE_WAIT') { sideStreamActive = true; response.flushHeaders(); response.write('data: ' + JSON.stringify({ type: 'response.output_text.delta', delta: 'Side stream started.' }) + '\n\n'); response.on('close', () => { sideCancelled = true; sideStreamActive = false }); return }
       if (last === 'NATIVE_SIDE_QUESTION') { sideNoTools = !input.tools && input.input[0].content.includes('Native project memory fixture') && input.input.some(message => message.content === 'Native test message'); complete(response, 'Native side reply.'); return }
@@ -91,7 +106,7 @@ const server = http.createServer((request, response) => {
   } else if (request.url === '/assertions') {
     const firstContext = requests[0]?.input[0]?.content || ''
     const secondContext = requests[1]?.input[0]?.content || ''
-    response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserIsolated, localNoTools, localKeyIsolated, localModelBNoTools, completions: requests.length, chatHasNoTools: requests.length > 0 && !requests[0].tools, globalOnly: firstContext.includes('Native global memory fixture') && !firstContext.includes('Native project memory fixture'), projectScope: secondContext.includes('Native global memory fixture') && secondContext.includes('Native project memory fixture'), toolWrite: fs.existsSync(path.join(home, 'native-tool-proof.txt')) }))
+    response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserIsolated, localNoTools, localKeyIsolated, localModelBNoTools, commandRan, completions: requests.length, chatHasNoTools: requests.length > 0 && !requests[0].tools, globalOnly: firstContext.includes('Native global memory fixture') && !firstContext.includes('Native project memory fixture'), projectScope: secondContext.includes('Native global memory fixture') && secondContext.includes('Native project memory fixture'), toolWrite: fs.existsSync(path.join(home, 'native-tool-proof.txt')) }))
   }
   else if (request.url === '/revoke') { revoked = true; response.end('ok') }
   else if (request.url.startsWith('/auth/')) {

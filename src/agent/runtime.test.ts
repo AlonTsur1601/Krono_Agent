@@ -7,6 +7,7 @@ function provider(responses: any[][]) {
   const requests: CompletionRequest[] = []
   const adapter = {
     id: 'test',
+    async configure() {},
     async *createCompletion(request: CompletionRequest) {
       requests.push(structuredClone({ ...request, signal: undefined }))
       for (const chunk of responses.shift() ?? [{ type: 'done' }]) yield chunk
@@ -16,6 +17,18 @@ function provider(responses: any[][]) {
 }
 const call = { type: 'tool_call', toolCall: { id: 'call-1', name: 'write_test', arguments: { value: 'ok' } } }
 describe('agent execution boundaries', () => {
+  it('omits command tools in Project mode and redacts provider credentials in results', async () => {
+    const runtime = new AgentRuntime()
+    const secret = 'fixture-private-provider-credential'
+    const fake = provider([[{ type: 'tool_call', toolCall: { id: 'secret-test', name: 'echo_test', arguments: {} } }], [{ type: 'done' }]])
+    runtime.registerProvider(fake.adapter); await runtime.configureProvider('test', secret)
+    runtime.registerTools([{ name: 'echo_test', description: '', inputSchema: z.object({}), capabilities: { requiresPermission: 'none', canCancel: false, longRunning: false }, execute: async () => ({ success: true, output: secret }) }])
+    for await (const chunk of runtime.execute([], { mode: 'agent', permissions: 'project', modelId: 'test', providerId: 'test' })) void chunk
+    expect(fake.requests[0].tools?.some(tool => tool.name === 'run_command')).toBe(false)
+    expect(fake.requests[0].messages[0].content).toContain('no OS sandbox')
+    expect(fake.requests[1].messages.at(-1)?.content).toContain('[redacted]')
+    expect(fake.requests[1].messages.at(-1)?.content).not.toContain(secret)
+  })
   it('omits tools in Chat mode and explains the limitation', async () => {
     const runtime = new AgentRuntime()
     const fake = provider([[{ type: 'text', content: 'Hi' }, { type: 'done' }]])

@@ -1,6 +1,7 @@
 // Private stdio worker. No TCP listener and no renderer or Electron dependency.
 import readline from 'node:readline'
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import { AgentRuntime } from '../agent/runtime'
 import { AnthropicProvider } from '../agent/providers/anthropic'
 import { GoogleProvider } from '../agent/providers/google'
@@ -23,12 +24,14 @@ const Request = z.object({ id: z.string(), method: z.enum(['models','test','run'
 readline.createInterface({ input: process.stdin }).on('line', line => {
   void (async () => {
     let id = ''
+    let credential = ''
     let cleanupRun: (() => void) | undefined
     try {
       const request = Request.parse(JSON.parse(line)); id = request.id
       const { method, data } = request
+      credential = typeof data?.apiKey === 'string' ? data.apiKey : ''
       if (method === 'terminal:create') {
-        const terminal = pty.spawn('powershell.exe', ['-NoLogo'], { cols: 100, rows: 25, cwd: data.cwd || process.env.USERPROFILE, env: process.env })
+        const terminal = pty.spawn(join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoLogo'], { cols: 100, rows: 25, cwd: data.cwd || process.env.USERPROFILE, env: process.env })
         terminals.set(id, terminal)
         terminal.onData(content => send({ id, event: 'terminal', data: content }))
         terminal.onExit(() => { terminals.delete(id); send({ id, event: 'terminal-exit', data: true }) })
@@ -71,7 +74,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
         } })) send({ id, event: 'chunk', data: chunk })
         send({ id, result: true })
       }
-    } catch (error) { send({ id, error: error instanceof Error ? error.message : 'Worker request failed' }) }
+    } catch (error) { const message = error instanceof Error ? error.message : 'Worker request failed'; send({ id, error: credential ? message.split(credential).join('[redacted]') : message }) }
     finally { cleanupRun?.() }
   })()
 })
