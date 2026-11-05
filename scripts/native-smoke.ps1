@@ -32,7 +32,7 @@ function SetEditableChoice([string]$Id, [string]$Value) { $element = Find $Id; $
 function SelectNav([string]$Name) { $element = Find $Name -ByName; $pattern = $element.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern); $pattern.Select(); Start-Sleep -Milliseconds 400 }
 function SelectChoice([string]$Id, [string]$Name) { $box = Find $Id; ($box.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand(); $item = Find $Name -ByName; ($item.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)).Select() }
 function SelectGame([string]$Name) {
-    $games = @('Snake','Tic-Tac-Toe','2048','Minesweeper','Connect Four','Breakout','Memory Match','Pong','Lights Out','Simon','Odd Color','Orbit','Reversi','Sudoku','Stack','Color Gauntlet')
+    $games = @('Snake','Tic-Tac-Toe','2048','Minesweeper','Connect Four','Breakout','Memory Match','Pong','Lights Out','Simon','Odd Color','Orbit','Reversi','Sudoku','Stack','Color Gauntlet','Maze Chase','Flap','Darts','Jigsaw')
     $index = [Array]::IndexOf($games, $Name)
     if ($index -lt 0) { throw ('Unknown fixture game: ' + $Name) }
     Invoke 'GameLibraryBack'
@@ -258,7 +258,7 @@ try {
     Capture 'native-game-library.png'
     Invoke 'GameTile0'
     Find 'Restart' -ByName | Out-Null
-    foreach ($game in @('Tic-Tac-Toe','2048','Minesweeper','Connect Four','Breakout','Memory Match','Pong','Snake','Lights Out','Simon','Odd Color','Orbit','Reversi','Sudoku','Stack','Color Gauntlet')) {
+    foreach ($game in @('Tic-Tac-Toe','2048','Minesweeper','Connect Four','Breakout','Memory Match','Pong','Snake','Lights Out','Simon','Odd Color','Orbit','Reversi','Sudoku','Stack','Color Gauntlet','Maze Chase','Flap','Darts','Jigsaw')) {
         SelectGame $game
         Invoke 'Restart' -ByName
         if ($game -eq 'Tic-Tac-Toe') {
@@ -367,6 +367,38 @@ try {
             Invoke 'Use color' -ByName
             if ((Find 'GameStatus').Current.Name -notmatch '^Recreate color 3/5') { throw 'Gauntlet did not advance after two guesses' }
         }
+        if ($game -eq 'Maze Chase') {
+            Invoke 'Move left' -ByName
+            Start-Sleep -Milliseconds 400
+            Invoke 'Pause / resume' -ByName
+            $maze = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Maze Chase').state
+            if ($maze.Arcade.MazePlayer -eq 202 -or $maze.Score -le 0) { throw 'Maze Chase did not move and collect a dot' }
+            Capture 'native-maze-chase.png'
+        }
+        if ($game -eq 'Flap') {
+            Invoke 'ArcadeAction'
+            Start-Sleep -Milliseconds 300
+            Invoke 'Pause / resume' -ByName
+            $flight = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Flap').state
+            if (!$flight.Arcade.FlapStarted -or $flight.Arcade.BirdY -ge 235) { throw 'Flap did not lift the bird' }
+            Capture 'native-flap.png'
+        }
+        if ($game -eq 'Darts') {
+            Invoke 'ArcadeAction'
+            if ((Find 'GameStatus').Current.Name -notmatch 'Release') { throw 'Darts did not lock horizontal aim' }
+            Invoke 'ArcadeAction'
+            Invoke 'ArcadeAction'
+            if ((Find 'GameStatus').Current.Name -notmatch '^Dart 2/9 · Release') { throw 'Darts did not register the first throw' }
+            Capture 'native-darts.png'
+        }
+        if ($game -eq 'Jigsaw') {
+            $firstPiece = ((Find 'GameCell0').Current.Name -split 'Piece ')[1]
+            $secondPiece = ((Find 'GameCell1').Current.Name -split 'Piece ')[1]
+            Invoke 'GameCell0'
+            Invoke 'GameCell1'
+            if ((Find 'GameCell0').Current.Name -ne ('Tile 1 · Piece ' + $secondPiece) -or (Find 'GameCell1').Current.Name -ne ('Tile 2 · Piece ' + $firstPiece)) { throw 'Jigsaw did not exchange pieces' }
+            Capture 'native-jigsaw.png'
+        }
     }
     SelectNav 'Terminal'
     Start-Sleep -Seconds 2
@@ -423,7 +455,7 @@ try {
     $fontProof = Invoke-RestMethod ($Fixture + '/font-proof')
     if ($fontProof.text -ne '14' -or $fontProof.code -ne '14') { throw 'Non-finite font sizes prevented recovery to valid defaults' }
     $savedGames = (Invoke-RestMethod ($Fixture + '/game-proof')).saves
-    if ($savedGames.Count -ne 16) { throw 'Not all sixteen games were persisted' }
+    if ($savedGames.Count -ne 20) { throw 'Not all twenty games were persisted' }
     SelectNav 'Games'
     Invoke 'GameTile1'
     if ((Find 'GameStatus').Current.Name -notmatch '^Paused') { throw 'Restored game started without resume consent' }
@@ -471,6 +503,32 @@ try {
     if ((Find 'GameStatus').Current.Name -notmatch '^Recreate color 3/5') { throw 'Gauntlet did not restore the next color' }
     1..3 | ForEach-Object { Invoke 'Use color' -ByName }
     if ((Find 'GameStatus').Current.Name -notmatch '^Gauntlet complete') { throw 'Gauntlet did not finish all five colors' }
+    SelectGame 'Maze Chase'
+    $savedMaze = ($savedGames | Where-Object game -eq 'Maze Chase').state
+    if ((Find 'GameStatus').Current.Name -ne ('Paused · Score ' + $savedMaze.Score)) { throw 'Maze Chase score was lost on restart' }
+    SelectGame 'Flap'
+    if ((Find 'GameStatus').Current.Name -notmatch '^Paused') { throw 'Flap did not restore paused' }
+    Invoke 'Pause / resume' -ByName
+    $deadline = (Get-Date).AddSeconds(8)
+    do { Start-Sleep -Milliseconds 100; $state = (Find 'GameStatus').Current.Name } while ($state -notmatch '^(Flight ended|Wing clipped)' -and (Get-Date) -lt $deadline)
+    if ($state -notmatch '^(Flight ended|Wing clipped)') { throw 'Resumed Flap physics never reached a collision' }
+    SelectGame 'Darts'
+    Invoke 'Pause / resume' -ByName
+    if ((Find 'GameStatus').Current.Name -notmatch '^Dart 2/9 · Release') { throw 'Darts lost the locked axis on restart' }
+    1..15 | ForEach-Object { Invoke 'ArcadeAction' }
+    if ((Find 'GameStatus').Current.Name -notmatch '^Nine darts thrown') { throw 'Darts did not complete nine throws' }
+    SelectGame 'Jigsaw'
+    $pieces = [int[]](($savedGames | Where-Object game -eq 'Jigsaw').state.Board[0..15])
+    if ((Find 'GameCell0').Current.Name -ne ('Tile 1 · Piece ' + ($pieces[0] + 1))) { throw 'Jigsaw board was lost across restart' }
+    Invoke 'Pause / resume' -ByName
+    for ($i = 0; $i -lt 16; $i++) {
+        if ($pieces[$i] -eq $i) { continue }
+        $other = [Array]::IndexOf($pieces, $i)
+        Invoke ('GameCell' + $i)
+        Invoke ('GameCell' + $other)
+        $pieces[$other] = $pieces[$i]; $pieces[$i] = $i
+    }
+    if ((Find 'GameStatus').Current.Name -notmatch '^Picture complete') { throw 'Jigsaw did not recognize the solved picture' }
     SelectGame 'Snake'
     Invoke 'Restart' -ByName
     $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
@@ -512,5 +570,5 @@ try {
     Launch
     Find 'LoginButton' | Out-Null
     if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin')) { throw 'Revoked session was retained after restart' }
-    Write-Output 'NATIVE_SMOKE_PASS: native auth, scoped memory, cloud/local profiles, complete stream persistence, command approval/PowerShell 42, side snapshots/queue/expiry, sixteen durable games, PTY, WebView2, restart, re-login, revocation'
+    Write-Output 'NATIVE_SMOKE_PASS: native auth, scoped memory, cloud/local profiles, complete stream persistence, command approval/PowerShell 42, side snapshots/queue/expiry, twenty durable games, PTY, WebView2, restart, re-login, revocation'
 } finally { CloseApp }

@@ -107,7 +107,8 @@ public sealed partial class GamesWorkspace
         if (game is 12 or 13) {
             var columns = game == 12 ? 8 : 9; var width = 480.0 / columns;
             var legal = game == 12 ? NativeGameRules.ReversiMoves(board, 1) : [];
-            if (!paused && !ended) status.Text = game == 12 ? $"Coral {board.Count(n => n == 1)} · Ivory {board.Count(n => n == 2)} · {gameMessage}" : $"Score {score} · {gameMessage}";
+            var detail = gameMessage.Length == 0 ? "" : " · " + gameMessage;
+            if (!paused && !ended) status.Text = game == 12 ? $"Coral {board.Count(n => n == 1)} · Ivory {board.Count(n => n == 2)}{detail}" : $"Score {score}{detail}";
             for (var i = 0; i < columns * columns; i++) {
                 var index = i; var value = game == 12 ? board[i] : sudoku[i]; var enabled = game == 12 ? legal.Contains(i) : !clues[i];
                 var cell = new Button { Width = width - 4, Height = width - 4, Padding = new Thickness(0), BorderThickness = new Thickness(game == 13 && selectedSquare == i ? 2 : 0), BorderBrush = Accent,

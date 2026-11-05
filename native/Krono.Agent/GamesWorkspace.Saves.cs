@@ -14,7 +14,7 @@ public sealed partial class GamesWorkspace
     string SaveCaption(int index)
     {
         var saved = workspace.Query("SELECT id FROM game_saves WHERE id=$p0 AND account_id=$p1", SaveId(index), workspace.AccountId).Count > 0;
-        return saved ? "SAVED GAME    ↗" : index is 1 or 4 or 7 or 12 ? "VS BOT    ↗" : "SOLO    ↗";
+        return saved ? "SAVED GAME    ↗" : index is 1 or 4 or 7 or 12 or MazeChase ? "VS BOT    ↗" : "SOLO    ↗";
     }
     void OpenGame(int index)
     {
@@ -47,7 +47,7 @@ public sealed partial class GamesWorkspace
                 OrbitAngle = orbitAngle, OrbitTarget = orbitTarget, OrbitSpeed = orbitSpeed,
                 Sudoku = sudoku, Clues = clues, SelectedSquare = selectedSquare, GameMessage = gameMessage,
                 StackX = stackX, StackWidth = stackWidth, StackDirection = stackDirection, StackCombo = stackCombo, StackLevel = stackLevel, Tower = tower.ToArray(),
-                TargetColors = targetColors, ChosenColors = chosenColors.ToArray(), ColorStart = colorStart, CurrentColor = CurrentColor
+                TargetColors = targetColors, ChosenColors = chosenColors.ToArray(), ColorStart = colorStart, CurrentColor = CurrentColor, Arcade = arcade
             };
             workspace.Execute("INSERT INTO game_saves(id,account_id,game_id,state,saved_at) VALUES($p0,$p1,$p2,$p3,$p4) ON CONFLICT(id) DO UPDATE SET state=excluded.state,saved_at=excluded.saved_at,synced=0",
                 SaveId(game), workspace.AccountId, names[game], JsonSerializer.Serialize(state), Workspace.Now);
@@ -77,9 +77,10 @@ public sealed partial class GamesWorkspace
         oddCell = state.OddCell; oddRound = state.OddRound; oddBase = Unpack(state.OddBase); oddShade = Unpack(state.OddShade);
         orbitAngle = state.OrbitAngle; orbitTarget = state.OrbitTarget; orbitSpeed = state.OrbitSpeed;
         if (game == 13) { sudoku = state.Sudoku; clues = state.Clues; selectedSquare = state.SelectedSquare; }
-        gameMessage = state.GameMessage;
+        gameMessage = state.GameMessage ?? "";
         if (game == 14) { stackX = state.StackX; stackWidth = state.StackWidth; stackDirection = state.StackDirection; stackCombo = state.StackCombo; stackLevel = state.StackLevel; tower.Clear(); tower.AddRange(state.Tower); }
         if (game == 15) { targetColors = state.TargetColors; chosenColors.Clear(); chosenColors.AddRange(state.ChosenColors); colorStart = state.ColorStart; SetColor(state.CurrentColor); }
+        if (game >= MazeChase) arcade = state.Arcade;
         // Restoration never starts a moving game or advances a pattern without consent.
         paused = true; return true;
     }
@@ -106,6 +107,7 @@ public sealed partial class GamesWorkspace
             13 => s.Sudoku?.Length == 81 && s.Clues?.Length == 81 && s.SelectedSquare is >= -1 and < 81 && s.Sudoku.All(value => value is >= 0 and <= 9) && s.Sudoku.Where((value, i) => value > 0 && !NativeGameRules.SudokuLegal(s.Sudoku, i, value)).Count() == 0 && NativeGameRules.SudokuSolutions(s.Sudoku.Select((value, i) => s.Clues[i] ? value : 0).ToArray()) == 1 && s.Clues.Where((fixedCell, i) => fixedCell && s.Sudoku[i] == 0).Count() == 0,
             14 => double.IsFinite(s.StackX) && double.IsFinite(s.StackWidth) && s.StackWidth is > 0 and <= 240 && s.StackX >= 0 && s.StackX + s.StackWidth <= 480 && s.StackDirection is -1 or 1 && s.StackLevel >= 0 && s.StackCombo >= 0 && s.Tower is { Length: > 0 and <= 10 } && s.Tower.All(row => row?.Length == 2 && row.All(double.IsFinite) && row[0] >= 0 && row[1] is > 0 and <= 240 && row[0] + row[1] <= 480),
             15 => s.TargetColors?.Length == 5 && s.ChosenColors is { Length: <= 5 } && s.ColorStart >= 0,
+            >= MazeChase => ValidArcade(game, s),
             _ => true
         };
     }
@@ -163,5 +165,6 @@ public sealed partial class GamesWorkspace
         public uint[] ChosenColors { get; set; } = [];
         public int ColorStart { get; set; }
         public uint CurrentColor { get; set; }
+        public ArcadeSave Arcade { get; set; } = new();
     }
 }

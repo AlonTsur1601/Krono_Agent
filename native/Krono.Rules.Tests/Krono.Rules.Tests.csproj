@@ -5,5 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-  <ItemGroup><Compile Include="..\Krono.Agent\NativeGameRules.cs" Link="NativeGameRules.cs" /></ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Krono.Agent\NativeGameRules.cs" Link="NativeGameRules.cs" />
+    <Compile Include="..\Krono.Agent\ArcadeRules.cs" Link="ArcadeRules.cs" />
+  </ItemGroup>
 </Project>

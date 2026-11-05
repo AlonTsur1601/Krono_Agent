@@ -39,4 +39,16 @@ Check(NativeGameRules.DeltaE(0xff808080, 0xff808080) == 0, "Identical colors dif
 Check(Math.Abs(NativeGameRules.DeltaE(0xff000000, 0xffffffff) - 100) < .001, "CIE76 black/white reference");
 Check(Math.Abs(NativeGameRules.DeltaE(0xffff0000, 0xff00ff00) - 170.565) < .01, "CIE76 red/green reference");
 Check(Math.Abs(NativeGameRules.DeltaE(0xff123456, 0xffabcdef) - NativeGameRules.DeltaE(0xffabcdef, 0xff123456)) < 1e-10, "Color distance symmetry");
-Console.WriteLine("NATIVE_RULES_PASS: Reversi legal game/bot/corner, twelve unique Sudoku seeds, Stack clipping/combo/cap, D65 CIE76 reference distances");
+for (var target = 0; target < ArcadeRules.Maze.Length; target++) if (ArcadeRules.MazeOpen(target)) {
+    var ghost = ArcadeRules.MazeHome;
+    for (var move = 0; move < ArcadeRules.Maze.Length && ghost != target; move++) {
+        var next = ArcadeRules.GhostMove(ghost, target);
+        Check(ArcadeRules.MazeOpen(next) && Math.Abs(next - ghost) is 1 or 15, "Ghost left a legal path"); ghost = next;
+    }
+    Check(ghost == target, "An open maze cell is unreachable");
+}
+Check(ArcadeRules.DartScore(0, 0) == 50 && ArcadeRules.DartScore(0, -10) == 25, "Dart bullseye rings");
+Check(ArcadeRules.DartScore(0, -100) == 60 && ArcadeRules.DartScore(0, -164) == 40 && ArcadeRules.DartScore(0, -80) == 20, "Dart triple, double or single scoring");
+Check(ArcadeRules.DartScore(0, -185) == 0 && ArcadeRules.DartScore(100, 0) == 18, "Dart angular sectors or miss");
+Check(!ArcadeRules.FlapHits(245, 100, 245) && ArcadeRules.FlapHits(177, 100, 245) && !ArcadeRules.FlapHits(177, 160, 245), "Flap pipe gap/collision bounds");
+Console.WriteLine("NATIVE_RULES_PASS: Reversi, unique Sudoku, Stack, CIE76, every maze cell reachable, darts rings/sectors, Flap collision");
