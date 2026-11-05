@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { AgentRuntime } from '../agent/runtime'
 import { AnthropicProvider } from '../agent/providers/anthropic'
 import { GoogleProvider } from '../agent/providers/google'
-import { CompatibleProvider } from '../agent/providers/compatible'
+import { CompatibleProvider, COMPATIBLE_PROFILES, isCompatibleProvider, type CompatibleId } from '../agent/providers/compatible'
 import { z } from 'zod'
 import * as pty from 'node-pty'
 
@@ -12,7 +12,7 @@ function createRuntime() {
   const runtime = new AgentRuntime()
   runtime.registerProvider(new AnthropicProvider())
   runtime.registerProvider(new GoogleProvider())
-  for (const id of ['ollama', 'lmstudio', 'custom'] as const) runtime.registerProvider(new CompatibleProvider(id))
+  for (const id of Object.keys(COMPATIBLE_PROFILES) as CompatibleId[]) runtime.registerProvider(new CompatibleProvider(id))
   return runtime
 }
 const active = new Map<string, AbortController>()
@@ -43,8 +43,8 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       }
       if (method === 'approve') { approvals.get(String(data.id))?.(data.approved === true); return }
       if (method === 'cancel') { active.get(String(data.id))?.abort(); return }
-      const provider = z.enum(['openai','anthropic','google','ollama','lmstudio','custom']).parse(data.providerId)
-      const compatible = ['ollama','lmstudio','custom'].includes(provider)
+      const provider = z.string().refine(id => ['openai','anthropic','google'].includes(id) || isCompatibleProvider(id), 'Unknown provider').parse(data.providerId)
+      const compatible = isCompatibleProvider(provider)
       const runtime = createRuntime()
       const toolsEnabled = !compatible || data.toolsEnabled === true
       const controller = new AbortController()

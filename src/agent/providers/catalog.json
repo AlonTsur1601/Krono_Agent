@@ -1,0 +1,50 @@
+{
+  "azure": {
+    "name": "Azure OpenAI",
+    "endpoint": "",
+    "requiresKey": true,
+    "help": "Enter your resource URL ending in /openai/v1 and its API key. Use your deployment name as the model ID. Keyless Microsoft Entra authentication is not implemented yet."
+  },
+  "xai": {
+    "name": "xAI",
+    "endpoint": "https://api.x.ai/v1",
+    "requiresKey": true,
+    "help": "Use an xAI API key and a chat-compatible model from its catalog. Enable tool calling only for a model that supports it. Usage follows your xAI account."
+  },
+  "groq": {
+    "name": "Groq",
+    "endpoint": "https://api.groq.com/openai/v1",
+    "requiresKey": true,
+    "help": "Use a Groq API key and a supported chat model. Free-tier availability and request/token quotas depend on your account; Krono does not provide unlimited cloud usage."
+  },
+  "mistral": {
+    "name": "Mistral",
+    "endpoint": "https://api.mistral.ai/v1",
+    "requiresKey": true,
+    "help": "Use a Mistral API key and a chat-capable model ID. Model availability, billing and rate limits follow your Mistral account."
+  },
+  "openrouter": {
+    "name": "OpenRouter",
+    "endpoint": "https://openrouter.ai/api/v1",
+    "requiresKey": true,
+    "help": "Use an OpenRouter key and its exact provider/model ID. Models with a :free suffix still have provider/account limits and availability constraints."
+  },
+  "ollama": {
+    "name": "Ollama",
+    "endpoint": "http://localhost:11434/v1",
+    "requiresKey": false,
+    "help": "Connect to an existing Ollama server. Install and load a model there first. Local servers without authentication need no key. Model downloads and inference hardware are managed by Ollama."
+  },
+  "lmstudio": {
+    "name": "LM Studio",
+    "endpoint": "http://localhost:1234/v1",
+    "requiresKey": false,
+    "help": "Load a model in LM Studio and start its local server. Use its exact model ID. Enter its server token only if authentication is enabled."
+  },
+  "custom": {
+    "name": "Custom endpoint",
+    "endpoint": "",
+    "requiresKey": false,
+    "help": "Connect to a trusted OpenAI-compatible Chat Completions server. Use HTTPS for remote endpoints; keys are optional only on loopback. Enable tool calling only for a compatible model."
+  }
+}

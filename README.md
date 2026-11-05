@@ -114,10 +114,32 @@ npm run dev
 
 ## 6. מודלים מקומיים ושרתים תואמי OpenAI
 
+### חיבור ספקי ענן נוספים
+
+ב־**Settings → Provider** קיימים גם הפרופילים הבאים. **Provider API key** מקבל את המפתח של אותו ספק, ולא מפתח של ספק אחר. לחץ **Save key**, ואז **Test connection** ו־**Load available models**. בחר מודל שמתאים לשיחת טקסט ולחץ **Use model**; אפשר להקליד מזהה ידנית אם גילוי המודלים אינו זמין.
+
+| Provider | Server base URL | Model |
+| --- | --- | --- |
+| Azure OpenAI | הזן `https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1` והחלף את שם המשאב בשלך; לחץ Save endpoint | שם ה־deployment שיצרת במשאב Azure |
+| xAI | `https://api.x.ai/v1`, מוגדר מראש | מזהה מודל מהקטלוג של xAI |
+| Groq | `https://api.groq.com/openai/v1`, מוגדר מראש | מזהה מודל שיחה של Groq |
+| Mistral | `https://api.mistral.ai/v1`, מוגדר מראש | מזהה מודל שיחה של Mistral |
+| OpenRouter | `https://openrouter.ai/api/v1`, מוגדר מראש | המזהה המלא של המודל, כולל הקידומת מהקטלוג |
+
+Azure משתמש כאן במפתח של משאב Azure OpenAI; התחברות ללא מפתח דרך Microsoft Entra עדיין אינה ממומשת. בפרופילים האלה **This model supports tool calling** כבוי כברירת מחדל, מופעל רק אחרי **Use model**, ונשמר בנפרד לכל צמד ספק ומודל. הפעל אותו רק אחרי שווידאת תמיכה של המודל. במצב Chat לא נשלחים כלים גם אם תיבה זו מסומנת.
+
+מכסות וחיוב נקבעים בחשבון הספק. סיומת `:free` או מסלול חינמי אינם הבטחה לשימוש ללא הגבלה. בשגיאת מכסה מוצג זמן המתנה אם הספק מסר Retry-After; הפרופילים התואמים אינם מנסים שוב אוטומטית. החיבורים נבדקו מול שרתי בדיקה מקומיים; בדיקת המפתח והחשבון האמיתיים מתבצעת אצלך.
+
+תיעוד רשמי: [Azure](https://learn.microsoft.com/en-us/azure/developer/ai/how-to/switching-endpoints), [xAI](https://docs.x.ai/developers/rest-api-reference/inference/chat-completions), [Groq](https://console.groq.com/docs/openai), [Mistral](https://docs.mistral.ai/api/endpoint/chat), [OpenRouter](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request).
+
+GitHub Models נסגר ב־30 ביולי 2026, כולל הקטלוג ו־API ההסקה. שילוב נפרד עם GitHub Copilot עדיין בפיתוח. [הודעת GitHub הרשמית](https://docs.github.com/en/github-models).
+
+### שרת מקומי או שרת מותאם
+
 החיבור המקומי משתמש בשרת שכבר מותקן ומופעל במחשב. הורדה והפעלה מובנות של מודלים עדיין אינן כלולות.
 
 1. ב־Ollama הורד מודל שמתאים לזיכרון המחשב והפעל את השרת; ב־LM Studio טען מודל והפעל את השרת המקומי. הורדת המודל הראשונית דורשת רשת, וההרצה המקומית משתמשת במעבד/כרטיס המסך שלך.
-2. ב־Krono פתח **Settings → Provider** ובחר `ollama` או `lmstudio`. לשרת אחר בחר `custom`.
+2. ב־Krono פתח **Settings → Provider** ובחר **Ollama** או **LM Studio**. לשרת אחר בחר **Custom endpoint**.
 3. בשדה **Server base URL · include /v1** הזן `http://localhost:11434/v1` ל־Ollama או `http://localhost:1234/v1` ל־LM Studio, אם לא שינית את הפורט שם. לחץ **Save endpoint**. בשרת מרוחק נדרש HTTPS; אין להכניס מפתח לכתובת.
 4. בשרת מקומי ללא אימות השאר **Provider API key** ריק. אם השרת דורש אימות, הכנס את המפתח שלו ולחץ **Save key**. מפתחות של ספקי ענן אחרים אינם מועברים אליו.
 5. לחץ **Test connection**. הצלחה מופיעה כ־`Connected`. לחץ **Load available models**, בחר את המודל ואז **Use model**. אם גילוי המודלים אינו נתמך, הקלד בשדה **Model** את מזהה המודל המדויק מהשרת ולחץ **Use model**.

@@ -28,6 +28,7 @@ function Find([string]$Value, [switch]$ByName) {
 }
 function Invoke([string]$Value, [switch]$ByName) { $element = Find $Value -ByName:$ByName; $pattern = $element.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern); $pattern.Invoke() }
 function SetValue([string]$Id, [string]$Value) { $element = Find $Id; $pattern = $element.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern); $pattern.SetValue($Value) }
+function SetEditableChoice([string]$Id, [string]$Value) { $element = Find $Id; $edit = $element.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit))); ($edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).SetValue($Value) }
 function SelectNav([string]$Name) { $element = Find $Name -ByName; $pattern = $element.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern); $pattern.Select(); Start-Sleep -Milliseconds 400 }
 function SelectChoice([string]$Id, [string]$Name) { $box = Find $Id; ($box.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand(); $item = Find $Name -ByName; ($item.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)).Select() }
 function CloseApp { if ($script:process -and !$script:process.HasExited) { $script:process.CloseMainWindow() | Out-Null; if (!$script:process.WaitForExit(5000)) { Stop-Process -Id $script:process.Id } } }
@@ -95,7 +96,7 @@ try {
     $bitmap.Save((Join-Path $ReportDirectory 'native-workspace.png'), [Drawing.Imaging.ImageFormat]::Png)
     $graphics.Dispose(); $bitmap.Dispose()
     SelectNav 'Settings'
-    SelectChoice 'Provider' 'ollama'
+    SelectChoice 'Provider' 'Ollama'
     SetValue 'ProviderEndpoint' ($Fixture + '/local/v1')
     Invoke 'Save endpoint' -ByName
     Invoke 'Test connection' -ByName
@@ -120,10 +121,48 @@ try {
     } while (!$reply -and (Get-Date) -lt $deadline)
     if (!$reply) { throw 'Local endpoint response was not rendered in the native transcript' }
     SelectNav 'Settings'
-    SelectChoice 'Provider' 'openai'
+    $toggle = (Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+    $toggle.Toggle()
+    SetEditableChoice 'ModelSelector' 'basic-fixture-model'
+    Invoke 'Use model' -ByName
+    if ((Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne [Windows.Automation.ToggleState]::Off) { throw 'Tool capability leaked from model A to model B' }
+    SelectNav 'Chats'
+    SetValue 'Composer' 'Native manual model B without tool support'
+    Invoke 'Send' -ByName
+    $deadline = (Get-Date).AddSeconds(10)
+    do { Start-Sleep -Milliseconds 100; $assertions = Invoke-RestMethod ($Fixture + '/assertions') } while ((!$assertions.localModelBNoTools -or !(Find 'Send' -ByName).Current.IsEnabled) -and (Get-Date) -lt $deadline)
+    if (!$assertions.localModelBNoTools) { throw 'Model B received tools despite its disabled capability' }
+    SelectNav 'Settings'
+    SetEditableChoice 'ModelSelector' 'local-fixture-model'
+    Invoke 'Use model' -ByName
+    $toggle = (Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+    if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw 'Model A lost its explicit tool capability' }
+    $toggle.Toggle()
+    SelectChoice 'Provider' 'OpenAI'
     $model = Find 'ModelSelector'
     $edit = $model.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit)))
     if (($edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).Current.Value -ne 'native-fixture-model') { throw 'Provider switching lost its model selection' }
+    foreach ($cloudProfile in @(@{Id='azure';Name='Azure OpenAI'},@{Id='xai';Name='xAI'},@{Id='groq';Name='Groq'},@{Id='mistral';Name='Mistral'},@{Id='openrouter';Name='OpenRouter'})) {
+        SelectNav 'Settings'
+        SelectChoice 'Provider' $cloudProfile.Name
+        SetValue 'ProviderEndpoint' ($Fixture + '/cloud/' + $cloudProfile.Id + '/v1')
+        Invoke 'Save endpoint' -ByName
+        SetValue 'ProviderKey' ('fixture-' + $cloudProfile.Id + '-key')
+        Invoke 'Save key' -ByName
+        Invoke 'Load available models' -ByName
+        Start-Sleep -Milliseconds 300
+        SelectChoice 'ModelSelector' ($cloudProfile.Id + '-fixture')
+        Invoke 'Use model' -ByName
+        SelectNav 'Chats'
+        SelectChoice 'Mode' 'chat'
+        SetValue 'Composer' ('Native cloud profile ' + $cloudProfile.Id)
+        Invoke 'Send' -ByName
+        $deadline = (Get-Date).AddSeconds(10)
+        do { Start-Sleep -Milliseconds 100; $cloudProof = Invoke-RestMethod ($Fixture + '/cloud-proof') } while (($cloudProof.accepted -notcontains $cloudProfile.Id -or !(Find 'Send' -ByName).Current.IsEnabled) -and (Get-Date) -lt $deadline)
+        if ($cloudProof.accepted -notcontains $cloudProfile.Id) { throw ('Native cloud profile did not authenticate/stream: ' + $cloudProfile.Id) }
+    }
+    SelectNav 'Settings'
+    SelectChoice 'Provider' 'OpenAI'
     SelectNav 'Chats'
     SelectChoice 'Mode' 'chat'
     SetValue 'Composer' 'NATIVE_PARENT_WAIT'

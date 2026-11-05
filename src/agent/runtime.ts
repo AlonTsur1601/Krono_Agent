@@ -162,7 +162,7 @@ export class AgentRuntime {
         break
     }
 
-    switch (config.permissions) {
+    if (config.mode !== 'chat') switch (config.permissions) {
       case 'ask':
         prompt += ' Writes, command execution and desktop actions require explicit approval. Read-only tools may run within the authorized scope.'
         break
@@ -172,13 +172,14 @@ export class AgentRuntime {
         }.`
         break
       case 'full':
-        prompt += ' You have full computer access. Use it responsibly.'
+        prompt += ' Your permission ceiling permits access beyond project directories. Use only the tools explicitly supplied for this run.'
         break
     }
 
     if (config.projectDirs?.length) prompt += '\nProject folders:\n' + config.projectDirs.join('\n')
     if (config.instructions) prompt += '\nUser project instructions:\n' + config.instructions
     if (config.memories?.length) prompt += '\nUser-saved memories:\n' + config.memories.join('\n')
+    if (config.mode === 'chat') prompt += '\nChat mode deliberately provides no tools. Permission selections do not enable actions in this mode. Answer from the supplied conversation context only; do not request tool execution or claim to inspect files, browse, run commands or control the computer.'
     return prompt
   }
 

@@ -17,8 +17,7 @@ public sealed partial class MainPage
             var id = existing ?? workspace.CreateSideChat(chatId, messageId);
             CloseSideChat();
             sideChat = new SideChatPanel(workspace, id, () => {
-                if (model.Length == 0) throw new InvalidOperationException("Choose a model in Settings first.");
-                return new JsonObject { ["providerId"] = provider, ["apiKey"] = workspace.Key(provider), ["modelId"] = model, ["endpoint"] = ProviderEndpoint, ["toolsEnabled"] = false };
+                return new JsonObject { ["providerId"] = provider, ["apiKey"] = ConnectionKey(), ["modelId"] = model, ["endpoint"] = ProviderEndpoint, ["toolsEnabled"] = false };
             }, CloseSideChat, OpenNormalChat, () => { if (runId is null) { workspace.FlushSideTransfers(); ReloadChats(); LoadChat(); } });
             SideSurface.Visibility = SideGrip.Visibility = Visibility.Visible;
             SideColumn.Width = new GridLength(double.TryParse(workspace.Setting("native.sideWidth"), out var width) ? Math.Clamp(width, 300, 620) : 380);

@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 fs.copyFileSync(process.execPath, 'dist/sidecar/node.exe')
 fs.copyFileSync('src/db/schema.sql', 'dist/sidecar/schema.sql')
+fs.copyFileSync('src/agent/providers/catalog.json', 'dist/sidecar/providers.json')
 for (const item of ['lib', 'prebuilds/win32-x64', 'package.json', 'LICENSE']) {
   const source = path.join('node_modules/node-pty', item)
   if (fs.existsSync(source)) fs.cpSync(source, path.join('dist/sidecar/node_modules/node-pty', item), { recursive: true })

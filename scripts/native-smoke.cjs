@@ -13,8 +13,10 @@ let revoked = false
 let browserIsolated = false
 let localNoTools = false
 let localKeyIsolated = false
+let localModelBNoTools = false
 let sideNoTools = false, sideCancelled = false, sideStreamActive = false
 const heldParents = new Set()
+const cloudAccepted = new Set()
 let keptSideId = ''
 function fixtureDb(action) {
   const db = new DatabaseSync(path.join(home, 'databases', user.id + '.db'))
@@ -25,7 +27,20 @@ function complete(response, text) {
   response.end('data: ' + JSON.stringify({ type: 'response.completed', response: { usage: { input_tokens: 1, output_tokens: 1 } } }) + '\n\n')
 }
 const server = http.createServer((request, response) => {
-  if (request.url === '/poison-font-sizes') { fixtureDb(db => { db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('native.textSize','NaN')").run(); db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('native.codeSize','Infinity')").run() }); response.end('ok') }
+  const cloud = request.url.match(/^\/cloud\/(azure|xai|groq|mistral|openrouter)\/v1\/(models|chat\/completions)$/)
+  if (cloud) {
+    const id = cloud[1]
+    if (cloud[2] === 'models') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ data: [{ id: id + '-fixture' }] })); return }
+    let body = ''; request.on('data', chunk => body += chunk); request.on('end', () => {
+      const input = JSON.parse(body)
+      if (input.model !== id + '-fixture' || request.headers.authorization !== 'Bearer fixture-' + id + '-key' || input.tools) { response.writeHead(400); response.end('Invalid cloud profile fixture request'); return }
+      cloudAccepted.add(id); response.setHeader('Content-Type', 'text/event-stream')
+      response.write('data: ' + JSON.stringify({ choices: [{ delta: { content: 'Native ' + id + ' fixture reply.' }, finish_reason: null }] }) + '\n\n')
+      response.end('data: ' + JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] }) + '\n\ndata: [DONE]\n\n')
+    })
+  }
+  else if (request.url === '/cloud-proof') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ accepted: [...cloudAccepted] })) }
+  else if (request.url === '/poison-font-sizes') { fixtureDb(db => { db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('native.textSize','NaN')").run(); db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('native.codeSize','Infinity')").run() }); response.end('ok') }
   else if (request.url === '/font-proof') { const proof = fixtureDb(db => ({ text: db.prepare("SELECT value FROM settings WHERE key='native.textSize'").get()?.value, code: db.prepare("SELECT value FROM settings WHERE key='native.codeSize'").get()?.value })); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(proof)) }
   else if (request.url === '/side-proof') {
     const proof = fixtureDb(db => {
@@ -50,7 +65,8 @@ const server = http.createServer((request, response) => {
   else if (request.url === '/local/v1/chat/completions') {
     let body = ''; request.on('data', chunk => body += chunk); request.on('end', () => {
       const input = JSON.parse(body)
-      localNoTools = !input.tools && input.model === 'local-fixture-model' && input.messages[0].content.includes('Tool calling is disabled')
+      localNoTools = !input.tools && ['local-fixture-model','basic-fixture-model'].includes(input.model) && input.messages[0].content.includes('Tool calling is disabled')
+      if (input.model === 'basic-fixture-model') localModelBNoTools = localNoTools
       localKeyIsolated = request.headers.authorization === 'Bearer local'
       response.setHeader('Content-Type', 'text/event-stream')
       response.write('data: ' + JSON.stringify({ choices: [{ delta: { content: 'Native local endpoint reply.' }, finish_reason: null }] }) + '\n\n')
@@ -75,7 +91,7 @@ const server = http.createServer((request, response) => {
   } else if (request.url === '/assertions') {
     const firstContext = requests[0]?.input[0]?.content || ''
     const secondContext = requests[1]?.input[0]?.content || ''
-    response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserIsolated, localNoTools, localKeyIsolated, completions: requests.length, chatHasNoTools: requests.length > 0 && !requests[0].tools, globalOnly: firstContext.includes('Native global memory fixture') && !firstContext.includes('Native project memory fixture'), projectScope: secondContext.includes('Native global memory fixture') && secondContext.includes('Native project memory fixture'), toolWrite: fs.existsSync(path.join(home, 'native-tool-proof.txt')) }))
+    response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserIsolated, localNoTools, localKeyIsolated, localModelBNoTools, completions: requests.length, chatHasNoTools: requests.length > 0 && !requests[0].tools, globalOnly: firstContext.includes('Native global memory fixture') && !firstContext.includes('Native project memory fixture'), projectScope: secondContext.includes('Native global memory fixture') && secondContext.includes('Native project memory fixture'), toolWrite: fs.existsSync(path.join(home, 'native-tool-proof.txt')) }))
   }
   else if (request.url === '/revoke') { revoked = true; response.end('ok') }
   else if (request.url.startsWith('/auth/')) {

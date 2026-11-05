@@ -23,6 +23,8 @@ describe('agent execution boundaries', () => {
     for await (const _ of runtime.execute([], { mode: 'chat', permissions: 'full', modelId: 'test', providerId: 'test' })) { void _ }
     expect(fake.requests[0].tools).toBeUndefined()
     expect(fake.requests[0].messages[0].content).toContain('cannot use any tools')
+    expect(fake.requests[0].messages[0].content).not.toContain('full computer access')
+    expect(fake.requests[0].messages[0].content).toContain('Permission selections do not enable actions')
   })
   it('rejects a mutating tool requested in Plan mode before execution', async () => {
     const runtime = new AgentRuntime()

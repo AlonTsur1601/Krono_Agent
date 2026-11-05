@@ -25,7 +25,7 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 
 ## Verification
 
-- 19 agent/provider/file-boundary/SQL tests pass. Removed Electron-specific
+- 28 agent/provider/file-boundary/SQL tests pass. Removed Electron-specific
   auth/approval tests were replaced by real native UI flows, not marked passing.
 - Windows UI Automation fixture exercises registration/sign-in controls,
   project creation and scoped memories, streamed model response with Chat tools
@@ -40,6 +40,10 @@ native C#/WinUI 3. This is not completion of the full original product scope.
   setup, discovery/manual model IDs, connection testing, streaming, cancellation
   and opt-in tool support. Real HTTP and native fixtures cover the protocol and
   credential separation; actual local inference is not yet accepted on hardware.
+- Azure OpenAI v1, xAI, Groq, Mistral and OpenRouter profiles share an authoritative
+  worker/native catalog, with credential isolation, discovery/manual IDs and
+  explicit per-model tool opt-in. Native fixtures exercise all five profiles;
+  HTTP tests classify access errors, quota/retry hints and provider outages.
 - The fixture uses local auth/provider services. It is not live Supabase/model
   acceptance. Browser permissions/downloads and extended game balancing still
   need additional acceptance beyond the implemented paths.
@@ -49,7 +53,7 @@ native C#/WinUI 3. This is not completion of the full original product scope.
   expanded published-app Windows CI also passed on 31e4825. That run failed
   overall because GitHub could not provision its macOS ARM runner; a supported
   Intel runner now replaces that infrastructure leg. All three CI legs and Pages
-  passed on 1971a31, including the published Windows fixture (see .kiro review).
+  passed on 6b3624c, including the published Windows fixture (see .kiro review).
 - npm audit: zero vulnerabilities after removing legacy UI/build dependencies
   and validating the remaining modern minimatch callers against patched 11.0.4.
 - NuGet audit: no vulnerable direct/transitive packages reported.
@@ -61,6 +65,9 @@ native C#/WinUI 3. This is not completion of the full original product scope.
   app connections, bundled local inference/model downloads, media generation,
   agent browser/terminal/computer-use tools,
   automatic memory proposals and twelve additional games remain incomplete.
+- GitHub Copilot integration, capability-adaptive composer controls, dictation,
+  attachments and durable goal/task execution remain incomplete. GitHub Models
+  retired on 2026-07-30; its discontinued API is not offered as a working profile.
 - macOS/Linux desktop UIs are not implemented after the owner's explicit
   choice of native Windows UI. Agent unit checks remain cross-platform.
 - Runtime signing, automatic updates and a production installer are not verified.

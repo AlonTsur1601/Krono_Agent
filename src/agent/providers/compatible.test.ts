@@ -6,6 +6,7 @@ import type { CompletionChunk, CompletionRequest } from '../types'
 
 let server: Server, endpoint: string
 let requests: Record<string, unknown>[]
+let authorization: string[]
 let reply: (response: ServerResponse) => void
 const delta = (response: ServerResponse, value: unknown) => response.write(`data: ${JSON.stringify(value)}\n\n`)
 const textReply = (response: ServerResponse) => {
@@ -14,18 +15,34 @@ const textReply = (response: ServerResponse) => {
 }
 async function collect(provider: CompatibleProvider, request: CompletionRequest) { const result: CompletionChunk[] = []; for await (const chunk of provider.createCompletion(request)) result.push(chunk); return result }
 beforeEach(async () => {
-  requests = []; reply = textReply
+  requests = []; authorization = []; reply = textReply
   server = createServer((request, response) => {
     if (request.url === '/v1/models') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ data: [{ id: 'local-model' }] })); return }
     let body = ''; request.on('data', chunk => body += chunk)
-    request.on('end', () => { requests.push(JSON.parse(body)); response.setHeader('Content-Type', 'text/event-stream'); reply(response) })
+    request.on('end', () => { authorization.push(request.headers.authorization || ''); requests.push(JSON.parse(body)); response.setHeader('Content-Type', 'text/event-stream'); reply(response) })
   })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   endpoint = `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`
 })
 afterEach(async () => { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) })
 
-describe('OpenAI-compatible local endpoints over real HTTP', () => {
+describe('OpenAI-compatible providers over real HTTP', () => {
+  it.each(['azure', 'xai', 'groq', 'mistral', 'openrouter'] as const)('%s requires its credential, discovers models and streams without implicit tools', async id => {
+    const provider = new CompatibleProvider(id)
+    await expect(provider.configure({ endpoint })).rejects.toThrow('API key')
+    await provider.configure({ endpoint, apiKey: 'fixture-cloud-credential' })
+    expect((await provider.listModels())[0].providerId).toBe(id)
+    const result = await collect(provider, { model: 'local-model', messages: [{ role: 'user', content: 'Hello' }] })
+    expect(result[0].content).toBe('Local reply')
+    expect(authorization[0]).toBe('Bearer fixture-cloud-credential')
+    expect(requests[0].tools).toBeUndefined()
+  })
+  it.each([[401, 'denied'], [403, 'denied'], [429, 'quota reached. Retry in 20 seconds'], [503, 'temporarily unavailable']] as const)('classifies HTTP %s without forwarding response bodies', async (status, message) => {
+    const provider = new CompatibleProvider('custom'); await provider.configure({ endpoint })
+    reply = response => { response.writeHead(status, { 'Content-Type': 'application/json', 'retry-after': '20' }); response.end(JSON.stringify({ error: { message: 'Untrusted sensitive diagnostic' } })) }
+    await expect(collect(provider, { model: 'local-model', messages: [] })).rejects.toThrow(message)
+    expect(requests).toHaveLength(1)
+  })
   it('validates transport and rejects credentials/queries in URLs', async () => {
     for (const url of ['http://example.com/v1', 'https://user:secret@example.com/v1', 'https://example.com/v1?key=secret', 'file:///tmp/model', 'http://localhost.evil.test/v1']) expect(() => compatibleEndpoint(url)).toThrow()
     expect(compatibleEndpoint('http://[::1]:1234/v1').hostname).toBe('[::1]')

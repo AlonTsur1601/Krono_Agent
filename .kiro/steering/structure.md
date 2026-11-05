@@ -3,6 +3,8 @@
 - native/Krono.Agent: C#/XAML Windows UI, accounts/database, browser, terminal,
   native game rendering, native Markdown and expiring side conversations.
 - src/agent: provider adapters, agent execution and file tools, with unit tests.
+- src/agent/providers/catalog.json: shared public endpoint/name/setup profiles;
+  copied to the native Engine folder and bundled into the private worker.
 - src/sidecar: private stdio worker and PTY lifetime management.
 - src/db/schema.sql: authoritative local SQL schema; native build copies it.
 - src/tests: cloud SQL ownership-policy tests.
