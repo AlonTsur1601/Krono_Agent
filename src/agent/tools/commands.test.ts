@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runCommandTool } from './commands'
@@ -21,7 +21,7 @@ describe('real bounded command execution', () => {
     const result = await runCommandTool.execute({ command: job.command, cwd: job.folder }, context())
     expect(result.success).toBe(false)
     expect(result.output).toContain('42 · שלום')
-    expect(result.output).toContain(job.folder)
+    expect(result.output).toContain(await realpath(job.folder))
     expect(result.output).toContain('Exit code: 7')
   }, 15000)
   it('never starts denied or Project-mode commands', async () => {
