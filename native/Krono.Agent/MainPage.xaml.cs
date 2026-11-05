@@ -36,13 +36,14 @@ public sealed partial class MainPage : Page
     GamesWorkspace? games;
     readonly DispatcherTimer sessionTimer = new() { Interval = TimeSpan.FromMinutes(5) };
     bool refreshingSession;
-    bool confirmingSignOut;
-    NavigationViewItem? lastPage;
     public MainPage()
     {
         InitializeComponent(); transcript = new ScrollViewer { Content = messages, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        lastPage = Nav.SelectedItem as NavigationViewItem;
         Nav.Resources["NavigationViewSelectionIndicatorForeground"] = KronoDesign.ThemeBrush("KronoAccentFill", ElementTheme.Dark);
+        Nav.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => {
+            SignOutLabel.Visibility = Nav.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        });
+        ToolTipService.SetToolTip(SignOutButton, "Sign out");
         KronoDesign.ApplyPrimaryStates(LoginButton);
         InitializeSync(); InitializeSchedule();
         AutomationProperties.SetAutomationId(composer, "Composer");
@@ -93,26 +94,22 @@ public sealed partial class MainPage : Page
         accountSyncTimer.Start(); _ = SyncAccount(false);
         scheduleTimer.Start();
     }
-    async void Navigate(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    async void SignOut(object sender, RoutedEventArgs args)
+    {
+        if (workspace.AccountId.Length == 0 || !SignOutButton.IsEnabled) return;
+        SignOutButton.IsEnabled = false;
+        var account = workspace.AccountId;
+        try {
+            if (await Confirm("Sign out of Krono Agent?", "You’ll need to sign in again to open your workspace on this device.", "Sign out now") &&
+                workspace.AccountId == account)
+                await Leave(false);
+        } catch (Exception error) { Error(error); }
+        finally { SignOutButton.IsEnabled = true; }
+    }
+    void Navigate(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (workspace.AccountId.Length == 0 || args.SelectedItem is not NavigationViewItem item) return;
         try {
-            if (item.Tag?.ToString() == "logout") {
-                if (confirmingSignOut) return;
-                confirmingSignOut = true;
-                var account = workspace.AccountId;
-                try {
-                    if (await Confirm("Sign out of Krono Agent?", "You’ll need to sign in again to open your workspace on this device.", "Sign out now") &&
-                        workspace.AccountId == account)
-                        await Leave(false);
-                } finally {
-                    Nav.SelectedItem = lastPage;
-                    confirmingSignOut = false;
-                }
-                return;
-            }
-            if (confirmingSignOut) return;
-            lastPage = item;
             switch (item.Tag?.ToString()) {
                 case "chats": ShowChats(); break;
                 case "projects": ShowProjects(); break;
@@ -202,7 +199,7 @@ public sealed partial class MainPage : Page
         modelChoice.Content = new TextBlock { Text = model.Length == 0 ? "Choose model" : model, TextTrimming = TextTrimming.CharacterEllipsis };
         ToolTipService.SetToolTip(modelChoice, ProviderCatalog.Name(provider) + " / " + model);
         KronoDesign.Present(Body, chatView); ReloadChats(); if (runId is null) LoadChat();
-        Nav.SelectedItem = lastPage = Nav.MenuItems.OfType<NavigationViewItem>().First(item => item.Tag?.ToString() == "chats");
+        Nav.SelectedItem = Nav.MenuItems.OfType<NavigationViewItem>().First(item => item.Tag?.ToString() == "chats");
         UpdateActivityVisibility();
     }
     record ChatItem(string Id, string Name);

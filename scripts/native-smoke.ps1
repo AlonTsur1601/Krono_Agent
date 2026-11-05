@@ -674,13 +674,23 @@ try {
     Find 'PERSONAL BEST  520' -ByName | Out-Null
     OpenGameTile 23 'New game' -RequireChoice
     if ((Find 'GameStatus').Current.Name -notmatch '^Foundations 0/52') { throw 'New game choice did not replace the save' }
-    SelectNav 'Sign out'
+    Invoke 'SignOutButton'
     Find 'Sign out of Krono Agent?' -ByName | Out-Null
     Invoke 'Cancel' -ByName
+    $dialogTitle = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Sign out of Krono Agent?')
+    $deadline = (Get-Date).AddSeconds(5)
+    do {
+        Start-Sleep -Milliseconds 100
+        $open = $script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, $dialogTitle)
+        $ready = !$open -and (Find 'SignOutButton').Current.IsEnabled
+    } while (!$ready -and (Get-Date) -lt $deadline)
+    if (!$ready) { throw 'Canceling sign-out did not return control to the current page' }
     Find 'GameStatus' | Out-Null
     if (!(Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin'))) { throw 'Canceling sign-out removed the local session' }
     if (!(Find 'Games' -ByName).GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected) { throw 'Canceling sign-out lost the selected page' }
-    SelectNav 'Sign out'
+    (Find 'SignOutButton').SetFocus()
+    Start-Sleep -Milliseconds 500
+    Invoke 'SignOutButton'
     Invoke 'Sign out now' -ByName
     Find 'LoginButton' | Out-Null
     if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin')) { throw 'Logout retained local session' }
