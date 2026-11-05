@@ -101,13 +101,21 @@ public sealed class GameBackdrop : Grid
             for (var column = 0; column <= wide; column++) {
                 var x = column * TileWidth - (row % 2) * 120;
                 var y = row * TileHeight;
-                foreach (var motif in MakeTile()) {
+                var motifs = MakeTile().ToArray();
+                var slots = motifs.Select(motif => motif.Bounds).ToArray();
+                var random = new Random(741 + row * 997 + column * 37);
+                random.Shuffle(motifs.AsSpan());
+                for (var i = 0; i < motifs.Length; i++) {
+                    var motif = motifs[i];
                     var bounds = motif.Bounds;
-                    if (x + bounds.Left < 8 || y + bounds.Top < 8 ||
-                        x + bounds.Right > size.Width - 8 || y + bounds.Bottom > size.Height - 8) continue;
+                    var slot = slots[i];
+                    var left = x + slot.X + (slot.Width - bounds.Width) / 2 - bounds.X + random.Next(-8, 9);
+                    var top = y + slot.Y + (slot.Height - bounds.Height) / 2 - bounds.Y + random.Next(-8, 9);
+                    if (left + bounds.Left < 8 || top + bounds.Top < 8 ||
+                        left + bounds.Right > size.Width - 8 || top + bounds.Bottom > size.Height - 8) continue;
                     var mark = new Path { Data = motif, StrokeThickness = 1.4 };
-                    Canvas.SetLeft(mark, x);
-                    Canvas.SetTop(mark, y);
+                    Canvas.SetLeft(mark, left);
+                    Canvas.SetTop(mark, top);
                     tiles.Children.Add(mark);
                 }
             }
