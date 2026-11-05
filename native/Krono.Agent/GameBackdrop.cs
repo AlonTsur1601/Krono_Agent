@@ -99,10 +99,11 @@ public sealed class GameBackdrop : Grid
         var random = new Random(741);
         var positions = new List<(Point Center, int Motif)>();
         var target = (int)(size.Width * size.Height / 6500);
-        for (var i = 0; i < target; i++) {
+        for (var i = 0; i < target + 2; i++) {
+            var fillingGap = i >= target;
             Point center = default;
             double clearance = -1;
-            for (var sample = 0; sample < 24; sample++) {
+            for (var sample = 0; sample < (fillingGap ? 256 : 24); sample++) {
                 var candidate = new Point(24 + random.NextDouble() * (size.Width - 48),
                     24 + random.NextDouble() * (size.Height - 48));
                 var distance = positions.Count == 0 ? double.PositiveInfinity
@@ -111,7 +112,7 @@ public sealed class GameBackdrop : Grid
                 center = candidate;
                 clearance = distance;
             }
-            if (clearance < 44 * 44) break;
+            if (clearance < (fillingGap ? 74 * 74 : 44 * 44)) break;
             var motifs = MakeTile();
             var neighbors = positions.OrderBy(mark => DistanceSquared(mark.Center, center))
                 .Take(5).Select(mark => mark.Motif).ToHashSet();
