@@ -25,7 +25,7 @@ public sealed class BrowserWorkspace : Grid, IDisposable
         bar.PrimaryCommands.Add(Action("Back", Symbol.Back, () => { if (Current?.CanGoBack == true) Current.GoBack(); }));
         bar.PrimaryCommands.Add(Action("Forward", Symbol.Forward, () => { if (Current?.CanGoForward == true) Current.GoForward(); }));
         bar.PrimaryCommands.Add(Action("Reload", Symbol.Refresh, () => Current?.Reload()));
-        bar.Content = address; address.KeyDown += (_, e) => { if (e.Key == Windows.System.VirtualKey.Enter) Go(); };
+        address.KeyDown += (_, e) => { if (e.Key == Windows.System.VirtualKey.Enter) { e.Handled = true; Go(); } };
         go = Action("Go", Symbol.Go, Go); bar.PrimaryCommands.Add(go);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(go, "Go");
         bar.SecondaryCommands.Add(Action("Private tab", Symbol.Permissions, () => _ = Open("about:blank", true)));
@@ -43,7 +43,12 @@ public sealed class BrowserWorkspace : Grid, IDisposable
         bar.SecondaryCommands.Add(Action("Open externally", Symbol.OpenWith, () => { if (Current?.Source is Uri uri && uri.Scheme is "https" or "http") Process.Start(new ProcessStartInfo(uri.ToString()) { UseShellExecute = true }); }));
         bar.SecondaryCommands.Add(Action("Zoom in", Symbol.ZoomIn, () => _ = Current?.ExecuteScriptAsync("document.body.style.zoom=(parseFloat(document.body.style.zoom)||1)+0.1")));
         bar.SecondaryCommands.Add(Action("Zoom out", Symbol.ZoomOut, () => _ = Current?.ExecuteScriptAsync("document.body.style.zoom=Math.max(.3,(parseFloat(document.body.style.zoom)||1)-0.1)")));
-        Children.Add(bar); Grid.SetRow(tabs, 1); Children.Add(tabs);
+        var toolbar = new Grid { ColumnSpacing = 8 };
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition());
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        address.VerticalAlignment = VerticalAlignment.Center;
+        toolbar.Children.Add(address); Grid.SetColumn(bar, 1); toolbar.Children.Add(bar);
+        Children.Add(toolbar); Grid.SetRow(tabs, 1); Children.Add(tabs);
         tabs.AddTabButtonClick += (_, _) => _ = Open("about:blank");
         tabs.TabCloseRequested += (sender, args) => {
             if (args.Tab is not TabViewItem tab || !views.Remove(tab, out var view)) return;

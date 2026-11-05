@@ -95,6 +95,10 @@ try {
     Find 'Sign out' -ByName | Out-Null
     Invoke '+ New chat' -ByName
     Find 'Send' -ByName | Out-Null
+    Invoke 'Delete selected chat' -ByName
+    Find 'Delete this chat?' -ByName | Out-Null
+    Invoke 'Cancel' -ByName
+    Find 'Composer' | Out-Null
     SelectNav 'Projects & memory'
     Find 'Save project' -ByName | Out-Null
     SetValue 'ProjectName' 'Native fixture project'
@@ -671,6 +675,12 @@ try {
     OpenGameTile 23 'New game' -RequireChoice
     if ((Find 'GameStatus').Current.Name -notmatch '^Foundations 0/52') { throw 'New game choice did not replace the save' }
     SelectNav 'Sign out'
+    Find 'Sign out of Krono Agent?' -ByName | Out-Null
+    Invoke 'Cancel' -ByName
+    Find 'GameStatus' | Out-Null
+    if (!(Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin'))) { throw 'Canceling sign-out removed the local session' }
+    SelectNav 'Sign out'
+    Invoke 'PrimaryButton'
     Find 'LoginButton' | Out-Null
     if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin')) { throw 'Logout retained local session' }
     SetValue 'EmailInput' 'native-fixture@example.com'

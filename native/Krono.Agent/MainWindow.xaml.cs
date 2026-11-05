@@ -12,8 +12,10 @@ public sealed partial class MainWindow : Window
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Standard;
         if (Content is FrameworkElement root) {
-            root.ActualThemeChanged += (_, _) => UpdateCaptionColors();
+            root.ActualThemeChanged += (_, _) => { KronoDesign.ApplyControlAccents(root); UpdateCaptionColors(); };
+            KronoDesign.ApplyControlAccents(root);
             UpdateCaptionColors();
         }
 

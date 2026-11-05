@@ -10,7 +10,12 @@
 <NavigationViewItem Content="Terminal" Icon="Document" Tag="terminal"/>
 <NavigationViewItem Content="Scheduled tasks" Icon="Clock" Tag="schedule"/>
 </NavigationView.MenuItems>
-<NavigationView.FooterMenuItems><NavigationViewItem Content="Settings" Icon="Setting" Tag="settings"/><NavigationViewItem Content="Sign out" Icon="LeaveChat" Tag="logout"/></NavigationView.FooterMenuItems>
+<NavigationView.FooterMenuItems>
+<NavigationViewItem Content="Settings" Icon="Setting" Tag="settings"/>
+<NavigationViewItem Content="Sign out" Tag="logout">
+<NavigationViewItem.Icon><PathIcon Data="M2,2 H10 V4 H4 V16 H10 V18 H2 Z M8,9 H15 L12,6 L13.5,4.5 L19,10 L13.5,15.5 L12,14 L15,11 H8 Z"/></NavigationViewItem.Icon>
+</NavigationViewItem>
+</NavigationView.FooterMenuItems>
 <Grid Padding="28,20,28,24" RowSpacing="12" Background="{ThemeResource KronoBackground}"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
 <StackPanel Spacing="8"><InfoBar x:Name="Notice" IsOpen="False" IsClosable="True" Severity="Error"/>
 <InfoBar x:Name="RunActivity" IsOpen="False" IsClosable="False" IsIconVisible="False" Background="{ThemeResource KronoSurface}" BorderBrush="{ThemeResource KronoBorder}" Closed="ActivityClosed"><InfoBar.ActionButton><Button Content="Open chat" Click="OpenActivityChat"/></InfoBar.ActionButton></InfoBar>
@@ -38,7 +43,7 @@
 <Button x:Name="LoginButton" Content="Sign in" Style="{StaticResource KronoPrimaryButton}" HorizontalAlignment="Stretch" Click="Login"/>
 <Button x:Name="RegisterButton" Content="Create an account" HorizontalAlignment="Stretch" Click="Register"/>
 <ProgressRing x:Name="AuthProgress" Visibility="Collapsed" IsActive="False" Width="24" Height="24"/>
-<TextBlock x:Name="AuthError" TextWrapping="Wrap" Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
+<TextBlock x:Name="AuthError" Visibility="Collapsed" TextWrapping="Wrap" Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
 <TextBlock Text="Your sign-in is encrypted on this Windows account and remembered until you sign out." TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 </StackPanel></Border></Grid></ScrollViewer>
 </Grid></Page>

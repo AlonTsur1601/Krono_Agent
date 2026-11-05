@@ -63,6 +63,32 @@ public static class KronoDesign
         button.Resources["AccentButtonBackgroundPointerOver"] = ThemeBrush("KronoAccentHover", ElementTheme.Dark);
         button.Resources["AccentButtonBackgroundPressed"] = ThemeBrush("KronoAccentPressed", ElementTheme.Dark);
     }
+    public static void ApplyControlAccents(FrameworkElement root)
+    {
+        var resources = root.Resources;
+        var ink = ThemeBrush("KronoAccentForeground", root.ActualTheme);
+        var fill = ThemeBrush("KronoAccentFill", ElementTheme.Dark);
+        var hover = ThemeBrush("KronoAccentHover", ElementTheme.Dark);
+        var pressed = ThemeBrush("KronoAccentPressed", ElementTheme.Dark);
+        var onAccent = (Brush)Application.Current.Resources["TextOnAccentFillColorPrimaryBrush"];
+
+        foreach (var key in new[] { "TextControlBorderBrushFocused", "ListViewItemSelectionIndicatorBrush",
+            "ListViewItemSelectionIndicatorPointerOverBrush", "ListViewItemSelectionIndicatorPressedBrush",
+            "ProgressRingForegroundThemeBrush", "ProgressBarForeground", "HyperlinkForeground", "HyperlinkButtonForeground" })
+            resources[key] = ink;
+        foreach (var key in new[] { "TextControlSelectionHighlightColor", "AccentButtonBackground", "CheckBoxCheckBackgroundFillChecked",
+            "CheckBoxCheckBackgroundStrokeChecked", "ToggleButtonBackgroundChecked" })
+            resources[key] = fill;
+        foreach (var key in new[] { "AccentButtonBackgroundPointerOver", "CheckBoxCheckBackgroundFillCheckedPointerOver",
+            "CheckBoxCheckBackgroundStrokeCheckedPointerOver", "ToggleButtonBackgroundCheckedPointerOver" })
+            resources[key] = hover;
+        foreach (var key in new[] { "AccentButtonBackgroundPressed", "CheckBoxCheckBackgroundFillCheckedPressed",
+            "CheckBoxCheckBackgroundStrokeCheckedPressed", "ToggleButtonBackgroundCheckedPressed" })
+            resources[key] = pressed;
+        foreach (var key in new[] { "CheckBoxCheckGlyphForegroundChecked", "CheckBoxCheckGlyphForegroundCheckedPointerOver",
+            "CheckBoxCheckGlyphForegroundCheckedPressed", "ToggleButtonForegroundChecked", "ToggleButtonForegroundCheckedPointerOver", "ToggleButtonForegroundCheckedPressed" })
+            resources[key] = onAccent;
+    }
     public static void ApplyTypography(Workspace workspace, FrameworkElement root)
     {
         var textName = workspace.Setting("native.textFont").Trim();

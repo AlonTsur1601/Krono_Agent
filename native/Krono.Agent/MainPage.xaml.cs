@@ -36,9 +36,12 @@ public sealed partial class MainPage : Page
     GamesWorkspace? games;
     readonly DispatcherTimer sessionTimer = new() { Interval = TimeSpan.FromMinutes(5) };
     bool refreshingSession;
+    bool confirmingSignOut;
+    NavigationViewItem? lastPage;
     public MainPage()
     {
         InitializeComponent(); transcript = new ScrollViewer { Content = messages, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        lastPage = Nav.SelectedItem as NavigationViewItem;
         Nav.Resources["NavigationViewSelectionIndicatorForeground"] = KronoDesign.ThemeBrush("KronoAccentFill", ElementTheme.Dark);
         KronoDesign.ApplyPrimaryStates(LoginButton);
         InitializeSync(); InitializeSchedule();
@@ -53,18 +56,23 @@ public sealed partial class MainPage : Page
         };
         Loaded += async (_, _) => {
             try { if (await workspace.Restore()) Enter(); }
-            catch (Exception error) { AuthError.Text = error.Message; }
+            catch (Exception error) { SetAuthError(error.Message); }
             finally { StartupProgress.IsActive = false; StartupProgress.Visibility = Visibility.Collapsed; if (Nav.Visibility != Visibility.Visible) SignIn.Visibility = Visibility.Visible; }
         };
         Unloaded += (_, _) => { sessionGeneration++; sessionTimer.Stop(); StopSync(); StopSchedules(); sideChat?.Dispose(); worker?.Dispose(); browser?.Dispose(); terminal?.Dispose(); games?.Dispose(); workspace.Dispose(); };
     }
     async void Login(object sender, RoutedEventArgs e) => await Authenticate(false);
     async void Register(object sender, RoutedEventArgs e) => await Authenticate(true);
+    void SetAuthError(string message)
+    {
+        AuthError.Text = message;
+        AuthError.Visibility = message.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
     async Task Authenticate(bool register)
     {
-        LoginButton.IsEnabled = RegisterButton.IsEnabled = false; AuthProgress.Visibility = Visibility.Visible; AuthProgress.IsActive = true; AuthError.Text = "";
+        LoginButton.IsEnabled = RegisterButton.IsEnabled = false; AuthProgress.Visibility = Visibility.Visible; AuthProgress.IsActive = true; SetAuthError("");
         try { await workspace.Login(EmailInput.Text.Trim(), PasswordInput.Password, register); PasswordInput.Password = ""; Enter(); }
-        catch (Exception error) { AuthError.Text = error.Message; }
+        catch (Exception error) { SetAuthError(error.Message); }
         finally { LoginButton.IsEnabled = RegisterButton.IsEnabled = true; AuthProgress.IsActive = false; AuthProgress.Visibility = Visibility.Collapsed; }
     }
     void Enter()
@@ -89,6 +97,20 @@ public sealed partial class MainPage : Page
     {
         if (workspace.AccountId.Length == 0 || args.SelectedItem is not NavigationViewItem item) return;
         try {
+            if (item.Tag?.ToString() == "logout") {
+                if (confirmingSignOut) return;
+                confirmingSignOut = true;
+                var account = workspace.AccountId;
+                try {
+                    Nav.SelectedItem = lastPage;
+                    if (await Confirm("Sign out of Krono Agent?", "You’ll need to sign in again to open your workspace on this device.", "Sign out") &&
+                        workspace.AccountId == account)
+                        await Leave(false);
+                } finally { confirmingSignOut = false; }
+                return;
+            }
+            if (confirmingSignOut) return;
+            lastPage = item;
             switch (item.Tag?.ToString()) {
                 case "chats": ShowChats(); break;
                 case "projects": ShowProjects(); break;
@@ -97,8 +119,6 @@ public sealed partial class MainPage : Page
                 case "terminal": terminal ??= new TerminalWorkspace(worker!, DispatcherQueue); KronoDesign.Present(Body, terminal); break;
                 case "games": games ??= new GamesWorkspace(workspace); KronoDesign.Present(Body, games); break;
                 case "schedule": ShowSchedules(); break;
-                case "logout":
-                    await Leave(false); break;
             }
             UpdateActivityVisibility();
         } catch (Exception error) { Error(error); }
@@ -122,9 +142,10 @@ public sealed partial class MainPage : Page
             activityChatId = null; RunActivity.IsOpen = false; Approval.IsOpen = Notice.IsOpen = false; Nav.Visibility = Visibility.Collapsed; SignIn.Visibility = Visibility.Visible;
         }
     }
-    public async Task<bool> Confirm(string title, string message)
+    public async Task<bool> Confirm(string title, string message, string action = "Allow")
     {
-        var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = title, Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap }, PrimaryButtonText = "Allow", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
+        var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = title, Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap }, PrimaryButtonText = action, CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
+        KronoDesign.ApplyControlAccents(dialog);
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
     static TextBlock Heading(string text) => new() { Text = text, FontFamily = (FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 28, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 12) };
@@ -143,7 +164,14 @@ public sealed partial class MainPage : Page
             var history = new StackPanel { Spacing = 12, Width = 220 }; history.Children.Add(Heading("Chats"));
             history.Children.Add(Button("+ New chat", () => { if (runId is null) { chatId = workspace.CreateChat(); ReloadChats(); LoadChat(); } }));
             chatList.DisplayMemberPath = "Name"; chatList.SelectionChanged += (_, _) => { if (runId is null && chatList.SelectedItem is ChatItem item) { chatId = item.Id; LoadChat(); } }; history.Children.Add(chatList);
-            history.Children.Add(Button("Delete selected chat", () => { if (chatId is not null && runId is null && scheduledRun?.Chat != chatId) { workspace.Execute("UPDATE chats SET deleted_at=$p0 WHERE id=$p1", Workspace.Now, chatId); chatId = null; ReloadChats(); LoadChat(); } }));
+            history.Children.Add(Button("Delete selected chat", async () => {
+                var id = chatId; var account = workspace.AccountId;
+                if (id is null || runId is not null || scheduledRun?.Chat == id) return;
+                if (!await Confirm("Delete this chat?", "The selected conversation will be removed from your history.", "Delete chat")) return;
+                if (workspace.AccountId != account || chatId != id || runId is not null || scheduledRun?.Chat == id) return;
+                workspace.Execute("UPDATE chats SET deleted_at=$p0 WHERE id=$p1", Workspace.Now, id);
+                chatId = null; ReloadChats(); LoadChat();
+            }));
             chatView.Children.Add(history);
             var conversation = new Grid { RowSpacing = 12 }; Grid.SetColumn(conversation, 1); chatView.Children.Add(conversation);
             foreach (var height in new[] { GridLength.Auto, new GridLength(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto }) conversation.RowDefinitions.Add(new RowDefinition { Height = height });
@@ -172,7 +200,7 @@ public sealed partial class MainPage : Page
         modelChoice.Content = new TextBlock { Text = model.Length == 0 ? "Choose model" : model, TextTrimming = TextTrimming.CharacterEllipsis };
         ToolTipService.SetToolTip(modelChoice, ProviderCatalog.Name(provider) + " / " + model);
         KronoDesign.Present(Body, chatView); ReloadChats(); if (runId is null) LoadChat();
-        Nav.SelectedItem = Nav.MenuItems.OfType<NavigationViewItem>().First(item => item.Tag?.ToString() == "chats");
+        Nav.SelectedItem = lastPage = Nav.MenuItems.OfType<NavigationViewItem>().First(item => item.Tag?.ToString() == "chats");
         UpdateActivityVisibility();
     }
     record ChatItem(string Id, string Name);
@@ -284,7 +312,7 @@ public sealed partial class MainPage : Page
     {
         var panel = new StackPanel { Spacing = 18, MaxWidth = 650, HorizontalAlignment = HorizontalAlignment.Left }; panel.Children.Add(Heading("Settings"));
         panel.Children.Add(new TextBlock { Text = workspace.Email, Opacity = .65 });
-        panel.Children.Add(Button("Sign out on all devices", async () => { if (await Confirm("Sign out on all devices", "End this account's refresh sessions on all devices?")) await Leave(true); }));
+        panel.Children.Add(Button("Sign out on all devices", async () => { if (await Confirm("Sign out on all devices?", "You’ll need to sign in again on each device.", "Sign out everywhere")) await Leave(true); }));
         panel.Children.Add(Choices("Appearance", ["system", "dark", "light", "halloween"], workspace.Setting("native.theme") is { Length: > 0 } t ? t : "system", value => { workspace.SetSetting("native.theme", value); ApplyTheme(value); }));
         var secret = new PasswordBox { Header = "Provider API key · optional for local servers", HorizontalAlignment = HorizontalAlignment.Stretch };
         var endpoint = new TextBox { Header = "Server base URL · include /v1", Text = ProviderEndpoint };
