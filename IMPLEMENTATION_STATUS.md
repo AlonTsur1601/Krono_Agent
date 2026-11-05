@@ -70,7 +70,10 @@ native C#/WinUI 3. This is not completion of the full original product scope.
   retired on 2026-07-30; its discontinued API is not offered as a working profile.
 - macOS/Linux desktop UIs are not implemented after the owner's explicit
   choice of native Windows UI. Agent unit checks remain cross-platform.
-- Runtime signing, automatic updates and a production installer are not verified.
+- The Windows x64 installer supports per-user installation, a custom folder,
+  a Start menu entry, an optional desktop shortcut and uninstall. Local testing
+  verified a custom install path, the Start menu shortcut, the installed native
+  smoke suite and removal. Code signing and automatic updates remain pending.
 
 Initial specs/work used Kiro Crew. Native migration and subsequent implementation
 are by Codex, authorized by the owner. See .kiro review logs for provenance.
