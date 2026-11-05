@@ -9,7 +9,6 @@ namespace Krono_Agent;
 
 public sealed class GameBackdrop : Grid
 {
-    const int TileWidth = 320, TileHeight = 224;
     readonly Canvas tiles = new();
 
 
@@ -94,31 +93,27 @@ public sealed class GameBackdrop : Grid
     void ArrangePattern(Size size)
     {
         Clip = new RectangleGeometry { Rect = new Rect(0, 0, size.Width, size.Height) };
-        var wide = (int)Math.Ceiling(size.Width / TileWidth);
-        var tall = (int)Math.Ceiling(size.Height / TileHeight);
         tiles.Children.Clear();
-        for (var row = 0; row < tall; row++)
-            for (var column = 0; column <= wide; column++) {
-                var x = column * TileWidth - (row % 2) * 120;
-                var y = row * TileHeight;
-                var motifs = MakeTile().ToArray();
-                var slots = motifs.Select(motif => motif.Bounds).ToArray();
-                var random = new Random(741 + row * 997 + column * 37);
-                random.Shuffle(motifs.AsSpan());
-                for (var i = 0; i < motifs.Length; i++) {
-                    var motif = motifs[i];
-                    var bounds = motif.Bounds;
-                    var slot = slots[i];
-                    var left = x + slot.X + (slot.Width - bounds.Width) / 2 - bounds.X + random.Next(-8, 9);
-                    var top = y + slot.Y + (slot.Height - bounds.Height) / 2 - bounds.Y + random.Next(-8, 9);
-                    if (left + bounds.Left < 8 || top + bounds.Top < 8 ||
-                        left + bounds.Right > size.Width - 8 || top + bounds.Bottom > size.Height - 8) continue;
-                    var mark = new Path { Data = motif, StrokeThickness = 1.4 };
-                    Canvas.SetLeft(mark, left);
-                    Canvas.SetTop(mark, top);
-                    tiles.Children.Add(mark);
-                }
-            }
+        if (size.Width < 48 || size.Height < 48) return;
+
+        var random = new Random(741);
+        var positions = new List<Point>();
+        var target = (int)(size.Width * size.Height / 6500);
+        for (var attempt = 0; attempt < target * 12 && positions.Count < target; attempt++) {
+            var center = new Point(24 + random.NextDouble() * (size.Width - 48),
+                24 + random.NextDouble() * (size.Height - 48));
+            if (positions.Any(point => Math.Pow(point.X - center.X, 2) + Math.Pow(point.Y - center.Y, 2) < 44 * 44))
+                continue;
+
+            var motifs = MakeTile();
+            var motif = motifs[random.Next(motifs.Count)];
+            var bounds = motif.Bounds;
+            var mark = new Path { Data = motif, StrokeThickness = 1.4 };
+            Canvas.SetLeft(mark, center.X - bounds.X - bounds.Width / 2);
+            Canvas.SetTop(mark, center.Y - bounds.Y - bounds.Height / 2);
+            tiles.Children.Add(mark);
+            positions.Add(center);
+        }
         UpdateInk();
     }
 
