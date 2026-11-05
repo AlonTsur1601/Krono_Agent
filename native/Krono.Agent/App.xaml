@@ -22,8 +22,8 @@
                     <SolidColorBrush x:Key="KronoAccentFill" Color="#84E6B1" />
                     <SolidColorBrush x:Key="KronoAccentHover" Color="#A0F0C5" />
                     <SolidColorBrush x:Key="KronoAccentPressed" Color="#70D39F" />
-                    <Color x:Key="KronoLoginStart">#10151D</Color>
-                    <Color x:Key="KronoLoginEnd">#17342B</Color>
+                    <SolidColorBrush x:Key="KronoLoginBackdrop" Color="#111D20" />
+                    <SolidColorBrush x:Key="KronoOutlineHover" Color="#537D70" />
                     <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#84E6B1" />
                     <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#70D39F" />
                     <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#5CC08C" />
@@ -44,8 +44,8 @@
                     <SolidColorBrush x:Key="KronoAccentFill" Color="#84E6B1" />
                     <SolidColorBrush x:Key="KronoAccentHover" Color="#A0F0C5" />
                     <SolidColorBrush x:Key="KronoAccentPressed" Color="#70D39F" />
-                    <Color x:Key="KronoLoginStart">#F2F5F7</Color>
-                    <Color x:Key="KronoLoginEnd">#D3EDE0</Color>
+                    <SolidColorBrush x:Key="KronoLoginBackdrop" Color="#E9F3EF" />
+                    <SolidColorBrush x:Key="KronoOutlineHover" Color="#608678" />
                     <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#84E6B1" />
                     <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#70D39F" />
                     <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#5CC08C" />
@@ -63,9 +63,11 @@
             <FontFamily x:Key="ContentControlThemeFontFamily">ms-appx:///Assets/Fonts/Rubik.ttf#Rubik</FontFamily>
             <x:Double x:Key="KronoTextSize">14</x:Double>
             <x:Double x:Key="KronoCodeSize">14</x:Double>
+            <x:Double x:Key="KronoControlMinHeight">40</x:Double>
             <Style TargetType="Button">
+                <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="CornerRadius" Value="10" />
-                <Setter Property="Padding" Value="16,10" />
+                <Setter Property="Padding" Value="14,8" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="FontWeight" Value="SemiBold" />
@@ -73,37 +75,46 @@
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
             </Style>
             <Style x:Key="KronoPrimaryButton" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+                <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
+                <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
+                <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="Background" Value="{ThemeResource KronoAccentFill}" />
                 <Setter Property="Foreground" Value="#10231F" />
                 <Setter Property="CornerRadius" Value="10" />
-                <Setter Property="Padding" Value="16,10" />
+                <Setter Property="Padding" Value="14,8" />
                 <Setter Property="FontWeight" Value="SemiBold" />
             </Style>
             <Style TargetType="TextBox">
+                <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
+                <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
-                <Setter Property="CornerRadius" Value="12" />
-                <Setter Property="Padding" Value="14,12" />
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="Padding" Value="12,8" />
                 <Setter Property="Background" Value="{ThemeResource KronoSurface}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
             </Style>
             <Style TargetType="ComboBox">
+                <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="CornerRadius" Value="10" />
-                <Setter Property="Padding" Value="12,10" />
+                <Setter Property="Padding" Value="12,8" />
                 <Setter Property="Background" Value="{ThemeResource KronoSurface}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
             </Style>
             <Style TargetType="PasswordBox">
+                <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
+                <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
-                <Setter Property="CornerRadius" Value="12" />
-                <Setter Property="Padding" Value="14,12" />
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="Padding" Value="12,8" />
                 <Setter Property="Background" Value="{ThemeResource KronoSurface}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
             </Style>
             <Style TargetType="NumberBox">
+                <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="CornerRadius" Value="10" />
@@ -111,6 +122,7 @@
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
             </Style>
             <Style TargetType="AppBarButton">
+                <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="CornerRadius" Value="10" />
             </Style>

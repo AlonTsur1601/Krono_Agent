@@ -22,6 +22,15 @@
 </Button>
 </NavigationView.PaneFooter>
 <Grid Padding="28,20,28,24" RowSpacing="12" Background="{ThemeResource KronoBackground}"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+<Viewbox x:Name="HalloweenCorner" Grid.RowSpan="3" Width="184" Height="138" Margin="0,0,18,0" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed" IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw">
+<Canvas Width="184" Height="138">
+<Path Stroke="{ThemeResource KronoMuted}" StrokeThickness="1" Opacity=".33"
+      Data="M184,0 L45,0 M184,0 L67,43 M184,0 L100,76 M184,0 L140,102 M184,0 L184,110 M157,0 Q163,8 161,9 Q170,11 168,15 Q175,15 176,19 Q180,18 184,21 M128,0 Q141,15 137,17 Q152,20 150,31 Q165,29 166,42 Q176,38 184,47 M96,0 Q111,22 110,27 Q128,30 128,51 Q151,48 155,68 Q169,64 184,75 M64,0 Q82,25 81,38 Q104,44 103,73 Q132,66 144,93 Q162,84 184,101"/>
+<Path Stroke="{ThemeResource KronoMuted}" StrokeThickness="1" Opacity=".6" Data="M140,102 V116"/>
+<Path Canvas.Left="125" Canvas.Top="110" Fill="{ThemeResource KronoAccentFill}" Opacity=".8"
+      Data="F0 M15,6 C10,0 2,5 2,13 C2,21 8,25 15,23 C22,25 28,21 28,13 C28,5 20,0 15,6 Z M8,11 L13,13 L8,15 Z M22,11 L17,13 L22,15 Z M10,18 L13,18 L14,20 L16,18 L20,18 Q15,23 10,18 Z M14,5 Q14,1 18,0 L18,2 Q16,3 16,6 Z"/>
+</Canvas>
+</Viewbox>
 <StackPanel Spacing="8"><InfoBar x:Name="Notice" IsOpen="False" IsClosable="True" Severity="Error"/>
 <InfoBar x:Name="RunActivity" IsOpen="False" IsClosable="False" IsIconVisible="False" Background="{ThemeResource KronoSurface}" BorderBrush="{ThemeResource KronoBorder}" Closed="ActivityClosed"><InfoBar.ActionButton><Button Content="Open chat" Click="OpenActivityChat"/></InfoBar.ActionButton></InfoBar>
 </StackPanel>
@@ -34,10 +43,7 @@
 </Grid></NavigationView>
 <ProgressRing x:Name="StartupProgress" IsActive="True" Width="36" Height="36" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 <ScrollViewer x:Name="SignIn" Visibility="Collapsed" VerticalScrollBarVisibility="Hidden" VerticalContentAlignment="Stretch" HorizontalContentAlignment="Stretch">
-<Grid Padding="24">
-<Grid.Background>
-<LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="{ThemeResource KronoLoginStart}" Offset="0"/><GradientStop Color="{ThemeResource KronoLoginEnd}" Offset="1"/></LinearGradientBrush>
-</Grid.Background>
+<Grid Padding="24" Background="{ThemeResource KronoLoginBackdrop}">
 <Border MaxWidth="440" HorizontalAlignment="Stretch" VerticalAlignment="Center" Padding="32" CornerRadius="22" Background="{ThemeResource KronoSurface}" BorderBrush="{ThemeResource KronoBorder}" BorderThickness="1">
 <StackPanel Spacing="14">
 <Image Width="72" Height="72" HorizontalAlignment="Left"><Image.Source><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg"/></Image.Source></Image>

@@ -294,6 +294,7 @@ public sealed partial class MainPage : Page
         KronoDesign.ApplyPalette(value == "halloween");
         RequestedTheme = value == "light" ? ElementTheme.Light : value is "dark" or "halloween" ? ElementTheme.Dark : ElementTheme.Default;
         if (MainWindow.Instance?.Content is FrameworkElement root) root.RequestedTheme = RequestedTheme;
+        HalloweenCorner.Visibility = value == "halloween" ? Visibility.Visible : Visibility.Collapsed;
         MainWindow.Instance?.ShowHalloween(value == "halloween");
     }
     bool CompatibleEndpoint => ProviderCatalog.Compatible(provider);

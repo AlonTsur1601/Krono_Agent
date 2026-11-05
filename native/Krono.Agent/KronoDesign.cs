@@ -33,6 +33,8 @@ public static class KronoDesign
         Set(dark, "KronoSidebar", halloween ? "1D1528" : "141B24");
         Set(dark, "KronoSurface", halloween ? "2B1D39" : "1B2532");
         Set(dark, "KronoBorder", halloween ? "442D56" : "2B3B4C");
+        Set(dark, "KronoLoginBackdrop", halloween ? "1D1329" : "111D20");
+        Set(dark, "KronoOutlineHover", halloween ? "A077A6" : "537D70");
         Set(dark, "ButtonBackgroundPointerOver", halloween ? "3B284B" : "293D48");
         Set(dark, "ButtonBackgroundPressed", halloween ? "503460" : "344D59");
         Set(dark, "KronoMuted", halloween ? "CEAEDF" : "9AABBF");
@@ -71,6 +73,16 @@ public static class KronoDesign
         var hover = ThemeBrush("KronoAccentHover", ElementTheme.Dark);
         var pressed = ThemeBrush("KronoAccentPressed", ElementTheme.Dark);
         var onAccent = (Brush)Application.Current.Resources["TextOnAccentFillColorPrimaryBrush"];
+        var surface = ThemeBrush("KronoSurface", root.ActualTheme);
+        var outlineHover = ThemeBrush("KronoOutlineHover", root.ActualTheme);
+        resources["TextControlThemeMinHeight"] = Application.Current.Resources["KronoControlMinHeight"];
+        resources["TextControlBorderThemeThicknessFocused"] = new Thickness(1);
+        resources["TextControlBorderBrushPointerOver"] = outlineHover;
+        resources["ComboBoxBorderBrushPointerOver"] = outlineHover;
+        resources["ComboBoxBackgroundBorderBrushFocused"] = ink;
+        foreach (var key in new[] { "TextControlBackgroundPointerOver", "TextControlBackgroundFocused",
+            "ComboBoxBackgroundPointerOver", "ComboBoxBackgroundFocused" })
+            resources[key] = surface;
 
         foreach (var key in new[] { "TextControlBorderBrushFocused", "ListViewItemSelectionIndicatorBrush",
             "ListViewItemSelectionIndicatorPointerOverBrush", "ListViewItemSelectionIndicatorPressedBrush",
