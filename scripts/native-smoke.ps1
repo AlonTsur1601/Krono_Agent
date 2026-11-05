@@ -279,10 +279,16 @@ try {
     Invoke 'Close side chat' -ByName
     CloseApp
     Invoke-RestMethod -Method Post ($Fixture + '/expire-side') | Out-Null
+    Invoke-RestMethod -Method Post ($Fixture + '/poison-font-sizes') | Out-Null
     Launch
     Find 'Sign out' -ByName | Out-Null
     $proof = Invoke-RestMethod ($Fixture + '/side-proof')
     if ($proof.sideCount -ne 0 -or !$proof.kept) { throw 'Startup did not purge expired side chats while preserving kept history' }
+    SelectNav 'Settings'
+    Find 'TextFontSize' | Out-Null
+    Invoke 'Save typography' -ByName
+    $fontProof = Invoke-RestMethod ($Fixture + '/font-proof')
+    if ($fontProof.text -ne '14' -or $fontProof.code -ne '14') { throw 'Non-finite font sizes prevented recovery to valid defaults' }
     SelectNav 'Sign out'
     Find 'LoginButton' | Out-Null
     if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin')) { throw 'Logout retained local session' }

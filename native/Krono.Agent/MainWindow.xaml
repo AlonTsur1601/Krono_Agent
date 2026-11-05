@@ -14,7 +14,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TitleBar Background="{ThemeResource KronoSidebar}" x:Name="AppTitleBar" Title="Krono Agent">
+        <TitleBar FontFamily="{ThemeResource KronoTextFont}" Background="{ThemeResource KronoSidebar}" x:Name="AppTitleBar" Title="Krono Agent">
             <TitleBar.IconSource>
                 <ImageIconSource><ImageIconSource.ImageSource><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg" /></ImageIconSource.ImageSource></ImageIconSource>
             </TitleBar.IconSource>

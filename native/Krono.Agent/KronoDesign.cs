@@ -14,6 +14,16 @@ public static class KronoDesign
     public static double TextSize => (double)Application.Current.Resources["KronoTextSize"];
     public static FontFamily CodeFont => (FontFamily)Application.Current.Resources["KronoCodeFont"];
     public static double CodeSize => (double)Application.Current.Resources["KronoCodeSize"];
+    public static FontFamily ResolveFont(string name) => new(name.Trim().ToLowerInvariant() switch {
+        "rubik" => "ms-appx:///Assets/Fonts/Rubik.ttf#Rubik",
+        "space grotesk" => "ms-appx:///Assets/Fonts/SpaceGrotesk.ttf#Space Grotesk",
+        "jetbrains mono" => "ms-appx:///Assets/Fonts/JetBrainsMono.ttf#JetBrains Mono",
+        _ => name.Trim()
+    });
+    static double ReadSize(string value, int minimum, int maximum) {
+        var parsed = double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number) || double.TryParse(value, out number);
+        return parsed && double.IsFinite(number) ? Math.Clamp(number, minimum, maximum) : 14;
+    }
     public static void ApplyPalette(bool halloween)
     {
         var resources = Application.Current.Resources;
@@ -35,14 +45,15 @@ public static class KronoDesign
     }
     public static void ApplyTypography(Workspace workspace, FrameworkElement root)
     {
-        var textName = workspace.Setting("native.textFont");
-        var codeName = workspace.Setting("native.codeFont");
-        var text = new FontFamily(textName.Length > 0 ? textName : "Segoe UI Variable Text");
-        var code = new FontFamily(codeName.Length > 0 ? codeName : "Cascadia Code");
-        var textSize = double.TryParse(workspace.Setting("native.textSize"), out var ts) ? Math.Clamp(ts, 11, 28) : 14;
-        var codeSize = double.TryParse(workspace.Setting("native.codeSize"), out var cs) ? Math.Clamp(cs, 10, 26) : 14;
+        var textName = workspace.Setting("native.textFont").Trim();
+        var codeName = workspace.Setting("native.codeFont").Trim();
+        var text = ResolveFont(textName.Length > 0 ? textName : "Rubik");
+        var code = ResolveFont(codeName.Length > 0 ? codeName : "JetBrains Mono");
+        var textSize = ReadSize(workspace.Setting("native.textSize"), 11, 28);
+        var codeSize = ReadSize(workspace.Setting("native.codeSize"), 10, 26);
         Application.Current.Resources["KronoTextFont"] = text;
-        Application.Current.Resources["KronoDisplayFont"] = new FontFamily(textName.Length > 0 ? textName : "Segoe UI Variable Display");
+        Application.Current.Resources["ContentControlThemeFontFamily"] = text;
+        Application.Current.Resources["KronoDisplayFont"] = ResolveFont(textName.Length == 0 || textName.Equals("Rubik", StringComparison.OrdinalIgnoreCase) ? "Space Grotesk" : textName);
         Application.Current.Resources["KronoCodeFont"] = code;
         Application.Current.Resources["KronoTextSize"] = textSize;
         Application.Current.Resources["KronoCodeSize"] = codeSize;

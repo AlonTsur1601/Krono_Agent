@@ -28,6 +28,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\dist\sidecar\**\*" Link="Engine\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\assets\logo\logo.svg" Link="Assets\Krono.svg" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" />

@@ -186,10 +186,7 @@ public sealed partial class MainPage : Page
         else messages.Children.Add(box);
     }
     RichTextBlock Markdown(string text) => NativeMarkdown.Render(text,
-        workspace.Setting("native.textFont") is { Length: > 0 } font ? font : "Segoe UI Variable Text",
-        double.TryParse(workspace.Setting("native.textSize"), out var size) ? Math.Clamp(size, 11, 28) : 14,
-        workspace.Setting("native.codeFont") is { Length: > 0 } codeFont ? codeFont : "Cascadia Code",
-        double.TryParse(workspace.Setting("native.codeSize"), out var codeSize) ? Math.Clamp(codeSize, 10, 26) : 14,
+        KronoDesign.TextFont.Source, KronoDesign.TextSize, KronoDesign.CodeFont.Source, KronoDesign.CodeSize,
         workspace.Setting("native.codePalette"));
     async Task SendMessage()
     {
@@ -262,13 +259,20 @@ public sealed partial class MainPage : Page
         panel.Children.Add(Button("Load available models", async () => { try { var result = await worker!.Request(Guid.NewGuid().ToString(), "models", new { providerId = provider, apiKey = workspace.Key(provider), endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled }); models.ItemsSource = result!.AsArray().Select(m => m!["id"]!.ToString()).ToArray(); } catch (Exception error) { Error(error); } }));
         panel.Children.Add(Button("Use model", () => { model = models.Text.Trim(); workspace.SetSetting("native.model." + provider, model); }));
         panel.Children.Add(new TextBlock { Text = "Ollama and LM Studio connect to an existing local server. Install and load a model there first, save its /v1 endpoint, then load models or enter its exact ID. Tool calling starts disabled; enable it only for a compatible model. Local inference uses your hardware. Server setup and model downloads are not bundled yet.", TextWrapping = TextWrapping.Wrap, Opacity = .65 });
-        var textFont = new TextBox { Header = "Text font", Text = workspace.Setting("native.textFont") is { Length: > 0 } tf ? tf : "Segoe UI Variable Text" };
-        var codeFont = new TextBox { Header = "Code font", Text = workspace.Setting("native.codeFont") is { Length: > 0 } cf ? cf : "Cascadia Code" };
-        var textSize = new NumberBox { Header = "Text size", Minimum = 11, Maximum = 28, Value = double.TryParse(workspace.Setting("native.textSize"), out var ts) ? ts : 14 };
-        var codeSize = new NumberBox { Header = "Code size", Minimum = 10, Maximum = 26, Value = double.TryParse(workspace.Setting("native.codeSize"), out var cs) ? cs : 14 };
+        var textFont = new TextBox { Header = "Text font", Text = workspace.Setting("native.textFont") is { Length: > 0 } tf ? tf : "Rubik" };
+        var codeFont = new TextBox { Header = "Code font", Text = workspace.Setting("native.codeFont") is { Length: > 0 } cf ? cf : "JetBrains Mono" };
+        var textSize = new NumberBox { Header = "Text size", Minimum = 11, Maximum = 28, Value = KronoDesign.TextSize };
+        var codeSize = new NumberBox { Header = "Code size", Minimum = 10, Maximum = 26, Value = KronoDesign.CodeSize };
+        AutomationProperties.SetAutomationId(textSize, "TextFontSize"); AutomationProperties.SetAutomationId(codeSize, "CodeFontSize");
         panel.Children.Add(textFont); panel.Children.Add(textSize); panel.Children.Add(codeFont); panel.Children.Add(codeSize);
         panel.Children.Add(Choices("Code palette", ["classic", "mint", "halloween"], workspace.Setting("native.codePalette") is { Length: > 0 } palette ? palette : "classic", value => workspace.SetSetting("native.codePalette", value)));
-        panel.Children.Add(Button("Save typography", () => { workspace.SetSetting("native.textFont", textFont.Text); workspace.SetSetting("native.codeFont", codeFont.Text); workspace.SetSetting("native.textSize", textSize.Value.ToString()); workspace.SetSetting("native.codeSize", codeSize.Value.ToString()); KronoDesign.ApplyTypography(workspace, this); }));
+        panel.Children.Add(Button("Save typography", () => {
+            workspace.SetSetting("native.textFont", textFont.Text.Trim()); workspace.SetSetting("native.codeFont", codeFont.Text.Trim());
+            workspace.SetSetting("native.textSize", (double.IsFinite(textSize.Value) ? Math.Clamp(textSize.Value, 11, 28) : 14).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            workspace.SetSetting("native.codeSize", (double.IsFinite(codeSize.Value) ? Math.Clamp(codeSize.Value, 10, 26) : 14).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            KronoDesign.ApplyTypography(workspace, this);
+        }));
+        panel.Children.Add(new TextBlock { Text = "Bundled fonts: Rubik (including Hebrew), Space Grotesk and JetBrains Mono. You can also enter an installed font name. Text and code sizes are independent.", TextWrapping = TextWrapping.Wrap, Opacity = .65 });
         panel.Children.Add(new TextBlock { Text = "API keys are encrypted for this Windows account. Provider usage and billing follow your provider account.", TextWrapping = TextWrapping.Wrap });
         KronoDesign.Present(Body, new ScrollViewer { Content = panel });
     }

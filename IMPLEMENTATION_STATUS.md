@@ -7,6 +7,8 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 
 - Renamed product executable: KronoAgent.exe, with shared native typography,
   surfaces, motion and live dark/light/Halloween resources.
+- Bundled Rubik text (including Hebrew), Space Grotesk headings and JetBrains
+  Mono code fonts, with their OFL licenses; no system font installation needed.
 - Native shell, account forms, chat, Markdown, project/memory forms, settings,
   terminal surface and game rendering. No Electron or React runtime.
 - Embedded WebView2 is used only for browsing, with per-account profiles,

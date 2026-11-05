@@ -36,7 +36,7 @@ public sealed class SideChatPanel : Grid, IDisposable
         this.workspace = workspace; chatId = id; this.providerConfig = providerConfig; this.close = close; this.openChat = openChat; this.transferQueued = transferQueued;
         RowSpacing = 12; foreach (var height in new[] { GridLength.Auto, new GridLength(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto }) RowDefinitions.Add(new RowDefinition { Height = height });
         var header = new StackPanel { Spacing = 10 };
-        header.Children.Add(new TextBlock { Text = "Side chat", FontSize = 23, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        header.Children.Add(new TextBlock { Text = "Side chat", FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 23, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         actions.Children.Add(ActionButton("Parent chat", () => openChat(parent)));
         actions.Children.Add(ActionButton("Close side chat", close)); header.Children.Add(actions); header.Children.Add(saved); header.Children.Add(expiry);

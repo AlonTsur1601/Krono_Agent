@@ -25,7 +25,9 @@ function complete(response, text) {
   response.end('data: ' + JSON.stringify({ type: 'response.completed', response: { usage: { input_tokens: 1, output_tokens: 1 } } }) + '\n\n')
 }
 const server = http.createServer((request, response) => {
-  if (request.url === '/side-proof') {
+  if (request.url === '/poison-font-sizes') { fixtureDb(db => { db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('native.textSize','NaN')").run(); db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('native.codeSize','Infinity')").run() }); response.end('ok') }
+  else if (request.url === '/font-proof') { const proof = fixtureDb(db => ({ text: db.prepare("SELECT value FROM settings WHERE key='native.textSize'").get()?.value, code: db.prepare("SELECT value FROM settings WHERE key='native.codeSize'").get()?.value })); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(proof)) }
+  else if (request.url === '/side-proof') {
     const proof = fixtureDb(db => {
       const side = db.prepare('SELECT * FROM side_chats ORDER BY rowid DESC LIMIT 1').get()
       const queued = db.prepare('SELECT count(*) AS n FROM side_transfers').get().n
