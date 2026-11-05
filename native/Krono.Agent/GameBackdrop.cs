@@ -97,24 +97,42 @@ public sealed class GameBackdrop : Grid
         if (size.Width < 48 || size.Height < 48) return;
 
         var random = new Random(741);
-        var positions = new List<Point>();
+        var positions = new List<(Point Center, int Motif)>();
         var target = (int)(size.Width * size.Height / 6500);
-        for (var attempt = 0; attempt < target * 12 && positions.Count < target; attempt++) {
-            var center = new Point(24 + random.NextDouble() * (size.Width - 48),
-                24 + random.NextDouble() * (size.Height - 48));
-            if (positions.Any(point => Math.Pow(point.X - center.X, 2) + Math.Pow(point.Y - center.Y, 2) < 44 * 44))
-                continue;
-
+        for (var i = 0; i < target; i++) {
+            Point center = default;
+            double clearance = -1;
+            for (var sample = 0; sample < 24; sample++) {
+                var candidate = new Point(24 + random.NextDouble() * (size.Width - 48),
+                    24 + random.NextDouble() * (size.Height - 48));
+                var distance = positions.Count == 0 ? double.PositiveInfinity
+                    : positions.Min(mark => DistanceSquared(mark.Center, candidate));
+                if (distance <= clearance) continue;
+                center = candidate;
+                clearance = distance;
+            }
+            if (clearance < 44 * 44) break;
             var motifs = MakeTile();
-            var motif = motifs[random.Next(motifs.Count)];
+            var neighbors = positions.OrderBy(mark => DistanceSquared(mark.Center, center))
+                .Take(5).Select(mark => mark.Motif).ToHashSet();
+            var choices = Enumerable.Range(0, motifs.Count).Where(index => !neighbors.Contains(index)).ToArray();
+            var motifIndex = choices[random.Next(choices.Length)];
+            var motif = motifs[motifIndex];
             var bounds = motif.Bounds;
             var mark = new Path { Data = motif, StrokeThickness = 1.4 };
             Canvas.SetLeft(mark, center.X - bounds.X - bounds.Width / 2);
             Canvas.SetTop(mark, center.Y - bounds.Y - bounds.Height / 2);
             tiles.Children.Add(mark);
-            positions.Add(center);
+            positions.Add((center, motifIndex));
         }
         UpdateInk();
+    }
+
+    static double DistanceSquared(Point a, Point b)
+    {
+        var dx = a.X - b.X;
+        var dy = a.Y - b.Y;
+        return dx * dx + dy * dy;
     }
 
     void UpdateInk()
