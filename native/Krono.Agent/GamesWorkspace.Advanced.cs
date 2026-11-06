@@ -119,6 +119,12 @@ public sealed partial class GamesWorkspace
                     Foreground = game == 12 ? value == 1 ? Ink(0xff9d8e) : White : value > 0 ? DigitColors[value-1] : White,
                     Content = game == 12 ? value > 0 ? "●" : enabled ? "·" : "" : value == 0 ? "" : value.ToString() };
                 if (game == 12) cell.FontSize = value > 0 ? 40 : 28;
+                StyleGamePiece(cell);
+                if (game == 12 && value > 0) {
+                    var disc = value == 1 ? Ink(0xff9d8e) : White;
+                    cell.Content = new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 33, Height = 33, Fill = RaisedFace(disc), StrokeThickness = 2,
+                        Stroke = new SolidColorBrush(Shade(disc.Color, -.35)) };
+                }
                 AutomationProperties.SetAutomationId(cell, "GameCell" + i);
                 AutomationProperties.SetName(cell, game == 12 ? $"Square {i + 1}: {(value == 1 ? "coral" : value == 2 ? "ivory" : enabled ? "playable" : "empty")}" : $"Square {i + 1}: {(value == 0 ? "empty" : value.ToString())}{(clues[i] ? " fixed" : "")}");
                 cell.Click += (_, _) => AdvancedClick(index);
@@ -137,7 +143,7 @@ public sealed partial class GamesWorkspace
             red.IsEnabled = green.IsEnabled = blue.IsEnabled = !showing && !paused && !ended;
             if (!paused && !ended) status.Text = showing ? $"Remember all five · {Math.Ceiling((colorStart - tick) * .03)}s" : $"Recreate color {chosenColors.Count + 1}/5 · Score {score}";
             for (var i = 0; i < 5; i++) {
-                Rect(8 + i * 94, 58, 88, 114, Ink(0x334b65), 14);
+                Bevel(8 + i * 94, 58, 88, 118, Ink(0x334b65), 14);
                 Rect(10 + i * 94, 60, 84, 110, showing || ended ? new SolidColorBrush(Unpack(targetColors[i])) : Muted, 12);
                 Label((i + 1).ToString(), 44 + i * 94, 185, 20);
                 if (i < chosenColors.Count) { Rect(10 + i * 94, 230, 84, 110, new SolidColorBrush(Unpack(chosenColors[i])), 12); if (ended) Label($"ΔE {NativeGameRules.DeltaE(targetColors[i], chosenColors[i]):F1}", 15 + i * 94, 350, 16); }

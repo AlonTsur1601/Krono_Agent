@@ -21,6 +21,7 @@ public sealed partial class GamesWorkspace
     readonly ToggleButton flagMode = new() { Content = "Place flags", HorizontalAlignment = HorizontalAlignment.Center };
     int shownScore = -1;
     Canvas? playTexture;
+    int textureGame = -1;
     static readonly string[] MemorySymbols = ["✦", "◆", "☽", "✿", "●", "▲", "✚", "♥"];
     static SolidColorBrush Ink(int color) => new(Color.FromArgb(255, (byte)(color >> 16), (byte)(color >> 8), (byte)color));
     static readonly SolidColorBrush[] MineNumbers = [Ink(0x6d5b45), Ink(0x245390), Ink(0x2f672b), Ink(0xa33635), Ink(0x59317b), Ink(0x873b25), Ink(0x187077), Ink(0x363542), Ink(0x635341)];
@@ -29,6 +30,45 @@ public sealed partial class GamesWorkspace
     static readonly SolidColorBrush[] SudokuBoxes = [Ink(0x223348), Ink(0x32304b), Ink(0x263d41), Ink(0x3d2c40), Ink(0x213d4a), Ink(0x38364a), Ink(0x273b38), Ink(0x403446), Ink(0x25324d)];
     static readonly Brush BlockShine = new SolidColorBrush(Color.FromArgb(78, 255, 255, 255));
     static readonly Brush BlockShadow = new SolidColorBrush(Color.FromArgb(64, 0, 0, 0));
+    static readonly (int Light, int Dark)[] BoardMaterials = [
+        (0x1b493b, 0x102b29), (0x39405b, 0x222738), (0x44344f, 0x251e32), (0x203d35, 0x203d35),
+        (0x243c67, 0x142444), (0x203e5b, 0x131f37), (0x3f3857, 0x242438), (0x204655, 0x142735),
+        (0x303d4c, 0x1a2330), (0x3e364e, 0x242136), (0x303847, 0x222936), (0x263e58, 0x141e31),
+        (0x345852, 0x193935), (0x3d4560, 0x252c40), (0x3b3a55, 0x1b243c), (0x4b354f, 0x292436),
+        (0x1a2f58, 0x111b39), (0x26374f, 0x172943), (0x43382f, 0x261f20), (0x293b4b, 0x18232f),
+        (0x31465c, 0x1a2b3d), (0x293d5b, 0x152338), (0x4b3d43, 0x252433), (0x245e4e, 0x15382f)
+    ];
+    static readonly Brush[] BoardFaces = BoardMaterials.Select(material =>
+        Face(Ink(material.Light).Color, Ink(material.Dark).Color)).ToArray();
+    static readonly Dictionary<Color, Brush> PieceFaces = new();
+    static Brush Face(Color top, Color bottom)
+    {
+        var brush = new LinearGradientBrush { StartPoint = new(0, 0), EndPoint = new(0, 1) };
+        brush.GradientStops.Add(new GradientStop { Color = top, Offset = 0 });
+        brush.GradientStops.Add(new GradientStop { Color = bottom, Offset = 1 });
+        return brush;
+    }
+    static Color Shade(Color color, double amount)
+    {
+        byte Mix(byte channel) => (byte)Math.Clamp(channel + (amount >= 0 ? 255 - channel : channel) * amount, 0, 255);
+        return Color.FromArgb(color.A, Mix(color.R), Mix(color.G), Mix(color.B));
+    }
+    static Brush RaisedFace(Brush brush)
+    {
+        if (brush is not SolidColorBrush solid) return brush;
+        if (PieceFaces.TryGetValue(solid.Color, out var face)) return face;
+        face = Face(Shade(solid.Color, .17), Shade(solid.Color, -.10));
+        if (PieceFaces.Count < 192) PieceFaces[solid.Color] = face;
+        return face;
+    }
+    static void StyleGamePiece(Button button, bool keepColor = false)
+    {
+        button.Style = (Style)Application.Current.Resources["KronoGamePiece"];
+        var surface = button.Background;
+        if (surface is SolidColorBrush color && button.BorderThickness.Left == 0)
+            button.BorderBrush = new SolidColorBrush(Shade(color.Color, -.32));
+        if (!keepColor) button.Background = RaisedFace(surface);
+    }
     Grid ScoreHeader()
     {
         var header = new Grid { ColumnSpacing = 14 };
@@ -89,22 +129,31 @@ public sealed partial class GamesWorkspace
     }
     void ArcBackdrop()
     {
-        canvas.Background = game == 3 ? Ink(0x203d35) : game == Flap ? Ink(0x172943) : game == Solitaire ? Ink(0x143b39) : Ink(0x101a2a);
-        if (game is 0 or 5 or 7 or 11 or 14 or Darts or FallingBlocks or SandBlocks) {
-            if (playTexture is null) {
-                playTexture = new Canvas { IsHitTestVisible = false, Width = 480, Height = 480 };
-                var faint = new SolidColorBrush(Color.FromArgb(21, 147, 184, 218));
-                for (var x = 24; x < 480; x += 48) for (var y = 24; y < 480; y += 48) {
-                    var dot = new Ellipse { Width = 2, Height = 2, Fill = faint }; Canvas.SetLeft(dot, x); Canvas.SetTop(dot, y); playTexture.Children.Add(dot);
+        canvas.Background = BoardFaces[game];
+        if (game == 3) return;
+        if (playTexture is null || textureGame != game) {
+            textureGame = game;
+            playTexture = new Canvas { IsHitTestVisible = false, Width = 480, Height = 480 };
+            var accent = colors[game];
+            var faint = new SolidColorBrush(Color.FromArgb(30, accent.R, accent.G, accent.B));
+            var rail = new Rectangle { Width = 472, Height = 472, RadiusX = 11, RadiusY = 11, Stroke = faint, StrokeThickness = 1 };
+            Canvas.SetLeft(rail, 4); Canvas.SetTop(rail, 4); playTexture.Children.Add(rail);
+            var pitch = game == Solitaire ? 16 : game is 0 or 5 or 7 or 11 or 14 or Darts ? 40 : 56;
+            for (var y = pitch / 2; y < 480; y += pitch)
+                for (var x = pitch / 2 + ((y / pitch) % 2) * (pitch / 3); x < 480; x += pitch) {
+                    var dot = new Ellipse { Width = 2, Height = 2, Fill = faint };
+                    Canvas.SetLeft(dot, x); Canvas.SetTop(dot, y); playTexture.Children.Add(dot);
                 }
-            }
-            canvas.Children.Add(playTexture);
         }
+        canvas.Children.Add(playTexture);
     }
     void Bevel(double x, double y, double w, double h, Brush color, double radius = 6)
     {
-        Rect(x, y, w, h, color, radius);
-        if (w > 8 && h > 7) { Rect(x + 3, y + 2, w - 6, Math.Min(4, h / 4), BlockShine, 2); Rect(x + 3, y + h - 4, w - 6, 2, BlockShadow, 1); }
+        if (w <= 8 || h <= 7) { Rect(x, y, w, h, color, radius); return; }
+        var lip = Math.Min(4, h / 4);
+        var baseColor = color is SolidColorBrush solid ? new SolidColorBrush(Shade(solid.Color, -.38)) : BlockShadow;
+        Rect(x, y + lip, w, h - lip, baseColor, radius);
+        Rect(x, y, w, h - lip, RaisedFace(color), radius);
     }
     void ToggleMineFlag(int cell)
     {
@@ -142,6 +191,7 @@ public sealed partial class GamesWorkspace
     Button GameTileButton(int index, double x, double y, double width, double height, object content, string label, Brush background, double radius)
     {
         var button = new Button { Style = (Style)Application.Current.Resources["KronoFlatButton"], Content = content, Width = width, Height = height, Padding = new Thickness(0), Background = background, BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(radius), HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
+        if (game != 3) StyleGamePiece(button);
         AutomationProperties.SetAutomationId(button, "GameCell" + index); AutomationProperties.SetName(button, $"Cell {index + 1}: {label}");
         Canvas.SetLeft(button, x); Canvas.SetTop(button, y); canvas.Children.Add(button); return button;
     }

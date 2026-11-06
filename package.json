@@ -1,6 +1,6 @@
 {
   "name": "krono-agent",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "description": "Native Windows agent workspace with project memory and games",
   "author": "Alon Tsur",
   "license": "MIT",

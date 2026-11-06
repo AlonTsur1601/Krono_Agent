@@ -412,7 +412,13 @@ try {
             $tiles = @(0..15 | ForEach-Object { [pscustomobject]@{ Index = $_; Shade = ((Find ('GameCell' + $_)).Current.Name -split ': ')[1] } })
             $common = $tiles | Group-Object Shade | Where-Object Count -gt 1
             Invoke ('GameCell' + $common.Group[0].Index)
-            if ((Find 'GameStatus').Current.Name -notmatch '^Different shade missed') { throw 'Odd Color did not end after a wrong choice' }
+            $deadline = (Get-Date).AddSeconds(3)
+            do {
+                $status = (Find 'GameStatus').Current.Name
+                if ($status -match '^Different shade missed') { break }
+                Start-Sleep -Milliseconds 80
+            } while ((Get-Date) -lt $deadline)
+            if ($status -notmatch '^Different shade missed') { throw 'Odd Color did not end after a wrong choice' }
         }
         if ($game -eq 'Orbit') {
             Capture 'native-orbit.png'

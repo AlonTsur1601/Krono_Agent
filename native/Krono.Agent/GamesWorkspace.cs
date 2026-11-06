@@ -296,7 +296,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
                 var surface = game == 2 && value > 0 ? BlockColors[((int)Math.Log2(value)-1)%7] : game == 6 && revealed[i] ? DigitColors[value-1] : Ink(game == 4 ? 0x263c59 : 0x26364e);
                 object content = game switch {
                     2 => new TextBlock { Text = value == 0 ? "" : text, FontFamily = KronoDesign.CodeFont, FontSize = value > 9999 ? 23 : value > 999 ? 31 : 43, FontWeight = Microsoft.UI.Text.FontWeights.Bold, Foreground = Ink(0x182a37) },
-                    4 => new Ellipse { Width = 47, Height = 47, Fill = value == 1 ? Ink(0xff8d88) : value == 2 ? Ink(0xffd87c) : Ink(0x17253b), Stroke = value == 0 ? Ink(0x3b5273) : BlockShine, StrokeThickness = 3 },
+                    4 => new Ellipse { Width = 47, Height = 47, Fill = RaisedFace(value == 1 ? Ink(0xff8d88) : value == 2 ? Ink(0xffd87c) : Ink(0x17253b)), Stroke = value == 0 ? Ink(0x3b5273) : BlockShine, StrokeThickness = 3 },
                     _ => revealed[i] ? new TextBlock { Text = MemorySymbols[value-1], FontSize = 48, Foreground = Ink(0x26354a) } : new Image { Source = new SvgImageSource(new Uri("ms-appx:///Assets/Krono.svg")), Width = 44, Height = 44, Opacity = .8 }
                 };
                 var cell = GameTileButton(i, x + 4, y + 4, width - 8, height - 8, content, text, surface, game == 4 ? 17 : 12);
@@ -306,7 +306,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         }
         if (game is 5 or 7) {
             for (var i = 3; i > 0; i--) Rect(ballX - ballDx*i*2 - 5, ballY - ballDy*i*2 - 5, 10, 10, new SolidColorBrush(Color.FromArgb((byte)(110-i*25),158,238,224)),5);
-            Rect(ballX - 7, ballY - 7, 14, 14, White, 7);
+            Bevel(ballX - 7, ballY - 7, 14, 14, White, 7);
             if (game == 5) { Bevel(paddle - 45, 450, 90, 14, Mint); foreach (var brick in bricks) Bevel(brick.X, brick.Y, 54, 18, BlockColors[(int)((brick.Y-30)/25)],5); }
             else { for(var y=8;y<480;y+=28) Rect(239,y,2,14,Ink(0x49627b),1); Bevel(20, paddle - 45, 12, 90, Accent,6); Bevel(448, enemy - 45, 12, 90, Ink(0xf6a8c3),6); }
         }

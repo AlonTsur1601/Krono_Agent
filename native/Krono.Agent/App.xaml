@@ -140,6 +140,12 @@
                 <Setter Property="HorizontalContentAlignment" Value="Center" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
             </Style>
+            <Style x:Key="KronoGamePiece" TargetType="Button" BasedOn="{StaticResource KronoFlatButton}">
+                <Setter Property="Template" Value="{StaticResource KronoPressTemplate}" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
             <Style x:Key="KronoPrimaryButton" TargetType="Button" BasedOn="{StaticResource KronoFlatButton}">
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />

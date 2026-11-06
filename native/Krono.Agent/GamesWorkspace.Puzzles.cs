@@ -96,6 +96,7 @@ public sealed partial class GamesWorkspace
             var button = new Button { Style = (Style)Application.Current.Resources["KronoFlatButton"], Width = width - 12, Height = width - 12, CornerRadius = new CornerRadius(game == 9 ? 38 : 14), Padding = new Thickness(0),
                 Background = game == 10 || lit ? colorBrush : Ink(game == 8 ? 0x263349 : 0x22354a), BorderBrush = game == 10 ? BlockShadow : colorBrush, BorderThickness = new Thickness(game == 9 ? 3 : game == 10 ? 1 : lit ? 2 : 0),
                 Foreground = lit ? Ink(0x273449) : colorBrush, FontSize = game == 9 ? 52 : 31, Content = game == 9 ? lit ? "◉" : (index + 1).ToString() : game == 8 ? lit ? "✦" : "·" : "" };
+            StyleGamePiece(button, keepColor: game == 10);
             AutomationProperties.SetAutomationId(button, "GameCell" + index);
             AutomationProperties.SetName(button, game == 10 ? $"Color {index + 1}: #{color.R:X2}{color.G:X2}{color.B:X2}" : game == 9 ? $"Pad {index + 1}: {(lit ? "lit" : "idle")}" : $"Light {index + 1}: {(lit ? "on" : "off")}");
             button.Click += (_, _) => PuzzleClick(cellIndex);
@@ -105,12 +106,14 @@ public sealed partial class GamesWorkspace
     void DrawOrbit()
     {
         for (var i = 0; i < 36; i++) { var angle = i * Math.PI / 18; Rect(238 + Math.Cos(angle)*198, 238 + Math.Sin(angle)*198, i % 3 == 0 ? 5 : 3, i % 3 == 0 ? 5 : 3, Ink(0x3b617a), 2); }
-        var ring = new Ellipse { Width = 344, Height = 344, Stroke = Muted, StrokeThickness = 22 };
+        var rim = new Ellipse { Width = 344, Height = 344, Stroke = Ink(0x101724), StrokeThickness = 26 };
+        Canvas.SetLeft(rim, 68); Canvas.SetTop(rim, 72); canvas.Children.Add(rim);
+        var ring = new Ellipse { Width = 344, Height = 344, Stroke = RaisedFace(Ink(0x3c5168)), StrokeThickness = 22 };
         Canvas.SetLeft(ring, 68); Canvas.SetTop(ring, 68); canvas.Children.Add(ring);
         Arc(orbitTarget - 32, orbitTarget + 32, Accent, 24);
         Arc(orbitTarget - 7, orbitTarget + 7, White, 24);
         var radians = orbitAngle * Math.PI / 180;
-        var dot = new Ellipse { Width = 20, Height = 20, Fill = White };
+        var dot = new Ellipse { Width = 20, Height = 20, Fill = RaisedFace(White), Stroke = Ink(0x8ab8bc), StrokeThickness = 2 };
         Canvas.SetLeft(dot, 230 + Math.Cos(radians) * 172); Canvas.SetTop(dot, 230 + Math.Sin(radians) * 172); canvas.Children.Add(dot);
         Label(score.ToString(), 200, 192, 48); Label("10 · arc     25 · core", 111, 264, 21);
         Label("SPACE / TAP", 160, 310, 18);
