@@ -198,7 +198,7 @@ public sealed partial class GamesWorkspace
     {
         if (!paused && !ended) status.Text = $"Score {score} · Piece {blocks.Selected + 1}{(gameMessage.Length > 0 ? " · " + gameMessage : "")}";
         for (var i = 0; i < 64; i++) {
-            var index = i; var button = new Button { Width = 56, Height = 56, Padding = new Thickness(0), CornerRadius = new CornerRadius(8), Background = board[i] == 0 ? Ink(0x23364f) : PieceBrush(board[i]), BorderBrush = board[i] == 0 ? Ink(0x344b67) : BlockShine, BorderThickness = new Thickness(board[i] == 0 ? 1 : 3) };
+            var index = i; var button = new Button { Style = (Style)Application.Current.Resources["KronoFlatButton"], Width = 56, Height = 56, Padding = new Thickness(0), CornerRadius = new CornerRadius(8), Background = board[i] == 0 ? Ink(0x23364f) : PieceBrush(board[i]), BorderBrush = board[i] == 0 ? Ink(0x344b67) : BlockShine, BorderThickness = new Thickness(board[i] == 0 ? 1 : 3) };
             AutomationProperties.SetAutomationId(button, "GameCell" + i); AutomationProperties.SetName(button, $"Square {i + 1}: {(board[i] > 0 ? "filled" : "empty")}"); button.Click += (_, _) => PlaceFit(index);
             Canvas.SetLeft(button, i % 8 * 60 + 2); Canvas.SetTop(button, i / 8 * 60 + 2); canvas.Children.Add(button);
         }
@@ -241,7 +241,7 @@ public sealed partial class GamesWorkspace
                 var emblem = new TextBlock { Text = suits[KlondikeRound.Suit(faceCard)], FontSize = 35, Foreground = paint, Opacity = .75 };
                 Canvas.SetLeft(emblem, 9); Canvas.SetTop(emblem, 23); art.Children.Add(emblem); face = art;
             }
-            var button = new Button { Width = 58, Height = 76, CornerRadius = new CornerRadius(8), Padding = new Thickness(5, 2, 2, 0), HorizontalContentAlignment = HorizontalAlignment.Left, VerticalContentAlignment = VerticalAlignment.Top,
+            var button = new Button { Style = (Style)Application.Current.Resources["KronoFlatButton"], Width = 58, Height = 76, CornerRadius = new CornerRadius(8), Padding = new Thickness(5, 2, 2, 0), HorizontalContentAlignment = HorizontalAlignment.Left, VerticalContentAlignment = VerticalAlignment.Top,
                 Content = face, FontFamily = KronoDesign.CodeFont, FontSize = 17, Tag = "game-code", Background = card is not null ? Ink(0xf6eada) : Ink(0x294b56),
                 Foreground = card is { } value ? new SolidColorBrush(KlondikeRound.Red(value) ? Color.FromArgb(255, 153, 39, 67) : Color.FromArgb(255, 21, 34, 49)) : Accent,
                 IsEnabled = !hidden, BorderThickness = new Thickness(selected ? 3 : 1), BorderBrush = selected ? Accent : Muted };

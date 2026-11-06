@@ -146,7 +146,7 @@ public sealed partial class GamesWorkspace
                 var index = i; var piece = board[i];
                 var viewport = new Canvas { Width = 116, Height = 116, Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, 116, 116) } };
                 var scene = JigsawScene(); Canvas.SetLeft(scene, -(piece % 4) * 120); Canvas.SetTop(scene, -(piece / 4) * 120); viewport.Children.Add(scene);
-                var button = new Button { Content = viewport, Width = 118, Height = 118, Padding = new Thickness(0), BorderBrush = Accent, BorderThickness = new Thickness(arcade.Piece == index ? 2 : 0), CornerRadius = new CornerRadius(5) };
+                var button = new Button { Style = (Style)Application.Current.Resources["KronoFlatButton"], Content = viewport, Width = 118, Height = 118, Padding = new Thickness(0), BorderBrush = Accent, BorderThickness = new Thickness(arcade.Piece == index ? 2 : 0), CornerRadius = new CornerRadius(5) };
                 AutomationProperties.SetAutomationId(button, "GameCell" + index); AutomationProperties.SetName(button, $"Tile {index + 1} · Piece {piece + 1}");
                 button.Click += (_, _) => SwapPiece(index); Canvas.SetLeft(button, i % 4 * 120 + 1); Canvas.SetTop(button, i / 4 * 120 + 1); canvas.Children.Add(button);
             }

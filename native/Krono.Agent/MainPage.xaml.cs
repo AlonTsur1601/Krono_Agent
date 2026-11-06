@@ -47,7 +47,6 @@ public sealed partial class MainPage : Page
         });
         ToolTipService.SetToolTip(SignOutButton, "Sign out");
         InitializeUpdates();
-        KronoDesign.ApplyPrimaryStates(LoginButton);
         InitializeSync(); InitializeSchedule();
         AutomationProperties.SetAutomationId(composer, "Composer");
         modelChoice.Click += (_, _) => Nav.SelectedItem = Nav.FooterMenuItems.OfType<NavigationViewItem>().First(item => item.Tag?.ToString() == "settings");
@@ -67,6 +66,31 @@ public sealed partial class MainPage : Page
     }
     async void Login(object sender, RoutedEventArgs e) => await Authenticate(false);
     async void Register(object sender, RoutedEventArgs e) => await Authenticate(true);
+    void CenterPasswordContent(object sender, RoutedEventArgs args)
+    {
+        if (sender is not PasswordBox password) return;
+        password.ApplyTemplate();
+        Center(password);
+        static bool Center(DependencyObject parent)
+        {
+            if (parent is ScrollViewer { Name: "ContentElement" } viewer) {
+                viewer.VerticalContentAlignment = VerticalAlignment.Center;
+                return true;
+            }
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+                if (Center(VisualTreeHelper.GetChild(parent, i))) return true;
+            return false;
+        }
+    }
+    void PasswordVisibilityChanged(object sender, RoutedEventArgs args)
+    {
+        var visible = PasswordVisibility.IsChecked == true;
+        PasswordInput.PasswordRevealMode = visible ? PasswordRevealMode.Visible : PasswordRevealMode.Hidden;
+        PasswordEye.Glyph = visible ? "\uED1A" : "\uE890";
+        var label = visible ? "Hide password" : "Show password";
+        AutomationProperties.SetName(PasswordVisibility, label);
+        ToolTipService.SetToolTip(PasswordVisibility, label);
+    }
     void SetAuthError(string message)
     {
         AuthError.Text = message;
@@ -75,7 +99,7 @@ public sealed partial class MainPage : Page
     async Task Authenticate(bool register)
     {
         LoginButton.IsEnabled = RegisterButton.IsEnabled = false; AuthProgress.Visibility = Visibility.Visible; AuthProgress.IsActive = true; SetAuthError("");
-        try { await workspace.Login(EmailInput.Text.Trim(), PasswordInput.Password, register); PasswordInput.Password = ""; Enter(); }
+        try { await workspace.Login(EmailInput.Text.Trim(), PasswordInput.Password, register); PasswordInput.Password = ""; PasswordVisibility.IsChecked = false; Enter(); }
         catch (Exception error) { SetAuthError(error.Message); }
         finally { LoginButton.IsEnabled = RegisterButton.IsEnabled = true; AuthProgress.IsActive = false; AuthProgress.Visibility = Visibility.Collapsed; }
     }
@@ -192,7 +216,7 @@ public sealed partial class MainPage : Page
             conversation.Children.Add(toolbar); Grid.SetRow(transcript, 1); conversation.Children.Add(transcript);
             Grid.SetRow(progress, 2); conversation.Children.Add(progress);
             var input = new StackPanel { Spacing = 10 }; input.Children.Add(attachmentTray); input.Children.Add(composer); var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
-            send.Style = (Style)Application.Current.Resources["KronoPrimaryButton"]; KronoDesign.ApplyPrimaryStates(send); send.Click += async (_, _) => await SendMessage();
+            send.Style = (Style)Application.Current.Resources["KronoPrimaryButton"]; send.Click += async (_, _) => await SendMessage();
             stop.Click += async (_, _) => { if (scheduledRun is not null) await StopScheduledRun(); else if (runId is not null) await worker!.Send(Guid.NewGuid().ToString(), "cancel", new { id = runId }); };
             var primaryActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 }; primaryActions.Children.Add(send); primaryActions.Children.Add(stop);
             var secondaryActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 }; modelChoice.MaxWidth = 170; secondaryActions.Children.Add(modelChoice); secondaryActions.Children.Add(Button("Attach files…", PickAttachments)); secondaryActions.Children.Add(Button("Side chat", OpenSideChat));

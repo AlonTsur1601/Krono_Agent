@@ -113,7 +113,7 @@ public sealed partial class GamesWorkspace
                 var index = i; var value = game == 12 ? board[i] : sudoku[i]; var enabled = game == 12 ? legal.Contains(i) : !clues[i];
                 var box = i / 27 * 3 + i % 9 / 3;
                 var near = selectedSquare >= 0 && (i % 9 == selectedSquare % 9 || i / 9 == selectedSquare / 9);
-                var cell = new Button { Width = width - 4, Height = width - 4, Padding = new Thickness(0), BorderThickness = new Thickness(game == 13 && selectedSquare == i ? 2 : 0), BorderBrush = Ink(0x87e3d1),
+                var cell = new Button { Style = (Style)Application.Current.Resources["KronoFlatButton"], Width = width - 4, Height = width - 4, Padding = new Thickness(0), BorderThickness = new Thickness(game == 13 && selectedSquare == i ? 2 : 0), BorderBrush = Ink(0x87e3d1),
                     CornerRadius = new CornerRadius(game == 12 ? 20 : 6), FontSize = 24,
                     Background = game == 13 ? near && !clues[i] ? Ink(0x34505f) : SudokuBoxes[box] : Ink(0x27454b),
                     Foreground = game == 12 ? value == 1 ? Ink(0xff9d8e) : White : value > 0 ? DigitColors[value-1] : White,

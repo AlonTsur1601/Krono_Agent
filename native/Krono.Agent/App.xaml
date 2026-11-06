@@ -22,6 +22,7 @@
                     <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#344D59" />
                     <SolidColorBrush x:Key="KronoAccentForeground" Color="#84E6B1" />
                     <SolidColorBrush x:Key="KronoAccentFill" Color="#84E6B1" />
+                    <SolidColorBrush x:Key="KronoPrimaryBase" Color="#3B9F72" />
                     <SolidColorBrush x:Key="KronoAccentHover" Color="#A0F0C5" />
                     <SolidColorBrush x:Key="KronoAccentPressed" Color="#70D39F" />
                     <SolidColorBrush x:Key="KronoLoginBackdrop" Color="#111D20" />
@@ -46,6 +47,7 @@
                     <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#C3DDD6" />
                     <SolidColorBrush x:Key="KronoAccentForeground" Color="#17613E" />
                     <SolidColorBrush x:Key="KronoAccentFill" Color="#84E6B1" />
+                    <SolidColorBrush x:Key="KronoPrimaryBase" Color="#3B9F72" />
                     <SolidColorBrush x:Key="KronoAccentHover" Color="#A0F0C5" />
                     <SolidColorBrush x:Key="KronoAccentPressed" Color="#70D39F" />
                     <SolidColorBrush x:Key="KronoLoginBackdrop" Color="#E9F3EF" />
@@ -68,7 +70,43 @@
             <x:Double x:Key="KronoTextSize">14</x:Double>
             <x:Double x:Key="KronoCodeSize">14</x:Double>
             <x:Double x:Key="KronoControlMinHeight">40</x:Double>
-            <Style TargetType="Button">
+            <ControlTemplate x:Key="KronoPressTemplate" TargetType="Button">
+                            <Grid Background="Transparent">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualStateGroup.Transitions>
+                                            <VisualTransition GeneratedDuration="0:0:0.14"/>
+                                            <VisualTransition To="Pressed" GeneratedDuration="0:0:0.065"/>
+                                        </VisualStateGroup.Transitions>
+                                        <VisualState x:Name="Normal"/>
+                                        <VisualState x:Name="PointerOver">
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="FaceOffset" Storyboard.TargetProperty="Y" To="-1" Duration="0"/>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="FaceOffset" Storyboard.TargetProperty="Y" To="4" Duration="0"/>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters><Setter Target="ButtonFace.Background" Value="{ThemeResource KronoSurface}"/><Setter Target="ButtonContent.Foreground" Value="{ThemeResource KronoMuted}"/></VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <Grid x:Name="ButtonLayers">
+                                    <Border Margin="0,4,0,0" Background="{TemplateBinding BorderBrush}" CornerRadius="{TemplateBinding CornerRadius}"/>
+                                    <Border x:Name="ButtonFace" Margin="0,0,0,4" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
+                                        <Border.RenderTransform><TranslateTransform x:Name="FaceOffset"/></Border.RenderTransform>
+                                        <ContentPresenter x:Name="ButtonContent" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                                            Padding="{TemplateBinding Padding}" Foreground="{TemplateBinding Foreground}"
+                                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+                        </ControlTemplate>
+            <Style x:Key="KronoFlatButton" TargetType="Button">
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="CornerRadius" Value="10" />
                 <Setter Property="Padding" Value="14,8" />
@@ -78,16 +116,27 @@
                 <Setter Property="Background" Value="{ThemeResource KronoButtonFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
             </Style>
-            <Style x:Key="KronoPrimaryButton" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+            <Style TargetType="Button" BasedOn="{StaticResource KronoFlatButton}">
+                <Setter Property="Template" Value="{StaticResource KronoPressTemplate}" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
+            <Style x:Key="KronoPrimaryButton" TargetType="Button">
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="Background" Value="{ThemeResource KronoPrimaryFace}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource KronoPrimaryBase}" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
                 <Setter Property="Foreground" Value="#10231F" />
-                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="CornerRadius" Value="16" />
                 <Setter Property="Padding" Value="14,8" />
                 <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template" Value="{StaticResource KronoPressTemplate}" />
             </Style>
             <Style TargetType="TextBox">
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />

@@ -93,7 +93,7 @@ public sealed partial class GamesWorkspace
             var lit = game == 8 ? board[index] == 1 : game == 9 && !simonWaiting && !ended && SimonCue == index;
             var color = game == 10 ? index == oddCell ? oddShade : oddBase : game == 9 ? BlockColors[new[] { 0, 4, 1, 2 }[index]].Color : Color.FromArgb(255, 255, 217, 116);
             var colorBrush = new SolidColorBrush(color);
-            var button = new Button { Width = width - 12, Height = width - 12, CornerRadius = new CornerRadius(game == 9 ? 38 : 14), Padding = new Thickness(0),
+            var button = new Button { Style = (Style)Application.Current.Resources["KronoFlatButton"], Width = width - 12, Height = width - 12, CornerRadius = new CornerRadius(game == 9 ? 38 : 14), Padding = new Thickness(0),
                 Background = game == 10 || lit ? colorBrush : Ink(game == 8 ? 0x263349 : 0x22354a), BorderBrush = game == 10 ? BlockShadow : colorBrush, BorderThickness = new Thickness(game == 9 ? 3 : game == 10 ? 1 : lit ? 2 : 0),
                 Foreground = lit ? Ink(0x273449) : colorBrush, FontSize = game == 9 ? 52 : 31, Content = game == 9 ? lit ? "◉" : (index + 1).ToString() : game == 8 ? lit ? "✦" : "·" : "" };
             AutomationProperties.SetAutomationId(button, "GameCell" + index);

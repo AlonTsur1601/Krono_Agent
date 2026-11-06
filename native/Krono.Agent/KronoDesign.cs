@@ -42,6 +42,7 @@ public static class KronoDesign
         Set(dark, "KronoMuted", halloween ? "CEAEDF" : "9AABBF");
         Set(dark, "KronoAccentForeground", halloween ? "FFAD62" : "84E6B1");
         Set(dark, "KronoAccentFill", halloween ? "FFAD62" : "84E6B1");
+        Set(dark, "KronoPrimaryBase", halloween ? "B35B2D" : "3B9F72");
         Set(dark, "KronoAccentHover", halloween ? "FFC590" : "A0F0C5");
         Set(dark, "KronoAccentPressed", halloween ? "F49750" : "70D39F");
         Set(dark, "AccentFillColorDefaultBrush", halloween ? "FFAD62" : "84E6B1");
@@ -67,11 +68,6 @@ public static class KronoDesign
     {
         var dictionaries = Application.Current.Resources.ThemeDictionaries;
         return (Brush)((ResourceDictionary)dictionaries[theme == ElementTheme.Light ? "Light" : "Default"])[key];
-    }
-    public static void ApplyPrimaryStates(Button button)
-    {
-        button.Resources["AccentButtonBackgroundPointerOver"] = ThemeBrush("KronoAccentHover", ElementTheme.Dark);
-        button.Resources["AccentButtonBackgroundPressed"] = ThemeBrush("KronoAccentPressed", ElementTheme.Dark);
     }
     public static void ApplyControlAccents(FrameworkElement root)
     {
