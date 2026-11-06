@@ -16,7 +16,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
     readonly Workspace workspace;
     readonly Canvas canvas = new() { Width = 480, Height = 480, Clip = new RectangleGeometry { Rect = new(0, 0, 480, 480) }, Background = new SolidColorBrush(Color.FromArgb(255, 15, 21, 30)) };
     readonly TextBlock status = new() { FontSize = 16 };
-    readonly StackPanel movementControls = new() { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center };
+    readonly StackPanel movementControls = new() { Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center };
     readonly TextBlock gameHelp = new() { TextWrapping = TextWrapping.Wrap, Opacity = .65 };
     readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(30) };
     readonly Random random = new();
@@ -53,14 +53,15 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(stage, "GameStage"); Grid.SetRow(stage, 2); Children.Add(stage);
         status.FontFamily = KronoDesign.CodeFont; status.FontSize = 18; status.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
         var footer = new StackPanel { Spacing = 8 };
-        var arrows = movementControls;
-        foreach (var (name, vx, vy) in new[] { ("Move left", -1, 0), ("Move up", 0, -1), ("Move down", 0, 1), ("Move right", 1, 0) }) { var button = new Button { Content = name }; button.Click += (_, _) => Move(vx, vy); arrows.Children.Add(button); }
+        var arrows = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        foreach (var (name, vx, vy) in new[] { ("Move left", -1, 0), ("Move up", 0, -1), ("Move down", 0, 1), ("Move right", 1, 0) }) { var button = new Button { Content = name, Padding = new Thickness(8, 8, 8, 8) }; button.Click += (_, _) => Move(vx, vy); arrows.Children.Add(button); }
+        movementControls.Children.Add(arrows);
         orbitTap.Click += (_, _) => HitOrbit(); footer.Children.Add(orbitTap);
         BuildAdvancedControls(footer);
         BuildArcadeControls(footer);
         BuildBoardControls(footer);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(flagMode, "MineFlagMode"); footer.Children.Add(flagMode);
-        footer.Children.Add(arrows); footer.Children.Add(gameHelp);
+        footer.Children.Add(movementControls); footer.Children.Add(gameHelp);
         var footerScroll = new ScrollViewer { Content = footer, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         Grid.SetRow(footerScroll, 3); Children.Add(footerScroll);
         canvas.PointerPressed += (sender, args) => { if (game is 0 or 5 or 7) Click(sender, args); };
