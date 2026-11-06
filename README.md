@@ -180,7 +180,9 @@ GitHub Models נסגר ב־30 ביולי 2026, כולל הקטלוג ו־API ה�
 - שגיאת RLS: אל תכבה את ההגנה. שמור את הודעת השגיאה לבדיקה.
 - עמוד האתר נפתח בלי האפליקציה: זה צפוי. זו אפליקציית Windows מקורית, והאתר כרגע מציג תיעוד בלבד.
 
-מקורות רשמיים: [סיסמאות ואישור מייל](https://supabase.com/docs/guides/auth/passwords), [סוגי מפתחות](https://supabase.com/docs/guides/getting-started/api-keys), [SMTP](https://supabase.com/docs/guides/auth/auth-smtp).
+לעיצוב מיילי החשבון, הרץ `node supabase/auth-email.mjs confirmation` והעתק את שורת הנושא ואת ה־HTML לשדות המתאימים ב־**Authentication → Email Templates → Confirm sign up**. הרצה ללא שם מציגה את שמות שאר התבניות. שמור את משתני Supabase שבפלט. אם עריכת התבניות נעולה בחשבון החינמי, הגדר **Authentication → SMTP Settings** עם ספק SMTP משלך, ואז חזור לעורך. עיצוב התבניות ובחירת ספק השליחה הם הגדרות נפרדות.
+
+מקורות רשמיים: [סיסמאות ואישור מייל](https://supabase.com/docs/guides/auth/passwords), [סוגי מפתחות](https://supabase.com/docs/guides/getting-started/api-keys), [SMTP](https://supabase.com/docs/guides/auth/auth-smtp), [תבניות מייל](https://supabase.com/docs/guides/auth/auth-email-templates).
 
 ## הרצת פקודות וחזרה ממשחק לשיחה
 

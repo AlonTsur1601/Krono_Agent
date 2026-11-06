@@ -157,6 +157,19 @@ const server = http.createServer((request, response) => {
     let body = ''; request.on('data', chunk => body += chunk)
     request.on('end', () => {
       const input = body ? JSON.parse(body) : {}
+      if (input.email === 'pending-fixture@example.com') {
+        if (request.url.startsWith('/auth/v1/signup')) {
+          setTimeout(() => response.end(JSON.stringify({ user })), 800)
+          return
+        }
+        if (request.url.startsWith('/auth/v1/resend') && input.type === 'signup') {
+          response.end('{}')
+          return
+        }
+        response.writeHead(400)
+        response.end(JSON.stringify({ error_code: 'email_not_confirmed', msg: 'Email not confirmed' }))
+        return
+      }
       if (input.refresh_token && revoked) { response.writeHead(400); response.end(JSON.stringify({ msg: 'Refresh token revoked' })); return }
       if (input.password && input.password !== 'fixture-password') { response.writeHead(400); response.end(JSON.stringify({ msg: 'Invalid login credentials' })); return }
       if (input.password) revoked = false

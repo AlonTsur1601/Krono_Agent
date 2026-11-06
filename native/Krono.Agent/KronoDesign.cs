@@ -32,7 +32,12 @@ public static class KronoDesign
         Set(dark, "KronoBackground", halloween ? "15101D" : "10151D");
         Set(dark, "KronoSidebar", halloween ? "1D1528" : "141B24");
         Set(dark, "KronoSurface", halloween ? "2B1D39" : "1B2532");
-        SetFace("KronoInputFace", halloween ? "21162C" : "131B25", halloween ? "342343" : "202B38");
+        Set(dark, "KronoInputFace", halloween ? "2B1D39" : "19232F");
+        SetFace("KronoInputRim", halloween ? "160E20" : "0B1017", halloween ? "553764" : "344452");
+        ((LinearGradientBrush)dark["KronoInputRim"]).GradientStops[2].Color = Parse(halloween ? "553764" : "344452");
+        Set(dark, "KronoDisabledFace", halloween ? "463952" : "354353");
+        Set(dark, "KronoDisabledBase", halloween ? "2E2439" : "26323E");
+        Set(dark, "KronoDisabledInk", halloween ? "E4D8EC" : "D2DCE5");
         SetFace("KronoButtonFace", halloween ? "452F56" : "2D3A49", halloween ? "271A35" : "1A2430");
         SetFace("KronoPrimaryFace", halloween ? "FFCC96" : "A4F0C8", halloween ? "F6934F" : "69D6A0");
         Set(dark, "KronoBorder", halloween ? "442D56" : "2B3B4C");
@@ -81,7 +86,7 @@ public static class KronoDesign
         var surface = ThemeBrush("KronoInputFace", root.ActualTheme);
         var outlineHover = ThemeBrush("KronoOutlineHover", root.ActualTheme);
         resources["TextControlThemeMinHeight"] = Application.Current.Resources["KronoControlMinHeight"];
-        resources["TextControlBorderThemeThicknessFocused"] = new Thickness(1);
+        resources["TextControlBorderThemeThicknessFocused"] = new Thickness(1, 4, 1, 1);
         resources["TextControlBorderBrushPointerOver"] = outlineHover;
         resources["ComboBoxBorderBrushPointerOver"] = outlineHover;
         resources["ComboBoxBackgroundBorderBrushFocused"] = ink;

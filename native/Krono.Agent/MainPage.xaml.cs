@@ -99,9 +99,39 @@ public sealed partial class MainPage : Page
     async Task Authenticate(bool register)
     {
         LoginButton.IsEnabled = RegisterButton.IsEnabled = false; AuthProgress.Visibility = Visibility.Visible; AuthProgress.IsActive = true; SetAuthError("");
-        try { await workspace.Login(EmailInput.Text.Trim(), PasswordInput.Password, register); PasswordInput.Password = ""; PasswordVisibility.IsChecked = false; Enter(); }
+        var email = EmailInput.Text.Trim();
+        try {
+            if (!await workspace.Login(email, PasswordInput.Password, register)) { ShowConfirmation(email, true); return; }
+            PasswordInput.Password = ""; PasswordVisibility.IsChecked = false; Enter();
+        }
+        catch (Workspace.EmailConfirmationRequiredException) { ShowConfirmation(email, false); }
         catch (Exception error) { SetAuthError(error.Message); }
         finally { LoginButton.IsEnabled = RegisterButton.IsEnabled = true; AuthProgress.IsActive = false; AuthProgress.Visibility = Visibility.Collapsed; }
+    }
+    void ShowConfirmation(string email, bool sent)
+    {
+        PasswordInput.Password = "";
+        PasswordVisibility.IsChecked = false;
+        ConfirmationAddress.Text = email;
+        ConfirmationInstructions.Text = sent ? "We sent a confirmation link to:" : "Confirm the email address for this account:";
+        ConfirmationStatus.Text = "";
+        LoginForm.Visibility = Visibility.Collapsed;
+        ConfirmationForm.Visibility = Visibility.Visible;
+        BackToLoginButton.Focus(FocusState.Programmatic);
+    }
+    void BackToLogin(object sender, RoutedEventArgs args)
+    {
+        ConfirmationForm.Visibility = Visibility.Collapsed;
+        LoginForm.Visibility = Visibility.Visible;
+        PasswordInput.Focus(FocusState.Programmatic);
+    }
+    async void ResendConfirmation(object sender, RoutedEventArgs args)
+    {
+        ResendConfirmationButton.IsEnabled = BackToLoginButton.IsEnabled = false;
+        ConfirmationStatus.Text = "Sending…";
+        try { await workspace.ResendConfirmation(ConfirmationAddress.Text); ConfirmationStatus.Text = "A new confirmation email was requested."; }
+        catch (Exception error) { ConfirmationStatus.Text = error.Message; }
+        finally { ResendConfirmationButton.IsEnabled = BackToLoginButton.IsEnabled = true; }
     }
     void Enter()
     {

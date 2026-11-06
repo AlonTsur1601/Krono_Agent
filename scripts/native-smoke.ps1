@@ -101,6 +101,19 @@ try {
     if ($windowPattern.Current.WindowVisualState -ne [Windows.Automation.WindowVisualState]::Maximized) { throw 'Krono did not open maximized' }
     Find 'EmailInput' | Out-Null
     Capture 'native-login.png'
+    SetValue 'EmailInput' 'pending-fixture@example.com'
+    SetValue 'PasswordInput' 'fixture-password'
+    Invoke 'LoginButton'
+    Find 'Check your email' -ByName | Out-Null
+    Invoke 'ResendConfirmationButton'
+    Find 'A new confirmation email was requested.' -ByName | Out-Null
+    Invoke 'BackToLoginButton'
+    SetValue 'PasswordInput' 'fixture-password'
+    Invoke 'RegisterButton'
+    Capture 'native-auth-busy.png'
+    Find 'We sent a confirmation link to:' -ByName | Out-Null
+    Capture 'native-email-confirmation.png'
+    Invoke 'BackToLoginButton'
     SetValue 'EmailInput' 'native-fixture@example.com'
     SetValue 'PasswordInput' 'fixture-password'
     Start-Sleep -Milliseconds 150

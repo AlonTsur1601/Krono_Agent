@@ -23,6 +23,8 @@ public sealed partial class Workspace : IDisposable
     int sessionEpoch;
     public Workspace(string? dataDirectory = null) { dataHome = dataDirectory ?? Home; Directory.CreateDirectory(dataHome); }
     private string SessionFile => Path.Combine(dataHome, "native-session.bin");
+    const string ConfirmationRedirect = "https://alontsur1601.github.io/Krono_Agent/";
+    public sealed class EmailConfirmationRequiredException : Exception;
     public static void Protect(string file, string value) { Directory.CreateDirectory(Path.GetDirectoryName(file)!); var temporary = file + "." + Guid.NewGuid() + ".tmp"; File.WriteAllBytes(temporary, ProtectedData.Protect(Encoding.UTF8.GetBytes(value), null, DataProtectionScope.CurrentUser)); File.Move(temporary, file, true); }
     public static string? Unprotect(string file) { if (!File.Exists(file)) return null; return Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(file), null, DataProtectionScope.CurrentUser)); }
     private void Configure()
@@ -45,19 +47,32 @@ public sealed partial class Workspace : IDisposable
         if ((int)response.StatusCode >= 500 || (int)response.StatusCode == 429) throw new HttpRequestException("Account service temporarily unavailable.", null, response.StatusCode);
         var text = await response.Content.ReadAsStringAsync();
         var result = string.IsNullOrWhiteSpace(text) ? new JsonObject() : JsonNode.Parse(text)!;
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(result["msg"]?.ToString() ?? result["message"]?.ToString() ?? result["error_description"]?.ToString() ?? "Account request failed.");
+        if (!response.IsSuccessStatusCode) {
+            if (result["error_code"]?.ToString() == "email_not_confirmed")
+                throw new EmailConfirmationRequiredException();
+            throw new InvalidOperationException(result["msg"]?.ToString() ?? result["message"]?.ToString() ?? result["error_description"]?.ToString() ?? "Account request failed.");
+        }
         return result;
     }
-    public async Task Login(string email, string password, bool register = false)
+    public async Task<bool> Login(string email, string password, bool register = false)
     {
         Configure();
         var epoch = ++sessionEpoch;
         if (password.Length < 8) throw new InvalidOperationException("Use a password of at least eight characters.");
-        var endpoint = register ? "signup?redirect_to=" + Uri.EscapeDataString("https://alontsur1601.github.io/Krono_Agent/") : "token?grant_type=password";
+        var endpoint = register ? "signup?redirect_to=" + Uri.EscapeDataString(ConfirmationRedirect) : "token?grant_type=password";
         var result = await Auth(endpoint, new { email, password });
         if (epoch != sessionEpoch) throw new OperationCanceledException();
-        if (result["access_token"] is null) throw new InvalidOperationException("Check your email to confirm the account, then sign in.");
+        if (result["access_token"] is null) {
+            if (register) return false;
+            throw new InvalidOperationException("The account service did not return a session.");
+        }
         Accept(result);
+        return true;
+    }
+    public async Task ResendConfirmation(string email)
+    {
+        Configure();
+        await Auth("resend?redirect_to=" + Uri.EscapeDataString(ConfirmationRedirect), new { type = "signup", email });
     }
     private void Accept(JsonNode session)
     {
