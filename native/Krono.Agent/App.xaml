@@ -108,7 +108,7 @@
                         </ControlTemplate>
             <Style x:Key="KronoFlatButton" TargetType="Button">
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
-                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="CornerRadius" Value="16" />
                 <Setter Property="Padding" Value="14,8" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
@@ -122,7 +122,7 @@
                 <Setter Property="HorizontalContentAlignment" Value="Center" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
             </Style>
-            <Style x:Key="KronoPrimaryButton" TargetType="Button">
+            <Style x:Key="KronoPrimaryButton" TargetType="Button" BasedOn="{StaticResource KronoFlatButton}">
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
@@ -131,7 +131,6 @@
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoPrimaryBase}" />
                 <Setter Property="UseSystemFocusVisuals" Value="True" />
                 <Setter Property="Foreground" Value="#10231F" />
-                <Setter Property="CornerRadius" Value="16" />
                 <Setter Property="Padding" Value="14,8" />
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="HorizontalContentAlignment" Value="Center" />

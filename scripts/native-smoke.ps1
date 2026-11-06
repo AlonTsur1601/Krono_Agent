@@ -3,6 +3,14 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Drawing
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class KronoWindowCapture {
+    [DllImport("user32.dll")]
+    public static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
+}
+"@
 $script:process = $null
 $script:window = $null
 function Launch {
@@ -78,7 +86,12 @@ function Capture([string]$Name) {
     $bounds = $script:window.Current.BoundingRectangle
     $bitmap = New-Object Drawing.Bitmap([int]$bounds.Width, [int]$bounds.Height)
     $graphics = [Drawing.Graphics]::FromImage($bitmap)
-    $graphics.CopyFromScreen([int]$bounds.X, [int]$bounds.Y, 0, 0, $bitmap.Size)
+    $dc = $graphics.GetHdc()
+    try {
+        if (![KronoWindowCapture]::PrintWindow($script:process.MainWindowHandle, $dc, 2)) {
+            throw 'Could not capture the Krono window.'
+        }
+    } finally { $graphics.ReleaseHdc($dc) }
     $bitmap.Save((Join-Path $ReportDirectory $Name), [Drawing.Imaging.ImageFormat]::Png)
     $graphics.Dispose(); $bitmap.Dispose()
 }
