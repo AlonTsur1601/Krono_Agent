@@ -171,7 +171,7 @@ public sealed partial class GamesWorkspace
             var x = left + i % FallingWidth * unit;
             var y = i / FallingWidth * unit;
             var group = clusters[value - 1, tone] ??= new GeometryGroup();
-            group.Children.Add(new RectangleGeometry { Rect = new(x + .2, y + .2, unit - .4, unit - .4) });
+            group.Children.Add(new RectangleGeometry { Rect = new(x, y, unit, unit) });
         }
         for (var i = 0; i < 7; i++) for (var tone = 0; tone < 3; tone++) {
             if (clusters[i, tone] is not { } group) continue;

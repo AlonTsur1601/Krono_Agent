@@ -13,7 +13,7 @@ public sealed partial class GamesWorkspace
     ArcadeSave arcade = new();
     readonly Button arcadeAction = new() { HorizontalAlignment = HorizontalAlignment.Center };
     readonly ToggleButton jigsawPreview = new() { Content = "Show reference", HorizontalAlignment = HorizontalAlignment.Center };
-    Canvas? dartboard;
+    Canvas? dartboard, flapScenery;
     const int MazeChase = 16, Flap = 17, Darts = 18, Jigsaw = 19;
     void BuildArcadeControls(StackPanel footer)
     {
@@ -106,14 +106,24 @@ public sealed partial class GamesWorkspace
         }
         if (game == Flap) {
             if (running && !arcade.FlapStarted) status.Text = "Press Space or Flap to start";
-            Rect(353, 37, 83, 83, Ink(0x70586e), 42); Rect(368, 52, 53, 53, Ink(0xf6bc91), 26);
-            for (var i = 0; i < 9; i++) { var x = ((i * 62 - tick * .65) % 558 + 558) % 558 - 65; var h = 45 + i * 23 % 112; Rect(x, 480-h, 53, h, Ink(i % 2 == 0 ? 0x263e5b : 0x2e4663), 5); for (var j = 0; j < 3; j++) Rect(x + 8 + j*14, 490-h, 6, 10, Ink(0x755b72), 2); }
+            flapScenery ??= MakeFlapScenery();
+            canvas.Children.Add(flapScenery);
             foreach (var pipe in arcade.Pipes) {
                 var x = pipe[0]; if (x > 480) continue;
-                Bevel(x, 0, 56, pipe[1] - 80, Ink(0x4f7181), 3); Bevel(x, pipe[1] + 80, 56, 400 - pipe[1], Ink(0x4f7181), 3);
-                Rect(x, pipe[1] - 91, 56, 11, Accent, 5); Rect(x, pipe[1] + 80, 56, 11, Accent, 5);
+                var top = pipe[1] - 80;
+                var bottom = pipe[1] + 80;
+                FlapPipe(x, 0, top, top - 15);
+                FlapPipe(x, bottom, 480 - bottom, bottom);
             }
-            Rect(105, arcade.BirdY - 12, 29, 24, Accent, 12); Rect(107, arcade.BirdY, 17, 9, White, 6); Rect(125, arcade.BirdY - 6, 5, 5, Muted, 2); Rect(134, arcade.BirdY, 9, 5, new SolidColorBrush(colors[2]), 2);
+            var y = arcade.BirdY;
+            var wing = arcade.FlapStarted && !ended ? Math.Sin(tick * .65) * 4 : 0;
+            ArcadePolygon(canvas, Ink(0xc95750), (108, y + 2), (94, y - 4), (101, y + 8), (111, y + 8));
+            Rect(105, y - 13, 29, 26, RaisedFace(Ink(0xffb64c)), 13);
+            Rect(112, y + 3, 17, 7, Ink(0xffd99b), 3);
+            Rect(102, y - 1 + wing, 17, 9, RaisedFace(Ink(0xef8650)), 4);
+            Rect(122, y - 8, 9, 10, Ink(0xfff2d8), 4);
+            Rect(126, y - 6, 4, 6, Ink(0x242139), 2);
+            ArcadePolygon(canvas, Ink(0xf57547), (132, y - 1), (144, y + 2), (133, y + 6));
         }
         if (game == Darts) {
             arcadeAction.Content = arcade.XLocked ? "Lock height & throw" : "Lock horizontal aim";
@@ -127,16 +137,16 @@ public sealed partial class GamesWorkspace
                 canvas.Children.Add(new Line { X1 = x, Y1 = y, X2 = x + 12, Y2 = y - 15, Stroke = latest ? Ink(0xf6be84) : White, StrokeThickness = 2 });
                 Rect(x + 8, y - 19, 10, 7, latest ? Ink(0xf6be84) : Ink(0xb7a79a), 2);
             }
+            Rect(48, 14, 384, 18, Ink(0x372b29), 8);
+            Rect(448, 48, 18, 384, Ink(0x372b29), 8);
+            Rect(53, 22, 374, 2, Ink(0xab8c70), 1);
+            Rect(456, 53, 2, 374, Ink(0xab8c70), 1);
             if (!ended) {
                 var x = 240 + (arcade.XLocked ? arcade.DartX : AimX);
                 var y = 240 + AimY;
                 var guide = Ink(0x91efba);
-                Rect(x - 1, 52, 2, 376, arcade.XLocked ? Ink(0x96a5a1) : guide, 0);
-                if (arcade.XLocked) {
-                    Rect(52, y - 1, 376, 2, guide, 0);
-                    var target = new Ellipse { Width = 20, Height = 20, Stroke = guide, StrokeThickness = 3 };
-                    Canvas.SetLeft(target, x - 10); Canvas.SetTop(target, y - 10); canvas.Children.Add(target);
-                }
+                Rect(x - 2, 15, 4, 16, arcade.XLocked ? Ink(0xe4bc8a) : guide, 2);
+                if (arcade.XLocked) Rect(449, y - 2, 16, 4, guide, 2);
             }
         }
         if (game == Jigsaw) {
@@ -151,6 +161,39 @@ public sealed partial class GamesWorkspace
                 button.Click += (_, _) => SwapPiece(index); Canvas.SetLeft(button, i % 4 * 120 + 1); Canvas.SetTop(button, i / 4 * 120 + 1); canvas.Children.Add(button);
             }
         }
+    }
+    static void ArcadePolygon(Canvas surface, Brush fill, params (double X, double Y)[] points)
+    {
+        var polygon = new Polygon { Fill = fill };
+        foreach (var (x, y) in points) polygon.Points.Add(new(x, y));
+        surface.Children.Add(polygon);
+    }
+    static Canvas MakeFlapScenery()
+    {
+        var sky = new LinearGradientBrush { StartPoint = new(0, 0), EndPoint = new(0, 1) };
+        sky.GradientStops.Add(new GradientStop { Color = Ink(0x272952).Color, Offset = 0 });
+        sky.GradientStops.Add(new GradientStop { Color = Ink(0xe59185).Color, Offset = .77 });
+        sky.GradientStops.Add(new GradientStop { Color = Ink(0xffcf98).Color, Offset = 1 });
+        var scenery = new Canvas { Width = 480, Height = 480, Background = sky, IsHitTestVisible = false };
+        void Disc(double x, double y, double size, Brush brush)
+        {
+            var disc = new Ellipse { Width = size, Height = size, Fill = brush };
+            Canvas.SetLeft(disc, x); Canvas.SetTop(disc, y); scenery.Children.Add(disc);
+        }
+        Disc(317, 61, 120, Ink(0xb67c8c)); Disc(332, 76, 90, Ink(0xffc995));
+        for (var i = 0; i < 16; i++) Disc(13 + i * 67 % 450, 18 + i * 41 % 150, 2 + i % 3, Ink(0xf4c7b5));
+        ArcadePolygon(scenery, Ink(0x86709a), (0, 358), (91, 241), (162, 316), (240, 223), (340, 335), (420, 264), (480, 325), (480, 480), (0, 480));
+        ArcadePolygon(scenery, Ink(0x60597e), (0, 370), (65, 335), (127, 376), (218, 300), (290, 365), (386, 313), (480, 357), (480, 480), (0, 480));
+        ArcadePolygon(scenery, Ink(0x384963), (0, 405), (75, 382), (177, 415), (272, 376), (365, 421), (448, 383), (480, 393), (480, 480), (0, 480));
+        return scenery;
+    }
+    void FlapPipe(double x, double y, double height, double collar)
+    {
+        Rect(x, y, 56, height, Ink(0x255d57), 0);
+        Rect(x + 9, y, 30, height, Ink(0x41997a), 0);
+        Rect(x + 12, y, 5, height, Ink(0x78c3a0), 0);
+        Rect(x, collar, 56, 15, RaisedFace(Ink(0x61b690)), 4);
+        Rect(x + 5, collar + 3, 46, 2, Ink(0x9adbbb), 1);
     }
     Canvas MakeDartboard()
     {

@@ -20,6 +20,7 @@ public sealed partial class GamesWorkspace
     readonly Button rememberColor = new() { Content = "Use color", VerticalAlignment = VerticalAlignment.Bottom };
     double stackX, stackWidth; int stackDirection, stackCombo, stackLevel;
     readonly List<double[]> tower = [];
+    const int ColorMemoryTicks = 167;
     uint[] targetColors = []; readonly List<uint> chosenColors = []; int colorStart;
     bool updatingColor;
     uint CurrentColor => 0xff000000u | (uint)Component(red) << 16 | (uint)Component(green) << 8 | (uint)Component(blue);
@@ -47,7 +48,7 @@ public sealed partial class GamesWorkspace
         if (game == 14) { stackX = 0; stackWidth = 240; stackDirection = 1; stackCombo = stackLevel = 0; tower.Clear(); tower.Add([120, 240]); }
         if (game == 15) {
             targetColors = Enumerable.Range(0, 5).Select(_ => 0xff000000u | (uint)random.Next(32, 225) << 16 | (uint)random.Next(32, 225) << 8 | (uint)random.Next(32, 225)).ToArray();
-            chosenColors.Clear(); colorStart = 167; SetColor(0xff808080);
+            chosenColors.Clear(); colorStart = ColorMemoryTicks; SetColor(0xff808080);
         }
     }
     void SetColor(uint value) { updatingColor = true; red.Value = value >> 16 & 255; green.Value = value >> 8 & 255; blue.Value = value & 255; updatingColor = false; }
@@ -99,7 +100,10 @@ public sealed partial class GamesWorkspace
         var color = CurrentColor; var distance = NativeGameRules.DeltaE(targetColors[chosenColors.Count], color);
         score += (int)Math.Round(100 * Math.Max(0, 1 - distance / 100)); chosenColors.Add(color);
         if (chosenColors.Count == 5) End("Gauntlet complete");
-        else SetColor(0xff808080);
+        else {
+            colorStart = tick + ColorMemoryTicks;
+            SetColor(0xff808080);
+        }
         Draw(); SaveCurrent();
     }
     void DrawAdvanced()
@@ -134,22 +138,60 @@ public sealed partial class GamesWorkspace
         }
         if (game == 14) {
             if (!paused && !ended) status.Text = $"Level {stackLevel} · Score {score} · {gameMessage}";
-            for (var i = 0; i < tower.Count; i++) Bevel(tower[i][0], 430 - i * 28, tower[i][1], 24, BlockColors[(stackLevel - tower.Count + i + 1 + BlockColors.Length * 100) % BlockColors.Length], 6);
-            Bevel(stackX, 430 - tower.Count * 28, stackWidth, 24, Ink(0xabf1d2), 6); Label("SPACE / PLACE", 150, 28, 19);
+            var landing = tower[^1];
+            var slotY = 430 - tower.Count * 28;
+            Rect(landing[0], slotY, landing[1], 24, Ink(0x294b50), 2);
+            for (var i = 0; i < tower.Count; i++) {
+                var level = Math.Max(0, stackLevel - tower.Count + i + 1);
+                StackBrick(tower[i][0], 430 - i * 28, tower[i][1], BlockColors[level % BlockColors.Length]);
+            }
+            StackBrick(stackX, slotY, stackWidth, Ink(0xabf1d2));
+            Bevel(20, 456, 440, 14, Ink(0x43646d), 5);
+            Label("STACK TOWER", 22, 22, 22);
         }
         if (game == 15) {
             var showing = tick < colorStart && !ended;
             rememberColor.IsEnabled = !showing && !paused && !ended;
             red.IsEnabled = green.IsEnabled = blue.IsEnabled = !showing && !paused && !ended;
-            if (!paused && !ended) status.Text = showing ? $"Remember all five · {Math.Ceiling((colorStart - tick) * .03)}s" : $"Recreate color {chosenColors.Count + 1}/5 · Score {score}";
-            for (var i = 0; i < 5; i++) {
-                Bevel(8 + i * 94, 58, 88, 118, Ink(0x334b65), 14);
-                Rect(10 + i * 94, 60, 84, 110, showing || ended ? new SolidColorBrush(Unpack(targetColors[i])) : Muted, 12);
-                Label((i + 1).ToString(), 44 + i * 94, 185, 20);
-                if (i < chosenColors.Count) { Rect(10 + i * 94, 230, 84, 110, new SolidColorBrush(Unpack(chosenColors[i])), 12); if (ended) Label($"ΔE {NativeGameRules.DeltaE(targetColors[i], chosenColors[i]):F1}", 15 + i * 94, 350, 16); }
+            var round = chosenColors.Count + 1;
+            var seconds = Math.Min(5, Math.Ceiling((colorStart - tick) * .03));
+            if (!paused && !ended) status.Text = showing ? $"Remember color {round}/5 · {seconds}s" : $"Recreate color {round}/5 · Score {score}";
+            if (!ended) {
+                // Hide the reference behind the pause overlay as well.
+                var shade = Unpack(showing && !paused ? targetColors[round - 1] : CurrentColor);
+                var luminance = (.2126 * Linear(shade.R)) + (.7152 * Linear(shade.G)) + (.0722 * Linear(shade.B));
+                var foreground = luminance >= .179 ? Ink(0x000000) : White;
+                Rect(0, 0, 480, 480, new SolidColorBrush(shade), 0);
+                var caption = new TextBlock { Width = 416, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap,
+                    Foreground = foreground, FontSize = 23, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                    Text = showing ? $"Remember color {round} of 5" : $"Recreate color {round} of 5" };
+                Canvas.SetLeft(caption, 32); Canvas.SetTop(caption, 24); canvas.Children.Add(caption);
+                if (showing && !paused) Rect(32, 450, 416 * Math.Clamp((colorStart - tick) / (double)ColorMemoryTicks, 0, 1), 4, foreground, 2);
             }
-            if (!showing && !ended) { Rect(150, 365, 180, 60, new SolidColorBrush(Unpack(CurrentColor)), 15); Label($"#{CurrentColor & 0xffffff:X6}", 184, 433, 20); }
-            if (showing) Label("Watch the order, then rebuild each shade.", 35, 270, 19);
+            else {
+                Label("REFERENCE", 60, 27, 16); Label("YOUR COLOR", 220, 27, 16);
+                for (var i = 0; i < chosenColors.Count; i++) {
+                    var y = 64 + i * 75;
+                    Label((i + 1).ToString(), 27, y + 18, 18);
+                    Rect(60, y, 145, 59, new SolidColorBrush(Unpack(targetColors[i])), 8);
+                    Rect(220, y, 145, 59, new SolidColorBrush(Unpack(chosenColors[i])), 8);
+                    Label($"ΔE {NativeGameRules.DeltaE(targetColors[i], chosenColors[i]):F1}", 380, y + 18, 16);
+                }
+            }
         }
+    }
+    static double Linear(byte channel)
+    {
+        var value = channel / 255.0;
+        return value <= .04045 ? value / 12.92 : Math.Pow((value + .055) / 1.055, 2.4);
+    }
+    void StackBrick(double x, double y, double width, SolidColorBrush face)
+    {
+        var depth = Math.Min(9, Math.Min(x, width * .5));
+        var right = x + width;
+        ArcadePolygon(canvas, new SolidColorBrush(Shade(face.Color, .29)), (x - depth, y - depth), (right - depth, y - depth), (right, y), (x, y));
+        ArcadePolygon(canvas, new SolidColorBrush(Shade(face.Color, -.42)), (x - depth, y - depth), (x, y), (x, y + 24), (x - depth, y + 24 - depth));
+        Rect(x, y, width, 24, RaisedFace(face), 1);
+        if (width > 22) Rect(x + 6, y + 5, width - 12, 2, new SolidColorBrush(Shade(face.Color, .4)), 1);
     }
 }

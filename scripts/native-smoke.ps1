@@ -61,6 +61,11 @@ function SelectGame([string]$Name) {
     OpenGameTile $index
 }
 function Toggle([string]$Id) { (Find $Id).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle(); Start-Sleep -Milliseconds 150 }
+function WaitColorInput([int]$Round) {
+    $deadline = (Get-Date).AddSeconds(15)
+    do { Start-Sleep -Milliseconds 100; $ready = (Find 'Use color' -ByName).Current.IsEnabled } while (!$ready -and (Get-Date) -lt $deadline)
+    if (!$ready -or (Find 'GameStatus').Current.Name -notmatch "^Recreate color $Round/5") { throw "Gauntlet did not begin reconstruction for round $Round" }
+}
 function GameCards {
     for ($attempt = 0; $attempt -lt 5; $attempt++) {
         try {
@@ -456,12 +461,12 @@ try {
         if ($game -eq 'Color Gauntlet') {
             if ((Find 'Use color' -ByName).Current.IsEnabled) { throw 'Gauntlet accepted input during memorization' }
             Capture 'native-gauntlet.png'
-            $deadline = (Get-Date).AddSeconds(15)
-            do { Start-Sleep -Milliseconds 100; $ready = (Find 'Use color' -ByName).Current.IsEnabled } while (!$ready -and (Get-Date) -lt $deadline)
-            if (!$ready) { throw 'Gauntlet did not begin the reconstruction phase' }
+            WaitColorInput 1
             Invoke 'Use color' -ByName
+            if ((Find 'GameStatus').Current.Name -notmatch '^Remember color 2/5' -or (Find 'Use color' -ByName).Current.IsEnabled) { throw 'Gauntlet did not hide inputs for the next color' }
+            WaitColorInput 2
             Invoke 'Use color' -ByName
-            if ((Find 'GameStatus').Current.Name -notmatch '^Recreate color 3/5') { throw 'Gauntlet did not advance after two guesses' }
+            WaitColorInput 3
         }
         if ($game -eq 'Maze Chase') {
             Invoke 'Move left' -ByName
@@ -630,7 +635,7 @@ try {
     if ((Find 'GameStatus').Current.Name -notmatch '^Paused') { throw 'Gauntlet did not restore paused' }
     Invoke 'Pause / resume' -ByName
     if ((Find 'GameStatus').Current.Name -notmatch '^Recreate color 3/5') { throw 'Gauntlet did not restore the next color' }
-    1..3 | ForEach-Object { Invoke 'Use color' -ByName }
+    3..5 | ForEach-Object { WaitColorInput $_; Invoke 'Use color' -ByName }
     if ((Find 'GameStatus').Current.Name -notmatch '^Gauntlet complete') { throw 'Gauntlet did not finish all five colors' }
     SelectGame 'Maze Chase'
     $savedMaze = ($savedGames | Where-Object game -eq 'Maze Chase').state

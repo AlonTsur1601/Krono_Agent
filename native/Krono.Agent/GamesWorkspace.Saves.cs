@@ -7,7 +7,7 @@ namespace Krono_Agent;
 
 public sealed partial class GamesWorkspace
 {
-    bool stateReady, disposed, openingGame, changingPicker;
+    bool stateReady, disposed, openingGame;
     string endMessage = "";
     readonly List<TextBlock> saveLabels = [];
     string SaveId(int index) => "native-v1:" + names[index];
@@ -15,11 +15,6 @@ public sealed partial class GamesWorkspace
     {
         var best = workspace.Query("SELECT MAX(score) AS best FROM game_scores WHERE account_id=$p0 AND game_id=$p1", workspace.AccountId, names[index]).First()["best"]?.ToString();
         return "PERSONAL BEST  " + (best ?? "—");
-    }
-    void SetPicker(int index)
-    {
-        changingPicker = true;
-        try { picker.SelectedIndex = index; } finally { changingPicker = false; }
     }
     async Task ChooseGame(int index)
     {
@@ -42,7 +37,7 @@ public sealed partial class GamesWorkspace
                 }
             }
             if (disposed) return;
-            timer.Stop(); game = index; SetPicker(index); Reset(); stateReady = true;
+            timer.Stop(); game = index; Reset(); stateReady = true;
             if (!resume || !RestoreCurrent()) SaveCurrent();
             shownScore = -1;
             library!.Visibility = Visibility.Collapsed; playScreen!.Visibility = Visibility.Visible;
@@ -138,7 +133,7 @@ public sealed partial class GamesWorkspace
             12 => s.Board.All(value => value is >= 0 and <= 2),
             13 => s.Sudoku?.Length == 81 && s.Clues?.Length == 81 && s.SelectedSquare is >= -1 and < 81 && s.Sudoku.All(value => value is >= 0 and <= 9) && s.Sudoku.Where((value, i) => value > 0 && !NativeGameRules.SudokuLegal(s.Sudoku, i, value)).Count() == 0 && NativeGameRules.SudokuSolutions(s.Sudoku.Select((value, i) => s.Clues[i] ? value : 0).ToArray()) == 1 && s.Clues.Where((fixedCell, i) => fixedCell && s.Sudoku[i] == 0).Count() == 0,
             14 => double.IsFinite(s.StackX) && double.IsFinite(s.StackWidth) && s.StackWidth is > 0 and <= 240 && s.StackX >= 0 && s.StackX + s.StackWidth <= 480 && s.StackDirection is -1 or 1 && s.StackLevel >= 0 && s.StackCombo >= 0 && s.Tower is { Length: > 0 and <= 10 } && s.Tower.All(row => row?.Length == 2 && row.All(double.IsFinite) && row[0] >= 0 && row[1] is > 0 and <= 240 && row[0] + row[1] <= 480),
-            15 => s.TargetColors?.Length == 5 && s.ChosenColors is { Length: <= 5 } && s.ColorStart >= 0,
+            15 => s.TargetColors?.Length == 5 && s.ChosenColors is { Length: <= 5 } && (s.Ended || s.ChosenColors.Length < 5) && s.ColorStart >= 0,
             >= BlockFit => ValidBoardGame(s),
             >= MazeChase => ValidArcade(game, s),
             _ => true

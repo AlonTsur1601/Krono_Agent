@@ -14,11 +14,10 @@ namespace Krono_Agent;
 public sealed partial class GamesWorkspace : Grid, IDisposable
 {
     readonly Workspace workspace;
-    readonly Canvas canvas = new() { Width = 480, Height = 480, Background = new SolidColorBrush(Color.FromArgb(255, 15, 21, 30)) };
+    readonly Canvas canvas = new() { Width = 480, Height = 480, Clip = new RectangleGeometry { Rect = new(0, 0, 480, 480) }, Background = new SolidColorBrush(Color.FromArgb(255, 15, 21, 30)) };
     readonly TextBlock status = new() { FontSize = 16 };
     readonly StackPanel movementControls = new() { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center };
     readonly TextBlock gameHelp = new() { TextWrapping = TextWrapping.Wrap, Opacity = .65 };
-    readonly ComboBox picker = new() { ItemsSource = names, SelectedIndex = 0, MinWidth = 180 };
     readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(30) };
     readonly Random random = new();
     int game, score, tick, dx = 1, dy, food, paddle = 220, first = -1, second = -1, hideAt, moves;
@@ -39,17 +38,16 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         this.workspace = workspace;
         if (previewIndex >= 0) { previewOnly = true; game = previewIndex; random = new Random(4081 + game); Reset(); SeedPreview(); Draw(); return; }
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(status, "GameStatus");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(picker, "GameSelector");
-        RowSpacing = 16; RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition()); RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        RowSpacing = 10; RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition { Height = new GridLength(42) }); RowDefinitions.Add(new RowDefinition()); RowDefinitions.Add(new RowDefinition { Height = new GridLength(112) });
         var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-        var back = new Button { Content = "‹ Game library" }; back.Click += (_, _) => { PauseAndSave(); if (library is not null && playScreen is not null) { playScreen.Visibility = Visibility.Collapsed; library.Visibility = Visibility.Visible; } }; toolbar.Children.Add(back); toolbar.Children.Add(picker);
+        var back = new Button { Content = "‹ Game library" }; back.Click += (_, _) => { PauseAndSave(); if (library is not null && playScreen is not null) { playScreen.Visibility = Visibility.Collapsed; library.Visibility = Visibility.Visible; } }; toolbar.Children.Add(back);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(back, "GameLibraryBack");
         var restart = new Button { Content = "Restart" }; restart.Click += (_, _) => { Reset(); stateReady = true; SaveCurrent(); timer.Start(); }; toolbar.Children.Add(restart);
         var pause = new Button { Content = "Pause / resume" }; pause.Click += (_, _) => { if (ended) return; paused = !paused; if (!paused) timer.Start(); else timer.Stop(); Draw(); SaveCurrent(); }; toolbar.Children.Add(pause); Children.Add(toolbar);
         var header = ScoreHeader(); Grid.SetRow(header, 1); Children.Add(header);
         var stageContent = new Grid { Width = 480, Height = 480, CornerRadius = new CornerRadius(12) }; stageContent.Children.Add(canvas); stageContent.Children.Add(effects);
         var view = new Viewbox { Child = stageContent, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center };
-        var stage = new Border { Child = view, CornerRadius = new CornerRadius(24), Padding = new Thickness(11), BorderThickness = new Thickness(1), HorizontalAlignment = HorizontalAlignment.Stretch };
+        var stage = new Border { Child = view, CornerRadius = new CornerRadius(19), Padding = new Thickness(6), BorderThickness = new Thickness(1), HorizontalAlignment = HorizontalAlignment.Stretch };
         void SetStagePalette() { stage.Background = KronoDesign.ThemeBrush("KronoSidebar", ActualTheme); stage.BorderBrush = KronoDesign.ThemeBrush("KronoBorder", ActualTheme); }
         SetStagePalette();
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(stage, "GameStage"); Grid.SetRow(stage, 2); Children.Add(stage);
@@ -62,8 +60,9 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         BuildArcadeControls(footer);
         BuildBoardControls(footer);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(flagMode, "MineFlagMode"); footer.Children.Add(flagMode);
-        footer.Children.Add(arrows); footer.Children.Add(gameHelp); Grid.SetRow(footer, 3); Children.Add(footer);
-        picker.SelectionChanged += async (_, _) => { if (!changingPicker && picker.SelectedIndex >= 0 && picker.SelectedIndex != game) { var next = picker.SelectedIndex; SetPicker(game); await ChooseGame(next); } };
+        footer.Children.Add(arrows); footer.Children.Add(gameHelp);
+        var footerScroll = new ScrollViewer { Content = footer, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Grid.SetRow(footerScroll, 3); Children.Add(footerScroll);
         canvas.PointerPressed += (sender, args) => { if (game is 0 or 5 or 7) Click(sender, args); };
         IsTabStop = true; KeyDown += Key;
         timer.Tick += (_, _) => {
@@ -73,6 +72,26 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         }; Loaded += (_, _) => { Focus(FocusState.Programmatic); if (!paused && playScreen?.Visibility == Visibility.Visible) timer.Start(); }; Unloaded += (_, _) => PauseAndSave();
         Reset();
         BuildLibrary();
+        if (playScreen is { } screen) {
+            screen.ColumnDefinitions.Add(new ColumnDefinition());
+            screen.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0) });
+            var wide = false;
+            screen.SizeChanged += (_, args) => {
+                var useSideControls = args.NewSize.Width >= Math.Max(1000, args.NewSize.Height + 220);
+                if (useSideControls == wide) return;
+                wide = useSideControls;
+                screen.ColumnSpacing = wide ? 16 : 0;
+                screen.ColumnDefinitions[1].Width = new GridLength(wide ? 384 : 0);
+                screen.RowDefinitions[1].Height = wide ? GridLength.Auto : new GridLength(42);
+                screen.RowDefinitions[3].Height = new GridLength(wide ? 0 : 112);
+                Grid.SetColumnSpan(toolbar, wide ? 2 : 1);
+                Grid.SetColumn(header, wide ? 1 : 0);
+                Grid.SetRow(stage, wide ? 1 : 2);
+                Grid.SetRowSpan(stage, wide ? 3 : 1);
+                Grid.SetColumn(footerScroll, wide ? 1 : 0);
+                Grid.SetRow(footerScroll, wide ? 2 : 3);
+            };
+        }
         ActualThemeChanged += (_, _) => { SetStagePalette(); status.Foreground = ReadableAccent; foreach (var label in saveLabels) label.Foreground = ReadableAccent; };
     }
     void BuildLibrary()
@@ -152,8 +171,8 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         ResetAdvanced();
         ResetArcade();
         ResetBoardGames();
-        if (game >= 12) gameHelp.Text = game switch { 12 => "Coral moves first. Bracket ivory discs along a row, column or diagonal. Dots mark legal moves; a player with no move passes. Most discs wins when both pass.", 13 => "Select an empty square; use 1–9 or the digit buttons. Erase with Backspace/Delete. Each row, column and 3×3 box contains 1–9 once. Conflicting moves are rejected.", 14 => "Space / Place block · Keep the overlap. Near-exact alignment is perfect; every three consecutive perfects restores 8% of the original width, up to the original size.", _ => "Remember five colors in order, then recreate each with the RGB fields. Each color scores 0–100 using CIE76 Delta E in D65 CIELAB; all five total up to 500." };
-        if (game >= MazeChase) gameHelp.Text = game switch { MazeChase => "Arrow keys / WASD · Clear every dot. Large dots temporarily let you catch ghosts. You have three lives.", Flap => "Space / Flap · Each tap lifts your bird. Pass between the towers without touching them or the ground.", Darts => "Press Space or use the aim button. Lock left to right first, then lock the height to throw. You have nine darts.", _ => "Select two pieces to swap them. Show reference previews the original illustration. Assemble the valley in as few moves as possible." };
+        if (game >= 12) gameHelp.Text = game switch { 12 => "Coral moves first. Bracket ivory discs along a row, column or diagonal. Dots mark legal moves; a player with no move passes. Most discs wins when both pass.", 13 => "Select an empty square; use 1–9 or the digit buttons. Erase with Backspace/Delete. Each row, column and 3×3 box contains 1–9 once. Conflicting moves are rejected.", 14 => "Space / Place block · Keep the overlap. Near-exact alignment is perfect; every three consecutive perfects restores 8% of the original width, up to the original size.", _ => "Study each shade for five seconds, then recreate it with the RGB fields. Submit your guess to reveal the next shade. Five rounds, up to 500 points." };
+        if (game >= MazeChase) gameHelp.Text = game switch { MazeChase => "Arrow keys / WASD · Clear every dot. Large dots temporarily let you catch ghosts. You have three lives.", Flap => "Space / Flap · Each tap lifts your bird. Pass between the towers without touching them or the ground.", Darts => "Press Space or use the aim button. Time the top marker for horizontal aim, then time the right marker to set height and throw. You have nine darts.", _ => "Select two pieces to swap them. Show reference previews the original illustration. Assemble the valley in as few moves as possible." };
         if (game >= BlockFit) gameHelp.Text = game switch { BlockFit => "Select a tray piece (1–3), then its top-left square. Full rows and columns clear together. The tray refills when emptied; the game ends when no piece fits.", FallingBlocks => "Left/right to move, up to rotate, down to lower, Space for hard drop. Clear complete rows. The outline shows the landing position.", SandBlocks => "Move and rotate as in Falling Blocks. Locked pieces turn into grains; a connected color spanning both walls clears when the sand settles.", _ => "Draw from Stock. Select a face-up card or run, then its destination. Tableau descends in alternating colors; empty columns require kings. Foundations ascend by suit from ace to king." };
         if (!previewOnly) Draw();
     }
