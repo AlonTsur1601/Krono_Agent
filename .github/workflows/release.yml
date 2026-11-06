@@ -34,11 +34,13 @@ jobs:
         run: |
           $target = Join-Path $env:RUNNER_TEMP 'Krono install test'
           $desktop = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'Krono Agent.lnk'
-          $setup = Start-Process -FilePath (Resolve-Path release/Krono-Agent-Setup-x64.exe) -ArgumentList ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=desktopicon /DIR="' + $target + '"') -WindowStyle Hidden -Wait -PassThru
+          $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Krono Agent/Krono Agent.lnk'
+          $setup = Start-Process -FilePath (Resolve-Path release/Krono-Agent-Setup-x64.exe) -ArgumentList ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOICONS /TASKS=desktopicon /DIR="' + $target + '"') -WindowStyle Hidden -Wait -PassThru
           if ($setup.ExitCode -ne 0) { throw 'Installation failed.' }
           $env:KRONO_SMOKE_EXE = Join-Path $target 'KronoAgent.exe'
           $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($desktop)
           if (!(Test-Path -LiteralPath $desktop) -or $shortcut.TargetPath -ne $env:KRONO_SMOKE_EXE) { throw 'Desktop shortcut has the wrong target.' }
+          if (Test-Path -LiteralPath $startMenu) { throw 'Setup created a Start menu shortcut despite opting out.' }
           node scripts/native-smoke.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Installed app failed native acceptance.' }
           $uninstall = Start-Process -FilePath (Join-Path $target 'unins000.exe') -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -WindowStyle Hidden -Wait -PassThru
