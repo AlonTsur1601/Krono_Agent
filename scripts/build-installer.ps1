@@ -1,3 +1,5 @@
+param([string]$PayloadUrl, [switch]$ReusePayload)
+
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $compiler = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
@@ -12,6 +14,16 @@ if (!(Test-Path -LiteralPath (Join-Path $root 'release/Krono-Agent/KronoAgent.ex
     throw 'Run npm run package:win first.'
 }
 $version = (Get-Content -LiteralPath (Join-Path $root 'package.json') -Raw | ConvertFrom-Json).version
+$payloadName = 'Krono-Agent-Payload-x64.zip'
+$payload = Join-Path $root "release/$payloadName"
+if (!$ReusePayload) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    if (Test-Path -LiteralPath $payload) { Remove-Item -LiteralPath $payload }
+    [IO.Compression.ZipFile]::CreateFromDirectory((Join-Path $root 'release/Krono-Agent'), $payload)
+}
+if (!$PayloadUrl) { $PayloadUrl = "https://github.com/AlonTsur1601/Krono_Agent/releases/download/v$version/$payloadName" }
+$payloadSize = (Get-Item -LiteralPath $payload).Length
+$payloadHash = (Get-FileHash -LiteralPath $payload -Algorithm SHA256).Hash
 Add-Type -AssemblyName System.Drawing
 $art = [Drawing.Bitmap]::new(328, 628)
 $canvas = [Drawing.Graphics]::FromImage($art)
@@ -74,5 +86,5 @@ try {
     $canvas.Dispose()
     $art.Dispose()
 }
-& $compiler "/DKronoVersion=$version" (Join-Path $PSScriptRoot 'krono-setup.iss')
+& $compiler "/DKronoVersion=$version" "/DKronoPayloadUrl=$PayloadUrl" "/DKronoPayloadSize=$payloadSize" "/DKronoPayloadHash=$payloadHash" (Join-Path $PSScriptRoot 'krono-setup.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }

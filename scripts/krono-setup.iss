@@ -21,6 +21,7 @@ UninstallDisplayIcon={app}\KronoAgent.exe
 OutputDir=..\release
 OutputBaseFilename=Krono-Agent-Setup-x64
 Compression=lzma2/fast
+ArchiveExtraction=full
 WizardStyle=modern dynamic hidebevels
 WizardImageFile=..\release\Krono-Setup-Art.bmp
 WizardImageFileDynamicDark=..\release\Krono-Setup-Art.bmp
@@ -31,7 +32,7 @@ CloseApplications=yes
 
 [Messages]
 WelcomeLabel1=Install Krono Agent
-WelcomeLabel2=Choose where to install Krono Agent and where to place shortcuts. Setup installs the app for your Windows account.
+WelcomeLabel2=Choose where to install Krono Agent and where to place shortcuts. Setup downloads the app after you click Install. An internet connection is required.
 SelectTasksLabel2=Choose where to create Krono Agent shortcuts. You can leave both unchecked.
 
 [Tasks]
@@ -39,7 +40,7 @@ Name: "startmenuicon"; Description: "Create a Start menu shortcut"
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
-Source: "..\release\Krono-Agent\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#KronoPayloadUrl}"; DestName: "Krono-Agent-Payload-x64.zip"; DestDir: "{app}"; ExternalSize: {#KronoPayloadSize}; Hash: "{#KronoPayloadHash}"; Flags: external download extractarchive ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{userprograms}\Krono Agent\Krono Agent"; Filename: "{app}\KronoAgent.exe"; WorkingDir: "{app}"; Tasks: startmenuicon

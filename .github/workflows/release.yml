@@ -28,14 +28,32 @@ jobs:
         run: |
           choco install innosetup -y --no-progress
           if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
-          ./scripts/build-installer.ps1
+          ./scripts/build-installer.ps1 -PayloadUrl 'http://127.0.0.1:48773/Krono-Agent-Payload-x64.zip'
       - name: Verify installed distribution
         shell: pwsh
         run: |
           $target = Join-Path $env:RUNNER_TEMP 'Krono install test'
           $desktop = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'Krono Agent.lnk'
           $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Krono Agent/Krono Agent.lnk'
-          $setup = Start-Process -FilePath (Resolve-Path release/Krono-Agent-Setup-x64.exe) -ArgumentList ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=desktopicon /DIR="' + $target + '"') -WindowStyle Hidden -Wait -PassThru
+          $serverScript = Join-Path $env:RUNNER_TEMP 'krono-payload.cjs'
+          @'
+          const fs = require('node:fs');
+          const path = 'release/Krono-Agent-Payload-x64.zip';
+          require('node:http').createServer((req, res) => {
+            if (req.url !== '/Krono-Agent-Payload-x64.zip') { res.writeHead(404).end(); return; }
+            res.writeHead(200, { 'Content-Length': fs.statSync(path).size });
+            if (req.method === 'HEAD') res.end();
+            else fs.createReadStream(path).pipe(res);
+          }).listen(48773, '127.0.0.1');
+          '@ | Set-Content -LiteralPath $serverScript
+          $server = Start-Process node -ArgumentList ('"' + $serverScript + '"') -WindowStyle Hidden -PassThru
+          try {
+            Start-Sleep -Seconds 1
+            Invoke-WebRequest -Method Head 'http://127.0.0.1:48773/Krono-Agent-Payload-x64.zip' | Out-Null
+            $setup = Start-Process -FilePath (Resolve-Path release/Krono-Agent-Setup-x64.exe) -ArgumentList ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=desktopicon /DIR="' + $target + '"') -WindowStyle Hidden -Wait -PassThru
+          } finally {
+            if (!$server.HasExited) { Stop-Process -Id $server.Id }
+          }
           if ($setup.ExitCode -ne 0) { throw 'Installation failed.' }
           $env:KRONO_SMOKE_EXE = Join-Path $target 'KronoAgent.exe'
           $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($desktop)
@@ -45,8 +63,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installed app failed native acceptance.' }
           $uninstall = Start-Process -FilePath (Join-Path $target 'unins000.exe') -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -WindowStyle Hidden -Wait -PassThru
           if ($uninstall.ExitCode -ne 0 -or (Test-Path -LiteralPath $desktop) -or (Test-Path -LiteralPath $env:KRONO_SMOKE_EXE)) { throw 'Uninstall failed.' }
+      - name: Set production download URL
+        shell: pwsh
+        run: ./scripts/build-installer.ps1 -ReusePayload
       - uses: softprops/action-gh-release@v2
         with:
-          files: release/Krono-Agent-Setup-x64.exe
+          files: |
+            release/Krono-Agent-Payload-x64.zip
+            release/Krono-Agent-Setup-x64.exe
           fail_on_unmatched_files: true
           prerelease: ${{ contains(github.ref_name, '-') }}
