@@ -316,6 +316,8 @@ public sealed partial class MainPage : Page
         panel.Children.Add(new TextBlock { Text = workspace.Email, Opacity = .65 });
         panel.Children.Add(Button("Sign out on all devices", async () => { if (await Confirm("Sign out on all devices?", "You’ll need to sign in again on each device.", "Sign out everywhere")) await Leave(true); }));
         panel.Children.Add(Choices("Appearance", ["system", "dark", "light", "halloween"], workspace.Setting("native.theme") is { Length: > 0 } t ? t : "system", value => { workspace.SetSetting("native.theme", value); ApplyTheme(value); }));
+        panel.Children.Add(new HyperlinkButton { Content = "Download updates",
+            NavigateUri = new Uri("https://github.com/AlonTsur1601/Krono_Agent/releases/latest") });
         var secret = new PasswordBox { Header = "Provider API key · optional for local servers", HorizontalAlignment = HorizontalAlignment.Stretch };
         var endpoint = new TextBox { Header = "Server base URL · include /v1", Text = ProviderEndpoint };
         AutomationProperties.SetAutomationId(endpoint, "ProviderEndpoint");

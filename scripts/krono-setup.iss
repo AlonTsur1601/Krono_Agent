@@ -21,7 +21,7 @@ UninstallDisplayIcon={app}\KronoAgent.exe
 OutputDir=..\release
 OutputBaseFilename=Krono-Agent-Setup-x64
 Compression=lzma2/fast
-WizardStyle=modern dynamic
+WizardStyle=modern dynamic hidebevels
 WizardImageFile=..\release\Krono-Setup-Art.bmp
 WizardImageFileDynamicDark=..\release\Krono-Setup-Art.bmp
 WizardImageBackColor=#10151D
@@ -70,8 +70,24 @@ begin
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
+var
+  Destination: TNewEdit;
 begin
   if CurPageID = wpFinished then
-    WizardForm.FinishedLabel.Caption := 'Krono Agent was installed in:' + #13#10 +
-      WizardDirValue + #13#10#13#10 + 'Shortcuts created: ' + ShortcutSummary;
+  begin
+    WizardForm.NextButton.Left := WizardForm.CancelButton.Left;
+    WizardForm.FinishedLabel.WordWrap := True;
+    WizardForm.FinishedLabel.Height := ScaleY(72);
+    WizardForm.FinishedLabel.Caption := 'Krono Agent is installed.' + #13#10 +
+      'Shortcuts created: ' + ShortcutSummary + #13#10#13#10 + 'Installation folder:';
+    Destination := TNewEdit.Create(WizardForm);
+    Destination.Parent := WizardForm.FinishedLabel.Parent;
+    Destination.ReadOnly := True;
+    Destination.Text := WizardDirValue;
+    Destination.SetBounds(WizardForm.FinishedLabel.Left,
+      WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height,
+      WizardForm.FinishedLabel.Width, ScaleY(23));
+    Destination.Anchors := [akLeft, akTop, akRight];
+    WizardForm.RunList.Top := Destination.Top + Destination.Height + ScaleY(12);
+  end;
 end;
