@@ -81,7 +81,8 @@
                                         <VisualState x:Name="Normal"/>
                                         <VisualState x:Name="PointerOver">
                                             <Storyboard>
-                                                <DoubleAnimation Storyboard.TargetName="FaceOffset" Storyboard.TargetProperty="Y" To="-1" Duration="0"/>
+                                                <DoubleAnimation Storyboard.TargetName="FaceOffset" Storyboard.TargetProperty="Y" To="-2" Duration="0"/>
+                                                <DoubleAnimation Storyboard.TargetName="HoverTint" Storyboard.TargetProperty="Opacity" To=".16" Duration="0"/>
                                             </Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="Pressed">
@@ -98,10 +99,13 @@
                                     <Border Margin="0,4,0,0" Background="{TemplateBinding BorderBrush}" CornerRadius="{TemplateBinding CornerRadius}"/>
                                     <Border x:Name="ButtonFace" Margin="0,0,0,4" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
                                         <Border.RenderTransform><TranslateTransform x:Name="FaceOffset"/></Border.RenderTransform>
-                                        <ContentPresenter x:Name="ButtonContent" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                                        <Grid>
+                                            <Border x:Name="HoverTint" Background="{ThemeResource KronoOutlineHover}" CornerRadius="{TemplateBinding CornerRadius}" Opacity="0" IsHitTestVisible="False"/>
+                                            <ContentPresenter x:Name="ButtonContent" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
                                             Padding="{TemplateBinding Padding}" Foreground="{TemplateBinding Foreground}"
                                             HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                             VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                                        </Grid>
                                     </Border>
                                 </Grid>
                             </Grid>
