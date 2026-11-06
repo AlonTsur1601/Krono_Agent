@@ -15,12 +15,12 @@
 </NavigationView.FooterMenuItems>
 <NavigationView.PaneFooter>
 <StackPanel>
-<StackPanel x:Name="UpdatePanel" Visibility="Collapsed" Spacing="4" Margin="4,0,4,6">
-<Button x:Name="UpdateButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinHeight="40" Padding="10,6" Background="Transparent" BorderThickness="0" FontWeight="Normal" Click="UpdateAction">
+<Button x:Name="UpdateButton" Visibility="Collapsed" Margin="4,0,4,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="40" Padding="10,6" Background="Transparent" BorderThickness="0" FontWeight="Normal" Click="UpdateAction">
+<StackPanel Spacing="5">
 <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center"><SymbolIcon Symbol="Download" Width="20" Height="20"/><TextBlock x:Name="UpdateLabel" VerticalAlignment="Center"/></StackPanel>
-</Button>
-<ProgressBar x:Name="UpdateProgress" Visibility="Collapsed" Margin="10,0" AutomationProperties.Name="Update download progress"/>
+<ProgressBar x:Name="UpdateProgress" Visibility="Collapsed" AutomationProperties.Name="Update download progress"/>
 </StackPanel>
+</Button>
 <Button x:Name="SignOutButton" AutomationProperties.Name="Sign out" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinHeight="40" Margin="4,0" Padding="10,6" Background="Transparent" BorderThickness="0" FontWeight="Normal" Click="SignOut">
 <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
 <PathIcon Width="20" Height="20" Data="M2,2 H10 V4 H4 V16 H10 V18 H2 Z M8,9 H15 L12,6 L13.5,4.5 L19,10 L13.5,15.5 L12,14 L15,11 H8 Z"/>

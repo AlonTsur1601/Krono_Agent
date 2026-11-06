@@ -78,7 +78,7 @@ public sealed partial class MainPage
 
     void RefreshUpdateButton()
     {
-        UpdatePanel.Visibility = availableUpdate.HasValue ? Visibility.Visible : Visibility.Collapsed;
+        UpdateButton.Visibility = availableUpdate.HasValue ? Visibility.Visible : Visibility.Collapsed;
         UpdateProgress.Visibility = downloadingUpdate ? Visibility.Visible : Visibility.Collapsed;
         UpdateButton.IsEnabled = !downloadingUpdate;
         var label = downloadedInstaller is not null ? "Install update" : downloadingUpdate ? "Downloading…" : "Download update";
