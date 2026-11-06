@@ -8,7 +8,7 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid>
+    <Grid Background="{ThemeResource KronoBackground}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -25,6 +25,6 @@
             <Path Width="26" Height="14" Stretch="Uniform" Fill="{ThemeResource KronoAccentFill}" Data="M0,1 L6,4 L9,3 L11,6 L13,2 L15,6 L17,3 L20,4 L26,1 L23,8 L19,7 L17,11 L15,9 L13,14 L11,9 L9,11 L7,7 L3,8 Z"/>
         </StackPanel>
 
-        <Frame x:Name="RootFrame" Grid.Row="1" />
+        <Frame x:Name="RootFrame" Grid.Row="1" Margin="0,-2,0,0" />
     </Grid>
 </Window>
