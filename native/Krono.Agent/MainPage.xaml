@@ -16,10 +16,10 @@
 <NavigationView.PaneFooter>
 <StackPanel>
 <StackPanel x:Name="UpdatePanel" Visibility="Collapsed" Spacing="4" Margin="4,0,4,6">
-<Button x:Name="UpdateButton" HorizontalAlignment="Stretch" Padding="8" Click="UpdateAction" Style="{StaticResource KronoPrimaryButton}">
-<StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="Download"/><TextBlock x:Name="UpdateLabel" VerticalAlignment="Center"/></StackPanel>
+<Button x:Name="UpdateButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinHeight="40" Padding="10,6" Background="Transparent" BorderThickness="0" FontWeight="Normal" Click="UpdateAction">
+<StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center"><SymbolIcon Symbol="Download" Width="20" Height="20"/><TextBlock x:Name="UpdateLabel" VerticalAlignment="Center"/></StackPanel>
 </Button>
-<ProgressBar x:Name="UpdateProgress" Visibility="Collapsed" AutomationProperties.Name="Update download progress"/>
+<ProgressBar x:Name="UpdateProgress" Visibility="Collapsed" Margin="10,0" AutomationProperties.Name="Update download progress"/>
 </StackPanel>
 <Button x:Name="SignOutButton" AutomationProperties.Name="Sign out" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinHeight="40" Margin="4,0" Padding="10,6" Background="Transparent" BorderThickness="0" FontWeight="Normal" Click="SignOut">
 <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">

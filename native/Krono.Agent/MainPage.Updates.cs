@@ -24,7 +24,6 @@ public sealed partial class MainPage
 
     void InitializeUpdates()
     {
-        KronoDesign.ApplyPrimaryStates(UpdateButton);
         Loaded += async (_, _) => { updateTimer.Start(); await CheckUpdates(); };
         updateTimer.Tick += async (_, _) => await CheckUpdates();
         Unloaded += (_, _) => { updateTimer.Stop(); updateLifetime.Cancel(); DeleteDownload(downloadedInstaller); };
