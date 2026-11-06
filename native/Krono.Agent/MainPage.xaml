@@ -30,7 +30,7 @@
 </StackPanel>
 </NavigationView.PaneFooter>
 <Grid Padding="28,20,28,24" RowSpacing="12" Background="{ThemeResource KronoBackground}"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-<Grid x:Name="WorkspacePattern" Grid.RowSpan="3" IsHitTestVisible="False"/>
+<Grid x:Name="WorkspacePattern" Grid.RowSpan="3" Margin="0,-20,0,0" IsHitTestVisible="False"/>
 <Viewbox x:Name="HalloweenCorner" Grid.RowSpan="3" Width="184" Height="138" Margin="0,0,18,0" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed" IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw">
 <Canvas Width="184" Height="138">
 <Path Stroke="{ThemeResource KronoMuted}" StrokeThickness="1" Opacity=".33"

@@ -32,6 +32,8 @@ public static class KronoDesign
         Set(dark, "KronoBackground", halloween ? "15101D" : "10151D");
         Set(dark, "KronoSidebar", halloween ? "1D1528" : "141B24");
         Set(dark, "KronoSurface", halloween ? "2B1D39" : "1B2532");
+        SetFace("KronoButtonFace", halloween ? "452F56" : "2D3A49", halloween ? "271A35" : "1A2430");
+        SetFace("KronoPrimaryFace", halloween ? "FFCC96" : "A4F0C8", halloween ? "F6934F" : "69D6A0");
         Set(dark, "KronoBorder", halloween ? "442D56" : "2B3B4C");
         Set(dark, "KronoLoginBackdrop", halloween ? "1D1329" : "111D20");
         Set(dark, "KronoOutlineHover", halloween ? "A077A6" : "537D70");
@@ -52,6 +54,12 @@ public static class KronoDesign
         static void Set(ResourceDictionary dictionary, string key, string hex)
         {
             ((SolidColorBrush)dictionary[key]).Color = Parse(hex);
+        }
+        void SetFace(string key, string top, string bottom)
+        {
+            var stops = ((LinearGradientBrush)dark[key]).GradientStops;
+            stops[0].Color = Parse(top);
+            stops[1].Color = Parse(bottom);
         }
         static Windows.UI.Color Parse(string hex) => Windows.UI.Color.FromArgb(255, Convert.ToByte(hex[..2], 16), Convert.ToByte(hex[2..4], 16), Convert.ToByte(hex[4..6], 16));
     }

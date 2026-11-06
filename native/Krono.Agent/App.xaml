@@ -14,6 +14,8 @@
                     <SolidColorBrush x:Key="KronoBackground" Color="#10151D" />
                     <SolidColorBrush x:Key="KronoSidebar" Color="#141B24" />
                     <SolidColorBrush x:Key="KronoSurface" Color="#1B2532" />
+                    <LinearGradientBrush x:Key="KronoButtonFace" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#2D3A49" Offset="0"/><GradientStop Color="#1A2430" Offset="1"/></LinearGradientBrush>
+                    <LinearGradientBrush x:Key="KronoPrimaryFace" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#A4F0C8" Offset="0"/><GradientStop Color="#69D6A0" Offset="1"/></LinearGradientBrush>
                     <SolidColorBrush x:Key="KronoBorder" Color="#2B3B4C" />
                     <SolidColorBrush x:Key="KronoMuted" Color="#9AABBF" />
                     <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#293D48" />
@@ -36,6 +38,8 @@
                     <SolidColorBrush x:Key="KronoBackground" Color="#F2F5F7" />
                     <SolidColorBrush x:Key="KronoSidebar" Color="#E7EEF0" />
                     <SolidColorBrush x:Key="KronoSurface" Color="#FFFFFF" />
+                    <LinearGradientBrush x:Key="KronoButtonFace" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#FFFFFF" Offset="0"/><GradientStop Color="#E5EDEA" Offset="1"/></LinearGradientBrush>
+                    <LinearGradientBrush x:Key="KronoPrimaryFace" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#A4F0C8" Offset="0"/><GradientStop Color="#69D6A0" Offset="1"/></LinearGradientBrush>
                     <SolidColorBrush x:Key="KronoBorder" Color="#CDDADC" />
                     <SolidColorBrush x:Key="KronoMuted" Color="#536D78" />
                     <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#D8E9E5" />
@@ -71,7 +75,7 @@
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Background" Value="{ThemeResource KronoSurface}" />
+                <Setter Property="Background" Value="{ThemeResource KronoButtonFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
             </Style>
             <Style x:Key="KronoPrimaryButton" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
@@ -79,7 +83,7 @@
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
-                <Setter Property="Background" Value="{ThemeResource KronoAccentFill}" />
+                <Setter Property="Background" Value="{ThemeResource KronoPrimaryFace}" />
                 <Setter Property="Foreground" Value="#10231F" />
                 <Setter Property="CornerRadius" Value="10" />
                 <Setter Property="Padding" Value="14,8" />

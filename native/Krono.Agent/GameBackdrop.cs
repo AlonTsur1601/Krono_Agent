@@ -105,7 +105,7 @@ public sealed class GameBackdrop : Grid
             double clearance = -1;
             for (var sample = 0; sample < (fillingGap ? 256 : 48); sample++) {
                 var candidate = new Point(24 + random.NextDouble() * (size.Width - 48),
-                    24 + random.NextDouble() * (size.Height - 48));
+                    14 + random.NextDouble() * (size.Height - 38));
                 var distance = positions.Count == 0 ? double.PositiveInfinity
                     : positions.Min(mark => DistanceSquared(mark.Center, candidate));
                 if (distance <= clearance) continue;
