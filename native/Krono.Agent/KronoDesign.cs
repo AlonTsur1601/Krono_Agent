@@ -80,6 +80,8 @@ public static class KronoDesign
         resources["TextControlBorderBrushPointerOver"] = outlineHover;
         resources["ComboBoxBorderBrushPointerOver"] = outlineHover;
         resources["ComboBoxBackgroundBorderBrushFocused"] = ink;
+        resources["ButtonBorderBrushPointerOver"] = outlineHover;
+        resources["ButtonBorderBrushPressed"] = outlineHover;
         foreach (var key in new[] { "TextControlBackgroundPointerOver", "TextControlBackgroundFocused",
             "ComboBoxBackgroundPointerOver", "ComboBoxBackgroundFocused" })
             resources[key] = surface;

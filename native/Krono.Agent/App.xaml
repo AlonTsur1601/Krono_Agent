@@ -75,6 +75,7 @@
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
             </Style>
             <Style x:Key="KronoPrimaryButton" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+                <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />

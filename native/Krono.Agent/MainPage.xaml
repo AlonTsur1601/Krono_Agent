@@ -14,12 +14,20 @@
 <NavigationViewItem Content="Settings" Icon="Setting" Tag="settings"/>
 </NavigationView.FooterMenuItems>
 <NavigationView.PaneFooter>
+<StackPanel>
+<StackPanel x:Name="UpdatePanel" Visibility="Collapsed" Spacing="4" Margin="4,0,4,6">
+<Button x:Name="UpdateButton" HorizontalAlignment="Stretch" Padding="8" Click="UpdateAction" Style="{StaticResource KronoPrimaryButton}">
+<StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="Download"/><TextBlock x:Name="UpdateLabel" VerticalAlignment="Center"/></StackPanel>
+</Button>
+<ProgressBar x:Name="UpdateProgress" Visibility="Collapsed" AutomationProperties.Name="Update download progress"/>
+</StackPanel>
 <Button x:Name="SignOutButton" AutomationProperties.Name="Sign out" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinHeight="40" Margin="4,0" Padding="10,6" Background="Transparent" BorderThickness="0" FontWeight="Normal" Click="SignOut">
 <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
 <PathIcon Width="20" Height="20" Data="M2,2 H10 V4 H4 V16 H10 V18 H2 Z M8,9 H15 L12,6 L13.5,4.5 L19,10 L13.5,15.5 L12,14 L15,11 H8 Z"/>
 <TextBlock x:Name="SignOutLabel" Text="Sign out" VerticalAlignment="Center"/>
 </StackPanel>
 </Button>
+</StackPanel>
 </NavigationView.PaneFooter>
 <Grid Padding="28,20,28,24" RowSpacing="12" Background="{ThemeResource KronoBackground}"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
 <Grid x:Name="WorkspacePattern" Grid.RowSpan="3" IsHitTestVisible="False"/>
@@ -58,7 +66,6 @@
 <ProgressRing x:Name="AuthProgress" Visibility="Collapsed" IsActive="False" Width="24" Height="24"/>
 <TextBlock x:Name="AuthError" Visibility="Collapsed" TextWrapping="Wrap" Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
 <TextBlock Text="Your sign-in is encrypted on this Windows account and remembered until you sign out." TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-<HyperlinkButton Content="Download updates" NavigateUri="https://github.com/AlonTsur1601/Krono_Agent/releases/latest" Padding="0,4" FontSize="12"/>
 </StackPanel></Border></Grid></ScrollViewer>
 </Grid></Page>
 

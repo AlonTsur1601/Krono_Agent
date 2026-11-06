@@ -24,6 +24,7 @@ public sealed class SideChatPanel : Grid, IDisposable
     readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     string chatId, parent = "", response = "";
     string? runId;
+    public bool IsRunning => runId is not null;
     TextBlock? streaming;
     ContentDialog? transferDialog;
     bool disposed;

@@ -73,7 +73,9 @@ native C#/WinUI 3. This is not completion of the full original product scope.
 - The Windows x64 installer supports per-user installation, a custom folder,
   a Start menu entry, an optional desktop shortcut and uninstall. Local testing
   verified a custom install path, the Start menu shortcut, the installed native
-  smoke suite and removal. Code signing and automatic updates remain pending.
+  smoke suite and removal. Krono checks published updates on startup and daily
+  while open, then verifies downloaded installers before the user launches
+  setup. Code signing remains pending.
 
 Initial specs/work used Kiro Crew. Native migration and subsequent implementation
 are by Codex, authorized by the owner. See .kiro review logs for provenance.

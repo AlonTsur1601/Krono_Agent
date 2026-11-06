@@ -8,6 +8,7 @@ if (!$dotnet) {
 } else { $dotnetPath = $dotnet.Source }
 node scripts/build-engine.cjs
 if ($LASTEXITCODE -ne 0) { throw 'Agent engine build failed' }
+$version = (Get-Content -LiteralPath (Join-Path $PSScriptRoot '../package.json') -Raw | ConvertFrom-Json).version
 if ($Publish) {
     # Publishing into an old output leaves obsolete executable names behind.
     $workspaceRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -20,6 +21,6 @@ if ($Publish) {
         if ($resolved -ne $publishDirectory) { throw 'Unexpected publish directory resolution.' }
         Remove-Item -LiteralPath $publishDirectory -Recurse -Force
     }
-    & $dotnetPath publish native/Krono.Agent/Krono.Agent.csproj -c Release -p:Platform=x64 -r win-x64 --self-contained true -p:PublishTrimmed=false -p:PublishReadyToRun=false -o release/Krono-Agent
-} else { & $dotnetPath build native/Krono.Agent/Krono.Agent.csproj -p:Platform=x64 }
+    & $dotnetPath publish native/Krono.Agent/Krono.Agent.csproj -c Release -p:Platform=x64 "-p:Version=$version" -r win-x64 --self-contained true -p:PublishTrimmed=false -p:PublishReadyToRun=false -o release/Krono-Agent
+} else { & $dotnetPath build native/Krono.Agent/Krono.Agent.csproj -p:Platform=x64 "-p:Version=$version" }
 if ($LASTEXITCODE -ne 0) { throw 'Native Windows build failed' }

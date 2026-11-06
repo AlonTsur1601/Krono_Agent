@@ -5,6 +5,8 @@ namespace Krono_Agent;
 public sealed partial class MainWindow : Window
 {
     public static MainWindow? Instance { get; private set; }
+    bool confirmingClose;
+    bool closeApproved;
     public MainWindow()
     {
         Instance = this;
@@ -24,8 +26,26 @@ public sealed partial class MainWindow : Window
             presenter.Maximize();
 
         RootFrame.Navigate(typeof(MainPage));
+        AppWindow.Closing += ConfirmClose;
         Activated += (_, args) => { if (args.WindowActivationState == WindowActivationState.Deactivated && RootFrame.Content is MainPage page) page.PauseGames("Krono lost window focus"); };
         Closed += (_, _) => { if (RootFrame.Content is MainPage page) page.PauseGames("Krono window closed"); };
+    }
+    async void ConfirmClose(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
+    {
+        if (closeApproved || RootFrame.Content is not MainPage { HasBackgroundWork: true } page) return;
+        args.Cancel = true;
+        if (confirmingClose) return;
+        confirmingClose = true;
+        try {
+            if (await page.Confirm("Close Krono Agent?", "A task or update download is still running. Closing will interrupt it.", "Close app"))
+                CloseApproved();
+        } catch (Exception error) { page.Error(error); }
+        finally { confirmingClose = false; }
+    }
+    internal void CloseApproved()
+    {
+        closeApproved = true;
+        Close();
     }
     public void ShowHalloween(bool enabled)
     {
