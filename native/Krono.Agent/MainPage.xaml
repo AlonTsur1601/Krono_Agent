@@ -81,7 +81,7 @@
 <TextBlock Text="Check your email" FontFamily="{ThemeResource KronoDisplayFont}" Style="{ThemeResource TitleTextBlockStyle}"/>
 <TextBlock x:Name="ConfirmationInstructions" TextWrapping="Wrap"/>
 <TextBlock x:Name="ConfirmationAddress" TextWrapping="Wrap" FontWeight="SemiBold"/>
-<TextBlock Text="Open the confirmation link, then return to Krono Agent and sign in." TextWrapping="Wrap" Foreground="{ThemeResource KronoMuted}"/>
+<TextBlock Text="Open the confirmation link, then return to Krono Agent and sign in. If you do not see the email, check your spam or junk folder." TextWrapping="Wrap" Foreground="{ThemeResource KronoMuted}"/>
 <Button x:Name="BackToLoginButton" Content="Back to sign in" Style="{StaticResource KronoPrimaryButton}" HorizontalAlignment="Stretch" Click="BackToLogin"/>
 <Button x:Name="ResendConfirmationButton" Content="Send a new email" HorizontalAlignment="Stretch" Click="ResendConfirmation"/>
 <TextBlock x:Name="ConfirmationStatus" TextWrapping="Wrap" Foreground="{ThemeResource KronoMuted}" AutomationProperties.LiveSetting="Polite"/>
