@@ -14,6 +14,7 @@
                     <SolidColorBrush x:Key="KronoBackground" Color="#10151D" />
                     <SolidColorBrush x:Key="KronoSidebar" Color="#141B24" />
                     <SolidColorBrush x:Key="KronoSurface" Color="#1B2532" />
+                    <LinearGradientBrush x:Key="KronoInputFace" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#131B25" Offset="0"/><GradientStop Color="#202B38" Offset="1"/></LinearGradientBrush>
                     <LinearGradientBrush x:Key="KronoButtonFace" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#2D3A49" Offset="0"/><GradientStop Color="#1A2430" Offset="1"/></LinearGradientBrush>
                     <LinearGradientBrush x:Key="KronoPrimaryFace" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#A4F0C8" Offset="0"/><GradientStop Color="#69D6A0" Offset="1"/></LinearGradientBrush>
                     <SolidColorBrush x:Key="KronoBorder" Color="#2B3B4C" />
@@ -39,6 +40,7 @@
                     <SolidColorBrush x:Key="KronoBackground" Color="#F2F5F7" />
                     <SolidColorBrush x:Key="KronoSidebar" Color="#E7EEF0" />
                     <SolidColorBrush x:Key="KronoSurface" Color="#FFFFFF" />
+                    <LinearGradientBrush x:Key="KronoInputFace" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#E8EFED" Offset="0"/><GradientStop Color="#FFFFFF" Offset="1"/></LinearGradientBrush>
                     <LinearGradientBrush x:Key="KronoButtonFace" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#FFFFFF" Offset="0"/><GradientStop Color="#E5EDEA" Offset="1"/></LinearGradientBrush>
                     <LinearGradientBrush x:Key="KronoPrimaryFace" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#A4F0C8" Offset="0"/><GradientStop Color="#69D6A0" Offset="1"/></LinearGradientBrush>
                     <SolidColorBrush x:Key="KronoBorder" Color="#CDDADC" />
@@ -148,7 +150,7 @@
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="CornerRadius" Value="10" />
                 <Setter Property="Padding" Value="12,10,12,6" />
-                <Setter Property="Background" Value="{ThemeResource KronoSurface}" />
+                <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
             </Style>
             <Style TargetType="ComboBox">
@@ -157,7 +159,7 @@
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="CornerRadius" Value="10" />
                 <Setter Property="Padding" Value="12,8" />
-                <Setter Property="Background" Value="{ThemeResource KronoSurface}" />
+                <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
             </Style>
             <Style TargetType="PasswordBox">
@@ -167,7 +169,7 @@
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="CornerRadius" Value="10" />
                 <Setter Property="Padding" Value="12,10,12,6" />
-                <Setter Property="Background" Value="{ThemeResource KronoSurface}" />
+                <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
             </Style>
             <Style TargetType="NumberBox">
@@ -175,7 +177,7 @@
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="CornerRadius" Value="10" />
-                <Setter Property="Background" Value="{ThemeResource KronoSurface}" />
+                <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
             </Style>
             <Style TargetType="AppBarButton">

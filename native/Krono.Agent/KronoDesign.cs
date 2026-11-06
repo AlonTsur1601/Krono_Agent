@@ -32,6 +32,7 @@ public static class KronoDesign
         Set(dark, "KronoBackground", halloween ? "15101D" : "10151D");
         Set(dark, "KronoSidebar", halloween ? "1D1528" : "141B24");
         Set(dark, "KronoSurface", halloween ? "2B1D39" : "1B2532");
+        SetFace("KronoInputFace", halloween ? "21162C" : "131B25", halloween ? "342343" : "202B38");
         SetFace("KronoButtonFace", halloween ? "452F56" : "2D3A49", halloween ? "271A35" : "1A2430");
         SetFace("KronoPrimaryFace", halloween ? "FFCC96" : "A4F0C8", halloween ? "F6934F" : "69D6A0");
         Set(dark, "KronoBorder", halloween ? "442D56" : "2B3B4C");
@@ -77,7 +78,7 @@ public static class KronoDesign
         var hover = ThemeBrush("KronoAccentHover", ElementTheme.Dark);
         var pressed = ThemeBrush("KronoAccentPressed", ElementTheme.Dark);
         var onAccent = (Brush)Application.Current.Resources["TextOnAccentFillColorPrimaryBrush"];
-        var surface = ThemeBrush("KronoSurface", root.ActualTheme);
+        var surface = ThemeBrush("KronoInputFace", root.ActualTheme);
         var outlineHover = ThemeBrush("KronoOutlineHover", root.ActualTheme);
         resources["TextControlThemeMinHeight"] = Application.Current.Resources["KronoControlMinHeight"];
         resources["TextControlBorderThemeThicknessFocused"] = new Thickness(1);

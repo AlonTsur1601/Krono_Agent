@@ -23,6 +23,7 @@ OutputBaseFilename=Krono-Agent-Setup-x64
 Compression=lzma2/fast
 ArchiveExtraction=full
 WizardStyle=modern dynamic hidebevels
+WizardSizePercent=140,120
 WizardImageFile=..\release\Krono-Setup-Art.bmp
 WizardImageFileDynamicDark=..\release\Krono-Setup-Art.bmp
 WizardImageBackColor=#10151D
@@ -50,6 +51,24 @@ Name: "{userdesktop}\Krono Agent"; Filename: "{app}\KronoAgent.exe"; WorkingDir:
 Filename: "{app}\KronoAgent.exe"; Description: "Launch Krono Agent"; Flags: nowait postinstall skipifsilent
 
 [Code]
+procedure InitializeWizard;
+var
+  SideArt: TBitmapImage;
+  SideWidth: Integer;
+begin
+  SideWidth := WizardForm.WizardBitmapImage.Width;
+  SideArt := TBitmapImage.Create(WizardForm);
+  SideArt.Parent := WizardForm.InnerPage;
+  SideArt.Bitmap.Assign(WizardForm.WizardBitmapImage.Bitmap);
+  SideArt.Stretch := True;
+  SideArt.SetBounds(0, 0, SideWidth, WizardForm.InnerPage.ClientHeight);
+  SideArt.Anchors := [akLeft, akTop, akBottom];
+  WizardForm.MainPanel.Left := SideWidth;
+  WizardForm.MainPanel.Width := WizardForm.MainPanel.Width - SideWidth;
+  WizardForm.InnerNotebook.Left := WizardForm.InnerNotebook.Left + SideWidth;
+  WizardForm.InnerNotebook.Width := WizardForm.InnerNotebook.Width - SideWidth;
+end;
+
 function ShortcutSummary: String;
 begin
   Result := '';
