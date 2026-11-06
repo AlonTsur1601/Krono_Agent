@@ -14,9 +14,8 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
 DisableDirPage=no
-DisableProgramGroupPage=no
+DisableProgramGroupPage=yes
 DisableWelcomePage=no
-AllowNoIcons=yes
 SetupIconFile=..\native\Krono.Agent\Assets\AppIcon.ico
 UninstallDisplayIcon={app}\KronoAgent.exe
 OutputDir=..\release
@@ -33,48 +32,46 @@ CloseApplications=yes
 [Messages]
 WelcomeLabel1=Install Krono Agent
 WelcomeLabel2=Choose where to install Krono Agent and where to place shortcuts. Setup installs the app for your Windows account.
-SelectTasksLabel2=Choose whether to add a desktop shortcut. You can skip this step.
+SelectTasksLabel2=Choose where to create Krono Agent shortcuts. You can leave both unchecked.
 
 [Tasks]
+Name: "startmenuicon"; Description: "Create a Start menu shortcut"
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
 Source: "..\release\Krono-Agent\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Krono Agent"; Filename: "{app}\KronoAgent.exe"; WorkingDir: "{app}"
+Name: "{userprograms}\Krono Agent\Krono Agent"; Filename: "{app}\KronoAgent.exe"; WorkingDir: "{app}"; Tasks: startmenuicon
 Name: "{userdesktop}\Krono Agent"; Filename: "{app}\KronoAgent.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\KronoAgent.exe"; Description: "Launch Krono Agent"; Flags: nowait postinstall skipifsilent
 
 [Code]
-var
-  SkipShortcutButton: TNewButton;
-
-procedure SkipShortcut(CurButton: TObject);
+function ShortcutSummary: String;
 begin
-  if WizardForm.CurPageID = wpSelectProgramGroup then
-    WizardForm.NoIconsCheck.Checked := True
-  else
-    WizardSelectTasks('');
-  WizardForm.NextButton.OnClick(WizardForm.NextButton);
+  Result := '';
+  if WizardIsTaskSelected('startmenuicon') then
+    Result := 'Start menu';
+  if WizardIsTaskSelected('desktopicon') then
+  begin
+    if Result <> '' then Result := Result + ', ';
+    Result := Result + 'Desktop';
+  end;
+  if Result = '' then Result := 'None';
 end;
 
-procedure InitializeWizard;
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo,
+  MemoTypeInfo, MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 begin
-  SkipShortcutButton := TNewButton.Create(WizardForm);
-  SkipShortcutButton.Parent := WizardForm;
-  SkipShortcutButton.Caption := 'Skip';
-  SkipShortcutButton.SetBounds(ScaleX(16), WizardForm.NextButton.Top,
-    WizardForm.NextButton.Width, WizardForm.NextButton.Height);
-  SkipShortcutButton.Anchors := [akLeft, akBottom];
-  SkipShortcutButton.Visible := False;
-  SkipShortcutButton.OnClick := @SkipShortcut;
+  Result := MemoDirInfo + NewLine + NewLine + 'Shortcuts to create:' +
+    NewLine + Space + ShortcutSummary;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  SkipShortcutButton.Visible := (CurPageID = wpSelectProgramGroup) or
-    (CurPageID = wpSelectTasks);
+  if CurPageID = wpFinished then
+    WizardForm.FinishedLabel.Caption := 'Krono Agent was installed in:' + #13#10 +
+      WizardDirValue + #13#10#13#10 + 'Shortcuts created: ' + ShortcutSummary;
 end;
