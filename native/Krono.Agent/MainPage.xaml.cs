@@ -19,7 +19,7 @@ public sealed partial class MainPage : Page
     string provider = "openai", model = "", mode = "chat", permissions = "ask";
     readonly ListView chatList = new() { Width = 220, SelectionMode = ListViewSelectionMode.Single };
     readonly StackPanel messages = new() { Spacing = 20, MaxWidth = 850, HorizontalAlignment = HorizontalAlignment.Stretch };
-    readonly TextBox composer = new() { PlaceholderText = "Message Krono…", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80, MaxHeight = 180 };
+    readonly KronoTextBox composer = new() { PlaceholderText = "Message Krono…", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80, MaxHeight = 180 };
     readonly ScrollViewer transcript;
     readonly TextBlock progress = new() { Text = "", TextWrapping = TextWrapping.Wrap, Opacity = .7 };
     readonly Button modelChoice = new() { Content = "Choose model" };
@@ -69,7 +69,9 @@ public sealed partial class MainPage : Page
     void CenterPasswordContent(object sender, RoutedEventArgs args)
     {
         if (sender is not PasswordBox password) return;
+        KronoInputMotion.Attach(password, "KronoPasswordInput");
         password.ApplyTemplate();
+        KronoInputMotion.StyleButton(PasswordVisibility);
         Center(password);
         static bool Center(DependencyObject parent)
         {
@@ -209,7 +211,7 @@ public sealed partial class MainPage : Page
     Button Button(string label, Func<Task> action) { var button = new Button { Content = label }; button.Click += async (_, _) => { try { await action(); } catch (Exception error) { Error(error); } }; return button; }
     static ComboBox Choices(string label, string[] choices, string selected, Action<string> change)
     {
-        var box = new ComboBox { Header = label, MinWidth = 120, ItemsSource = choices, SelectedItem = selected };
+        var box = new KronoComboBox { Header = label, MinWidth = 120, ItemsSource = choices, SelectedItem = selected };
         AutomationProperties.SetAutomationId(box, label.Replace(" ", ""));
         box.SelectionChanged += (_, _) => { if (box.SelectedItem is string value) change(value); }; return box;
     }
@@ -237,7 +239,7 @@ public sealed partial class MainPage : Page
             toolbar.Children.Add(Button("Project…", async () => {
                 if (chatId is null || runId is not null) return;
                 var projects = workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name");
-                var selector = new ComboBox { MinWidth = 260, ItemsSource = new[] { "No project" }.Concat(projects.Select(p => p["name"]!.ToString())).ToArray(), SelectedIndex = 0 };
+                var selector = new KronoComboBox { MinWidth = 260, ItemsSource = new[] { "No project" }.Concat(projects.Select(p => p["name"]!.ToString())).ToArray(), SelectedIndex = 0 };
                 AutomationProperties.SetAutomationId(selector, "ChatProjectSelector");
                 var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Move chat to project", Content = selector, PrimaryButtonText = "Move", CloseButtonText = "Cancel" };
                 dialog.PrimaryButtonClick += (_, _) => { workspace.Execute("UPDATE chats SET project_id=$p0,updated_at=$p1 WHERE id=$p2", selector.SelectedIndex > 0 ? projects[selector.SelectedIndex - 1]["id"]!.ToString() : null, Workspace.Now, chatId); LoadChat(); };
@@ -341,7 +343,7 @@ public sealed partial class MainPage : Page
     void ClearApprovalDetails() { if (approvalDialog?.Content is TextBox content) content.Text = ""; approvalDialog?.Hide(); approvalDialog = null; approvalDetails = null; }
     async void ReviewApproval(object sender, RoutedEventArgs args) {
         if (approvalDetails is null || approvalDialog is not null) return;
-        var details = new TextBox { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinWidth = 350, MaxHeight = 480, FontFamily = KronoDesign.CodeFont, FontSize = KronoDesign.CodeSize, Text = approvalDetails.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) };
+        var details = new KronoTextBox { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinWidth = 350, MaxHeight = 480, FontFamily = KronoDesign.CodeFont, FontSize = KronoDesign.CodeSize, Text = approvalDetails.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) };
         AutomationProperties.SetAutomationId(details, "ToolApprovalDetails");
         var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Action details", Content = details, CloseButtonText = "Close details" }; approvalDialog = dialog;
         try { await dialog.ShowAsync(); } catch (Exception error) { Error(error); } finally { if (ReferenceEquals(approvalDialog, dialog)) approvalDialog = null; }
@@ -373,12 +375,13 @@ public sealed partial class MainPage : Page
         panel.Children.Add(Choices("Appearance", ["system", "dark", "light", "halloween"], workspace.Setting("native.theme") is { Length: > 0 } t ? t : "system", value => { workspace.SetSetting("native.theme", value); ApplyTheme(value); }));
         AddUpdateSettings(panel);
         var secret = new PasswordBox { Header = "Provider API key · optional for local servers", HorizontalAlignment = HorizontalAlignment.Stretch };
-        var endpoint = new TextBox { Header = "Server base URL · include /v1", Text = ProviderEndpoint };
+        KronoInputMotion.Attach(secret, "KronoPasswordInput");
+        var endpoint = new KronoTextBox { Header = "Server base URL · include /v1", Text = ProviderEndpoint };
         AutomationProperties.SetAutomationId(endpoint, "ProviderEndpoint");
         var tools = new CheckBox { Content = "This model supports tool calling", IsChecked = ProviderToolsEnabled };
         AutomationProperties.SetAutomationId(tools, "ProviderTools");
         var connectionStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .7 }; AutomationProperties.SetAutomationId(connectionStatus, "ProviderConnectionStatus");
-        var models = new ComboBox { Header = "Model", HorizontalAlignment = HorizontalAlignment.Stretch, IsEditable = true, Text = model };
+        var models = new KronoComboBox { Header = "Model", HorizontalAlignment = HorizontalAlignment.Stretch, IsEditable = true, Text = model };
         var profileHelp = new TextBlock { Text = ProviderCatalog.Help(provider), TextWrapping = TextWrapping.Wrap, Opacity = .65 };
         var saveEndpoint = Button("Save endpoint", () => { try {
             var url = ProviderCatalog.ParseEndpoint(endpoint.Text);
@@ -400,8 +403,8 @@ public sealed partial class MainPage : Page
         panel.Children.Add(Button("Load available models", async () => { try { var result = await worker!.Request(Guid.NewGuid().ToString(), "models", new { providerId = provider, apiKey = workspace.Key(provider), endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled }); models.ItemsSource = result!.AsArray().Select(m => m!["id"]!.ToString()).ToArray(); } catch (Exception error) { Error(error); } }));
         panel.Children.Add(Button("Use model", () => { model = models.Text.Trim(); workspace.SetSetting("native.model." + provider, model); tools.IsChecked = ProviderToolsEnabled; tools.IsEnabled = model.Length > 0; }));
         panel.Children.Add(profileHelp);
-        var textFont = new TextBox { Header = "Text font", Text = workspace.Setting("native.textFont") is { Length: > 0 } tf ? tf : "Rubik" };
-        var codeFont = new TextBox { Header = "Code font", Text = workspace.Setting("native.codeFont") is { Length: > 0 } cf ? cf : "JetBrains Mono" };
+        var textFont = new KronoTextBox { Header = "Text font", Text = workspace.Setting("native.textFont") is { Length: > 0 } tf ? tf : "Rubik" };
+        var codeFont = new KronoTextBox { Header = "Code font", Text = workspace.Setting("native.codeFont") is { Length: > 0 } cf ? cf : "JetBrains Mono" };
         AutomationProperties.SetAutomationId(textFont, "TextFontFamily"); AutomationProperties.SetAutomationId(codeFont, "CodeFontFamily");
         var textSize = new NumberBox { Header = "Text size", Minimum = 11, Maximum = 28, Value = KronoDesign.TextSize };
         var codeSize = new NumberBox { Header = "Code size", Minimum = 10, Maximum = 26, Value = KronoDesign.CodeSize };
@@ -423,13 +426,13 @@ public sealed partial class MainPage : Page
     {
         var panel = new StackPanel { Spacing = 14, MaxWidth = 800, HorizontalAlignment = HorizontalAlignment.Stretch }; panel.Children.Add(Heading("Projects & memory"));
         var projects = workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name"); string? selected = null;
-        var picker = new ComboBox { Header = "Project", ItemsSource = projects.Select(p => p["name"]!.ToString()).ToArray(), HorizontalAlignment = HorizontalAlignment.Stretch };
-        var name = new TextBox { Header = "Name" }; var folders = new TextBox { Header = "Project folders · one absolute path per line", AcceptsReturn = true, MinHeight = 70 };
+        var picker = new KronoComboBox { Header = "Project", ItemsSource = projects.Select(p => p["name"]!.ToString()).ToArray(), HorizontalAlignment = HorizontalAlignment.Stretch };
+        var name = new KronoTextBox { Header = "Name" }; var folders = new KronoTextBox { Header = "Project folders · one absolute path per line", AcceptsReturn = true, MinHeight = 70 };
         AutomationProperties.SetAutomationId(name, "ProjectName"); AutomationProperties.SetAutomationId(folders, "ProjectFolders");
-        var instructions = new TextBox { Header = "Project instructions", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 100 };
-        var memory = new TextBox { Header = "Project memory", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80 };
+        var instructions = new KronoTextBox { Header = "Project instructions", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 100 };
+        var memory = new KronoTextBox { Header = "Project memory", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80 };
         AutomationProperties.SetAutomationId(instructions, "ProjectInstructions"); AutomationProperties.SetAutomationId(memory, "ProjectMemory");
-        var global = new TextBox { Header = "Global memory", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80, Text = workspace.Query("SELECT content FROM memories WHERE id='global'").FirstOrDefault()?["content"]?.ToString() ?? "" };
+        var global = new KronoTextBox { Header = "Global memory", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80, Text = workspace.Query("SELECT content FROM memories WHERE id='global'").FirstOrDefault()?["content"]?.ToString() ?? "" };
         AutomationProperties.SetAutomationId(global, "GlobalMemory");
         string projectPermissions = "ask";
         var permissionBox = Choices("Default permissions", ["ask", "project", "full"], "ask", value => projectPermissions = value);

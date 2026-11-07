@@ -18,7 +18,7 @@ public sealed class SideChatPanel : Grid, IDisposable
     readonly ComboBox saved = new() { Header = "Temporary chats", HorizontalAlignment = HorizontalAlignment.Stretch, DisplayMemberPath = "Name" };
     readonly TextBlock expiry = new() { FontSize = 12, Opacity = .7, TextWrapping = TextWrapping.Wrap };
     readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .8 };
-    readonly TextBox input = new() { PlaceholderText = "Ask in this side chat…", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 70, MaxHeight = 120 };
+    readonly KronoTextBox input = new() { PlaceholderText = "Ask in this side chat…", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 70, MaxHeight = 120 };
     readonly ScrollViewer scroll;
     readonly Button send = new() { Content = "Send side message" }, stop = new() { Content = "Stop", IsEnabled = false };
     readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -111,7 +111,7 @@ public sealed class SideChatPanel : Grid, IDisposable
         if (runId is not null || !Available()) return;
         var latest = workspace.Query("SELECT content FROM messages WHERE chat_id=$p0 AND role='assistant' AND deleted_at IS NULL ORDER BY created_at DESC,rowid DESC LIMIT 1", chatId).FirstOrDefault()?["content"]?.ToString();
         if (string.IsNullOrWhiteSpace(latest)) { status.Text = "There is no assistant reply to transfer."; return; }
-        var preview = new TextBox { Text = latest, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 320, MinWidth = 320 }; AutomationProperties.SetAutomationId(preview, "SideTransferPreview");
+        var preview = new KronoTextBox { Text = latest, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 320, MinWidth = 320 }; AutomationProperties.SetAutomationId(preview, "SideTransferPreview");
         var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Append context to parent", Content = preview, PrimaryButtonText = "Transfer", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close }; transferDialog = dialog;
         var accepted = await dialog.ShowAsync(); transferDialog = null;
         if (accepted != ContentDialogResult.Primary || disposed || !Available() || string.IsNullOrWhiteSpace(preview.Text)) return;

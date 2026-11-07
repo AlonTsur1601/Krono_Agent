@@ -73,9 +73,9 @@ public sealed partial class MainPage
         var differences = workspace.SyncConflicts(); if (differences.Count == 0) return;
         var generation = sessionGeneration; reviewingSync = true;
         try {
-            var picker = new ComboBox { ItemsSource = differences.Select(item => item.Table.Replace('_', ' ') + " · " + item.Id).ToArray(), SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
-            var local = new TextBox { Header = "This device", IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 135 };
-            var cloud = new TextBox { Header = "Cloud", IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 135 };
+            var picker = new KronoComboBox { ItemsSource = differences.Select(item => item.Table.Replace('_', ' ') + " · " + item.Id).ToArray(), SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
+            var local = new KronoTextBox { Header = "This device", IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 135 };
+            var cloud = new KronoTextBox { Header = "Cloud", IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 135 };
             void Compare() { var item = differences[Math.Max(0, picker.SelectedIndex)]; local.Text = Describe(item.Local); cloud.Text = Describe(item.Cloud); }
             picker.SelectionChanged += (_, _) => Compare(); Compare();
             var content = new StackPanel { Spacing = 10 }; content.Children.Add(picker); content.Children.Add(local); content.Children.Add(cloud);

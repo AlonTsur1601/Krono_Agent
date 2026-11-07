@@ -104,8 +104,8 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         library = new Grid(); var content = new StackPanel { Spacing = 12 };
         content.Children.Add(new TextBlock { Text = "Games", FontFamily = (FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 34, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         content.Children.Add(new TextBlock { Text = $"{names.Length} games · Your agent can keep working.", FontSize = 15, Opacity = .6, Margin = new Thickness(0, 0, 0, 6) });
-        var search = new TextBox { PlaceholderText = "Search games", MinWidth = 160 };
-        var category = new ComboBox { ItemsSource = new[] { "All categories", "Puzzle", "Arcade", "Strategy" }, SelectedIndex = 0, MinWidth = 138 };
+        var search = new KronoTextBox { PlaceholderText = "Search games", MinWidth = 160 };
+        var category = new KronoComboBox { ItemsSource = new[] { "All categories", "Puzzle", "Arcade", "Strategy" }, SelectedIndex = 0, MinWidth = 138 };
         var favoritesOnly = new ToggleButton { Content = "Favorites", CornerRadius = new CornerRadius(12), Padding = new Thickness(13, 8, 13, 8) };
         var recentOnly = new ToggleButton { Content = "Recent", CornerRadius = new CornerRadius(12), Padding = new Thickness(13, 8, 13, 8) };
         var filters = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 8) };

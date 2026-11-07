@@ -137,6 +137,7 @@ public static class KronoDesign
         {
             var isCode = codeContext;
             if (element is Control control) {
+                if (control is NumberBox) KronoInputMotion.Attach(control);
                 var id = Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(control);
                 var gameCode = control.Tag?.ToString() == "game-code";
                 isCode |= id is "TerminalInput" or "TerminalOutput" or "ToolApprovalDetails" || gameCode;

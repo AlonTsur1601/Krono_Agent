@@ -161,7 +161,14 @@
                 <Setter Property="VerticalContentAlignment" Value="Center" />
                 <Setter Property="Template" Value="{StaticResource KronoPressTemplate}" />
             </Style>
-            <Style TargetType="TextBox">
+            <ControlTemplate x:Key="KronoInputButtonTemplate" TargetType="ButtonBase">
+                <Border Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
+                    <Border.BackgroundTransition><BrushTransition Duration="0:0:0.18"/></Border.BackgroundTransition>
+                    <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                        Foreground="{TemplateBinding Foreground}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                </Border>
+            </ControlTemplate>
+            <Style x:Key="KronoTextInput" TargetType="TextBox">
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="BorderThickness" Value="1,4,1,1" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
@@ -181,7 +188,7 @@
                 <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoInputRim}" />
             </Style>
-            <Style TargetType="PasswordBox">
+            <Style x:Key="KronoPasswordInput" TargetType="PasswordBox">
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="BorderThickness" Value="1,4,1,1" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
@@ -191,7 +198,7 @@
                 <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoInputRim}" />
             </Style>
-            <Style TargetType="NumberBox">
+            <Style x:Key="KronoNumberInput" TargetType="NumberBox">
                 <Setter Property="BorderThickness" Value="1,4,1,1" />
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
@@ -200,6 +207,9 @@
                 <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoInputRim}" />
             </Style>
+            <Style TargetType="TextBox" BasedOn="{StaticResource KronoTextInput}" />
+            <Style TargetType="PasswordBox" BasedOn="{StaticResource KronoPasswordInput}" />
+            <Style TargetType="NumberBox" BasedOn="{StaticResource KronoNumberInput}" />
             <Style TargetType="AppBarButton">
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />

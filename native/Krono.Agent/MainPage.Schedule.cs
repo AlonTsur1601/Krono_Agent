@@ -90,22 +90,22 @@ public sealed partial class MainPage
         var enabled = new ToggleSwitch { Header = "Run scheduled tasks on this device", IsOn = workspace.ScheduleEnabled }; AutomationProperties.SetAutomationId(enabled, "ScheduleEnabled");
         enabled.Toggled += (_, _) => workspace.SetSetting("native.scheduleEnabled", enabled.IsOn ? "true" : "false"); panel.Children.Add(enabled);
         var tasks = workspace.ScheduledTasks();
-        var selection = new ComboBox { Header = "Edit a task", ItemsSource = new[] { "New task" }.Concat(tasks.Select(task => $"{task.Name} · {task.State} · {When(task)}")).ToArray(), SelectedIndex = 0, MinWidth = 280 };
+        var selection = new KronoComboBox { Header = "Edit a task", ItemsSource = new[] { "New task" }.Concat(tasks.Select(task => $"{task.Name} · {task.State} · {When(task)}")).ToArray(), SelectedIndex = 0, MinWidth = 280 };
         AutomationProperties.SetAutomationId(selection, "ScheduleSelector"); panel.Children.Add(selection);
         Workspace.ScheduledTask? selected = null;
         var title = Field("Task name", "ScheduleName", 100); var prompt = Field("Prompt", "SchedulePrompt", 32000); prompt.AcceptsReturn = true; prompt.MinHeight = 72; prompt.TextWrapping = TextWrapping.Wrap;
         var first = Field("First run (yyyy-MM-dd HH:mm)", "ScheduleFirstRun", 16);
         var interval = new NumberBox { Header = "Repeat every (minutes)", Minimum = 1, Maximum = 10080, Value = 5, MinWidth = 180 };
         var zones = TimeZoneInfo.GetSystemTimeZones().ToArray();
-        var zone = new ComboBox { Header = "Time zone", ItemsSource = zones.Select(t => t.DisplayName).ToArray(), MinWidth = 260 };
-        var providerIds = ProviderCatalog.Ids; var providerChoice = new ComboBox { Header = "Provider", ItemsSource = providerIds.Select(ProviderCatalog.Name).ToArray(), MinWidth = 180 };
+        var zone = new KronoComboBox { Header = "Time zone", ItemsSource = zones.Select(t => t.DisplayName).ToArray(), MinWidth = 260 };
+        var providerIds = ProviderCatalog.Ids; var providerChoice = new KronoComboBox { Header = "Provider", ItemsSource = providerIds.Select(ProviderCatalog.Name).ToArray(), MinWidth = 180 };
         AutomationProperties.SetAutomationId(providerChoice, "ScheduleProvider");
         var modelField = Field("Model ID", "ScheduleModel", 400);
         var repeat = Choices("Repeat", ["once","interval","daily"], "once", value => interval.Visibility = value == "interval" ? Visibility.Visible : Visibility.Collapsed);
         var jobMode = Choices("Task mode", ["chat","plan","agent"], "chat", _ => { });
         var jobPermissions = Choices("Task permissions", ["ask","project","full"], "ask", _ => { });
         var projects = workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name");
-        var projectChoice = new ComboBox { Header = "Project", ItemsSource = new[] { "No project" }.Concat(projects.Select(p => p["name"]!.ToString())).ToArray(), SelectedIndex = 0, MinWidth = 180 };
+        var projectChoice = new KronoComboBox { Header = "Project", ItemsSource = new[] { "No project" }.Concat(projects.Select(p => p["name"]!.ToString())).ToArray(), SelectedIndex = 0, MinWidth = 180 };
         providerChoice.SelectionChanged += (_, _) => { if (providerChoice.SelectedIndex >= 0) modelField.Text = workspace.Setting("native.model." + providerIds[providerChoice.SelectedIndex]); };
         void Load() {
             selected = selection.SelectedIndex > 0 ? tasks[selection.SelectedIndex - 1] : null;
@@ -141,7 +141,7 @@ public sealed partial class MainPage
         panel.Children.Add(actions); panel.Children.Add(Heading("Run history"));
         scheduleHistoryPane = new StackPanel { Spacing = 8 }; panel.Children.Add(scheduleHistoryPane); RefreshScheduleHistory();
         KronoDesign.Present(Body, new ScrollViewer { Content = panel }); UpdateActivityVisibility();
-        static TextBox Field(string header, string id, int limit) { var box = new TextBox { Header = header, MaxLength = limit }; AutomationProperties.SetAutomationId(box, id); return box; }
+        static TextBox Field(string header, string id, int limit) { var box = new KronoTextBox { Header = header, MaxLength = limit }; AutomationProperties.SetAutomationId(box, id); return box; }
         static string When(Workspace.ScheduledTask task) => TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeMilliseconds(task.NextRun), TimeZoneInfo.FindSystemTimeZoneById(task.TimeZone)).ToString("yyyy-MM-dd HH:mm zzz", CultureInfo.InvariantCulture);
     }
     void RefreshScheduleHistory()

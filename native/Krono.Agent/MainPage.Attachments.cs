@@ -16,7 +16,7 @@ public sealed partial class MainPage
         if (attachments.Count >= 4) throw new InvalidOperationException("A message can include up to four text files.");
         pickingAttachment = true; var generation = sessionGeneration; var target = chatId;
         try {
-            var path = new TextBox { Header = "Or paste a local file path", MinWidth = 340, PlaceholderText = "C:\\…\\notes.txt" }; AutomationProperties.SetAutomationId(path, "AttachmentPath");
+            var path = new KronoTextBox { Header = "Or paste a local file path", MinWidth = 340, PlaceholderText = "C:\\…\\notes.txt" }; AutomationProperties.SetAutomationId(path, "AttachmentPath");
             var content = new StackPanel { Spacing = 10 }; content.Children.Add(new TextBlock { Text = "Attach up to four text or source files, 64 KB each.", TextWrapping = TextWrapping.Wrap }); content.Children.Add(path);
             var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Attach text files", Content = content, PrimaryButtonText = "Browse…", SecondaryButtonText = "Attach path", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
             var choice = await dialog.ShowAsync();

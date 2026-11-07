@@ -10,7 +10,7 @@ public sealed class BrowserWorkspace : Grid, IDisposable
     readonly Workspace workspace;
     readonly MainPage owner;
     readonly TabView tabs = new() { IsAddTabButtonVisible = true, VerticalAlignment = VerticalAlignment.Stretch };
-    readonly TextBox address = new() { PlaceholderText = "Address or search", MinWidth = 120 };
+    readonly KronoTextBox address = new() { PlaceholderText = "Address or search", MinWidth = 120 };
     readonly AppBarButton go;
     readonly Dictionary<TabViewItem, WebView2> views = new();
     readonly HashSet<TabViewItem> privateTabs = new();
@@ -30,7 +30,7 @@ public sealed class BrowserWorkspace : Grid, IDisposable
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(go, "Go");
         bar.SecondaryCommands.Add(Action("Private tab", Symbol.Permissions, () => _ = Open("about:blank", true)));
         bar.SecondaryCommands.Add(Action("Find on page", Symbol.Find, async () => {
-            var input = new TextBox { PlaceholderText = "Find text" };
+            var input = new KronoTextBox { PlaceholderText = "Find text" };
             var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Find on page", Content = input, PrimaryButtonText = "Find next", CloseButtonText = "Close" };
             if (await dialog.ShowAsync() == ContentDialogResult.Primary && Current is { } view) await view.ExecuteScriptAsync("window.find(" + System.Text.Json.JsonSerializer.Serialize(input.Text) + ",false,false,true)");
         }));
