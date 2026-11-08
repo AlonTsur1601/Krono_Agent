@@ -65,7 +65,17 @@ public sealed partial class MainPage : Page
         Unloaded += (_, _) => { sessionGeneration++; sessionTimer.Stop(); StopSync(); StopSchedules(); sideChat?.Dispose(); worker?.Dispose(); browser?.Dispose(); terminal?.Dispose(); games?.Dispose(); workspace.Dispose(); };
     }
     async void Login(object sender, RoutedEventArgs e) => await Authenticate(false);
-    async void Register(object sender, RoutedEventArgs e) => await Authenticate(true);
+    void Register(object sender, RoutedEventArgs e) => SetRegistrationMode(true);
+    async void CreateAccount(object sender, RoutedEventArgs e) => await Authenticate(true);
+    void SetRegistrationMode(bool register)
+    {
+        AuthTitle.Text = register ? "Create your account" : "Welcome to Krono";
+        AuthSubtitle.Text = register ? "Sign up to start your Krono workspace." : "Sign in to your workspace.";
+        LoginButton.Visibility = NewAccountPrompt.Visibility = register ? Visibility.Collapsed : Visibility.Visible;
+        CreateAccountButton.Visibility = ExistingAccountPrompt.Visibility = register ? Visibility.Visible : Visibility.Collapsed;
+        SetAuthError("");
+        EmailInput.Focus(FocusState.Programmatic);
+    }
     void CenterPasswordContent(object sender, RoutedEventArgs args)
     {
         if (sender is not PasswordBox password) return;
@@ -100,7 +110,7 @@ public sealed partial class MainPage : Page
     }
     async Task Authenticate(bool register)
     {
-        LoginButton.IsEnabled = RegisterButton.IsEnabled = false; AuthProgress.Visibility = Visibility.Visible; AuthProgress.IsActive = true; SetAuthError("");
+        LoginButton.IsEnabled = RegisterButton.IsEnabled = CreateAccountButton.IsEnabled = BackToSignInButton.IsEnabled = false; AuthProgress.Visibility = Visibility.Visible; AuthProgress.IsActive = true; SetAuthError("");
         var email = EmailInput.Text.Trim();
         try {
             if (!await workspace.Login(email, PasswordInput.Password, register)) { ShowConfirmation(email, true); return; }
@@ -108,7 +118,7 @@ public sealed partial class MainPage : Page
         }
         catch (Workspace.EmailConfirmationRequiredException) { ShowConfirmation(email, false); }
         catch (Exception error) { SetAuthError(error.Message); }
-        finally { LoginButton.IsEnabled = RegisterButton.IsEnabled = true; AuthProgress.IsActive = false; AuthProgress.Visibility = Visibility.Collapsed; }
+        finally { LoginButton.IsEnabled = RegisterButton.IsEnabled = CreateAccountButton.IsEnabled = BackToSignInButton.IsEnabled = true; AuthProgress.IsActive = false; AuthProgress.Visibility = Visibility.Collapsed; }
     }
     void ShowConfirmation(string email, bool sent)
     {
@@ -117,6 +127,8 @@ public sealed partial class MainPage : Page
         ConfirmationAddress.Text = email;
         ConfirmationInstructions.Text = sent ? "We sent a confirmation link to:" : "Confirm the email address for this account:";
         ConfirmationStatus.Text = "";
+        ConfirmationStatus.Visibility = Visibility.Collapsed;
+        AuthCard.Padding = new Thickness(24);
         LoginForm.Visibility = Visibility.Collapsed;
         ConfirmationForm.Visibility = Visibility.Visible;
         BackToLoginButton.Focus(FocusState.Programmatic);
@@ -125,11 +137,14 @@ public sealed partial class MainPage : Page
     {
         ConfirmationForm.Visibility = Visibility.Collapsed;
         LoginForm.Visibility = Visibility.Visible;
+        AuthCard.Padding = new Thickness(32);
+        SetRegistrationMode(false);
         PasswordInput.Focus(FocusState.Programmatic);
     }
     async void ResendConfirmation(object sender, RoutedEventArgs args)
     {
         ResendConfirmationButton.IsEnabled = BackToLoginButton.IsEnabled = false;
+        ConfirmationStatus.Visibility = Visibility.Visible;
         ConfirmationStatus.Text = "Sending…";
         try { await workspace.ResendConfirmation(ConfirmationAddress.Text); ConfirmationStatus.Text = "A new confirmation email was requested."; }
         catch (Exception error) { ConfirmationStatus.Text = error.Message; }

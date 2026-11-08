@@ -115,6 +115,8 @@ try {
     Invoke 'BackToLoginButton'
     SetValue 'PasswordInput' 'fixture-password'
     Invoke 'RegisterButton'
+    Find 'Create your account' -ByName | Out-Null
+    Invoke 'CreateAccountButton'
     Capture 'native-auth-busy.png'
     Find 'We sent a confirmation link to:' -ByName | Out-Null
     Capture 'native-email-confirmation.png'

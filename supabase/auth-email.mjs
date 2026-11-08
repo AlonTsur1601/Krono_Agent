@@ -24,8 +24,9 @@ const [title, intro, action, code] = template;
 const followup = action || code
   ? 'If you did not request this, you can ignore this email.'
   : 'If you did not make this change, review your account security.';
+const buttonWidths = { confirmation: 158, invite: 185, magic_link: 150, email_change: 174, recovery: 174 };
 const content = action
-  ? `<table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="#3b9f72" style="border-radius:12px;padding-bottom:4px"><a href="{{ .ConfirmationURL }}" style="display:block;background:#84e6b1;color:#10231f;border-radius:12px;padding:13px 22px;text-decoration:none;font-weight:bold">${action}</a></td></tr></table>`
+  ? `<a class="krono-action" href="{{ .ConfirmationURL }}" style="display:inline-block;color:#84e6b1;text-decoration:none;font-family:Rubik,Arial,sans-serif;font-weight:600"><img src="https://alontsur1601.github.io/Krono_Agent/email/${process.argv[2]}.gif" width="${buttonWidths[process.argv[2]]}" height="58" alt="${action}" style="display:block;border:0;max-width:100%;height:auto;color:#84e6b1;font-family:Rubik,Arial,sans-serif;font-size:16px"></a>`
   : code
     ? `<p style="font:700 24px monospace;letter-spacing:.18em;color:#84e6b1">${code}</p>`
     : '';
@@ -34,14 +35,23 @@ console.log(`Subject: ${title} · Krono Agent
 
 <!doctype html>
 <html lang="en">
-<body style="margin:0;background:#10151d;color:#f4f8f6;font-family:Arial,sans-serif">
+<head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+@font-face{font-family:Rubik;src:url('https://alontsur1601.github.io/Krono_Agent/fonts/Rubik.ttf') format('truetype');font-weight:100 900;font-display:swap}
+@font-face{font-family:'Space Grotesk';src:url('https://alontsur1601.github.io/Krono_Agent/fonts/SpaceGrotesk.ttf') format('truetype');font-weight:300 700;font-display:swap}
+.krono-action{transition:transform .18s ease}
+.krono-action:hover{transform:translateY(-2px)}
+.krono-action:active{transform:translateY(2px)}
+@media(prefers-reduced-motion:reduce){.krono-action{transition:none}}
+</style></head>
+<body style="margin:0;background:#10151d;color:#f4f8f6;font-family:Rubik,Arial,sans-serif">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#10151d">
     <tr><td align="center" style="padding:32px 16px">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#1b2532" style="max-width:520px;border:1px solid #344452;border-radius:20px">
         <tr><td style="padding:30px">
           <img src="https://alontsur1601.github.io/Krono_Agent/krono-mark.png" width="44" height="44" alt="" style="display:block;margin-bottom:12px">
           <div style="color:#84e6b1;font-size:13px;letter-spacing:.14em;font-weight:bold">KRONO AGENT</div>
-          <h1 style="margin:16px 0 10px;color:#f4f8f6;font-size:27px;line-height:1.2">${title}</h1>
+          <h1 style="margin:16px 0 10px;color:#f4f8f6;font-family:'Space Grotesk',Rubik,Arial,sans-serif;font-size:27px;line-height:1.2">${title}</h1>
           <p style="margin:0 0 22px;color:#d2dce5;font-size:16px;line-height:1.6">${intro}</p>
           ${content}
           <p style="margin:24px 0 0;padding-top:16px;border-top:1px solid #344452;color:#aebed0;font-size:13px;line-height:1.6">${followup}</p>

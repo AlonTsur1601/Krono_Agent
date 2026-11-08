@@ -54,12 +54,12 @@
 <ScrollViewer x:Name="SignIn" Visibility="Collapsed" VerticalScrollBarVisibility="Hidden" VerticalContentAlignment="Stretch" HorizontalContentAlignment="Stretch">
 <Grid Background="{ThemeResource KronoLoginBackdrop}">
 <Grid x:Name="LoginPattern" IsHitTestVisible="False"/>
-<Border Margin="24" MaxWidth="440" HorizontalAlignment="Stretch" VerticalAlignment="Center" Padding="32" CornerRadius="22" Background="{ThemeResource KronoSurface}" BorderBrush="{ThemeResource KronoBorder}" BorderThickness="1">
+<Border x:Name="AuthCard" Margin="24" MaxWidth="440" HorizontalAlignment="Stretch" VerticalAlignment="Center" Padding="32" CornerRadius="22" Background="{ThemeResource KronoSurface}" BorderBrush="{ThemeResource KronoBorder}" BorderThickness="1">
 <Grid>
 <StackPanel x:Name="LoginForm" Spacing="14">
 <Image Width="72" Height="72" HorizontalAlignment="Left"><Image.Source><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg"/></Image.Source></Image>
-<TextBlock Text="Welcome to Krono" FontFamily="{ThemeResource KronoDisplayFont}" Style="{ThemeResource TitleTextBlockStyle}"/>
-<TextBlock Text="Sign in to your workspace." Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+<TextBlock x:Name="AuthTitle" Text="Welcome to Krono" FontFamily="{ThemeResource KronoDisplayFont}" Style="{ThemeResource TitleTextBlockStyle}"/>
+<TextBlock x:Name="AuthSubtitle" Text="Sign in to your workspace." Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 <local:KronoTextBox x:Name="EmailInput" Header="Email" InputScope="EmailSmtpAddress"/>
 <StackPanel Spacing="4">
 <TextBlock Text="Password"/>
@@ -71,20 +71,36 @@
 </Grid>
 </StackPanel>
 <Button x:Name="LoginButton" Content="Sign in" Style="{StaticResource KronoPrimaryButton}" HorizontalAlignment="Stretch" Click="Login"/>
-<Button x:Name="RegisterButton" Content="Create an account" HorizontalAlignment="Stretch" Click="Register"/>
+<Button x:Name="CreateAccountButton" Content="Create account" Visibility="Collapsed" Style="{StaticResource KronoPrimaryButton}" HorizontalAlignment="Stretch" Click="CreateAccount"/>
 <ProgressRing x:Name="AuthProgress" Visibility="Collapsed" IsActive="False" Width="24" Height="24"/>
 <TextBlock x:Name="AuthError" Visibility="Collapsed" TextWrapping="Wrap" Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
 <TextBlock Text="Your sign-in is encrypted on this Windows account and remembered until you sign out." TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+<Border BorderBrush="{ThemeResource KronoBorder}" BorderThickness="0,1,0,0" Padding="0,16,0,0" Margin="0,8,0,0">
+<Grid>
+<StackPanel x:Name="NewAccountPrompt" Spacing="8">
+<TextBlock Text="New to Krono?" HorizontalAlignment="Center" Foreground="{ThemeResource KronoMuted}"/>
+<Button x:Name="RegisterButton" Content="Create an account" HorizontalAlignment="Stretch" Click="Register"/>
 </StackPanel>
-<StackPanel x:Name="ConfirmationForm" Visibility="Collapsed" Spacing="14">
-<SymbolIcon Symbol="Mail" HorizontalAlignment="Left" Foreground="{ThemeResource KronoAccentForeground}"/>
-<TextBlock Text="Check your email" FontFamily="{ThemeResource KronoDisplayFont}" Style="{ThemeResource TitleTextBlockStyle}"/>
+<StackPanel x:Name="ExistingAccountPrompt" Visibility="Collapsed" Spacing="4">
+<TextBlock Text="Already have an account?" HorizontalAlignment="Center" Foreground="{ThemeResource KronoMuted}"/>
+<HyperlinkButton x:Name="BackToSignInButton" Content="Sign in" HorizontalAlignment="Center" Click="BackToLogin"/>
+</StackPanel>
+</Grid>
+</Border>
+</StackPanel>
+<StackPanel x:Name="ConfirmationForm" Visibility="Collapsed" Spacing="10">
+<StackPanel Orientation="Horizontal" Spacing="10">
+<SymbolIcon Symbol="Mail" Width="20" Height="20" Foreground="{ThemeResource KronoAccentForeground}"/>
+<TextBlock Text="Check your email" FontFamily="{ThemeResource KronoDisplayFont}" FontSize="24" FontWeight="SemiBold"/>
+</StackPanel>
 <TextBlock x:Name="ConfirmationInstructions" TextWrapping="Wrap"/>
 <TextBlock x:Name="ConfirmationAddress" TextWrapping="Wrap" FontWeight="SemiBold"/>
 <TextBlock Text="Open the confirmation link, then return to Krono Agent and sign in. If you do not see the email, check your spam or junk folder." TextWrapping="Wrap" Foreground="{ThemeResource KronoMuted}"/>
+<Grid ColumnSpacing="8" Margin="0,4,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
 <Button x:Name="BackToLoginButton" Content="Back to sign in" Style="{StaticResource KronoPrimaryButton}" HorizontalAlignment="Stretch" Click="BackToLogin"/>
-<Button x:Name="ResendConfirmationButton" Content="Send a new email" HorizontalAlignment="Stretch" Click="ResendConfirmation"/>
-<TextBlock x:Name="ConfirmationStatus" TextWrapping="Wrap" Foreground="{ThemeResource KronoMuted}" AutomationProperties.LiveSetting="Polite"/>
+<Button Grid.Column="1" x:Name="ResendConfirmationButton" Content="Send a new email" HorizontalAlignment="Stretch" Click="ResendConfirmation"/>
+</Grid>
+<TextBlock x:Name="ConfirmationStatus" Visibility="Collapsed" TextWrapping="Wrap" Foreground="{ThemeResource KronoMuted}" AutomationProperties.LiveSetting="Polite"/>
 </StackPanel>
 </Grid></Border></Grid></ScrollViewer>
 </Grid></Page>
