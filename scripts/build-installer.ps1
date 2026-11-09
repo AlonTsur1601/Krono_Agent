@@ -1,4 +1,4 @@
-param([string]$PayloadUrl, [switch]$ReusePayload)
+param([string]$PayloadUrl, [switch]$ReusePayload, [switch]$Offline)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -16,19 +16,19 @@ if (!(Test-Path -LiteralPath (Join-Path $root 'release/Krono-Agent/KronoAgent.ex
 $version = (Get-Content -LiteralPath (Join-Path $root 'package.json') -Raw | ConvertFrom-Json).version
 $payloadName = 'Krono-Agent-Payload-x64.zip'
 $payload = Join-Path $root "release/$payloadName"
-if (!$ReusePayload) {
+if (!$Offline -and !$ReusePayload) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     if (Test-Path -LiteralPath $payload) { Remove-Item -LiteralPath $payload }
     [IO.Compression.ZipFile]::CreateFromDirectory((Join-Path $root 'release/Krono-Agent'), $payload)
 }
-if (!$PayloadUrl) { $PayloadUrl = "https://github.com/AlonTsur1601/Krono_Agent/releases/download/v$version/$payloadName" }
-$payloadSize = (Get-Item -LiteralPath $payload).Length
-$payloadHash = (Get-FileHash -LiteralPath $payload -Algorithm SHA256).Hash
 Add-Type -AssemblyName System.Drawing
 $art = [Drawing.Bitmap]::new(328, 628)
 $canvas = [Drawing.Graphics]::FromImage($art)
 $ink = [Drawing.Pen]::new([Drawing.Color]::FromArgb(43, 81, 73), 2)
-$icon = [Drawing.Icon]::new((Join-Path $root 'native/Krono.Agent/Assets/AppIcon.ico'), 128, 128)
+$iconBytes = [IO.File]::ReadAllBytes((Join-Path $root 'native/Krono.Agent/Assets/AppIcon.ico'))
+# AppIcon.ico stores its largest PNG frame in the last directory entry.
+$entry = 6 + 16 * ([BitConverter]::ToUInt16($iconBytes, 4) - 1)
+$iconStream = [IO.MemoryStream]::new($iconBytes, [BitConverter]::ToInt32($iconBytes, ($entry + 12)), [BitConverter]::ToInt32($iconBytes, ($entry + 8)))
 try {
     $canvas.Clear([Drawing.Color]::FromArgb(16, 21, 29))
     $canvas.SmoothingMode = [Drawing.Drawing2D.SmoothingMode]::AntiAlias
@@ -78,13 +78,34 @@ try {
     foreach ($diameter in 172, 218, 264) {
         $canvas.DrawEllipse($ink, [int]((328 - $diameter) / 2), [int]((628 - $diameter) / 2), $diameter, $diameter)
     }
-    $canvas.DrawIcon($icon, [Drawing.Rectangle]::new(100, 250, 128, 128))
+    $logo = [Drawing.Image]::FromStream($iconStream)
+    try { $canvas.DrawImage($logo, [Drawing.Rectangle]::new(100, 250, 128, 128)) }
+    finally { $logo.Dispose() }
     $art.Save((Join-Path $root 'release/Krono-Setup-Art.bmp'), [Drawing.Imaging.ImageFormat]::Bmp)
 } finally {
-    $icon.Dispose()
+    $iconStream.Dispose()
     $ink.Dispose()
     $canvas.Dispose()
     $art.Dispose()
 }
-& $compiler "/DKronoVersion=$version" "/DKronoPayloadUrl=$PayloadUrl" "/DKronoPayloadSize=$payloadSize" "/DKronoPayloadHash=$payloadHash" (Join-Path $PSScriptRoot 'krono-setup.iss')
+$defines = @("/DKronoVersion=$version")
+if ($Offline) {
+    $defines += '/DKronoOffline=1'
+    $appDirectory = Join-Path $root 'release/Krono-Agent'
+    $installedFiles = Get-ChildItem -LiteralPath $appDirectory -File -Recurse | Where-Object {
+        $_.Extension -notin '.pdb', '.map' -and $_.Name -notlike '*.test.js'
+    } | ForEach-Object { $_.FullName.Substring($appDirectory.Length + 1) }
+} else {
+    if (!$PayloadUrl) { $PayloadUrl = "https://github.com/AlonTsur1601/Krono_Agent/releases/download/v$version/$payloadName" }
+    $payloadSize = (Get-Item -LiteralPath $payload).Length
+    $payloadHash = (Get-FileHash -LiteralPath $payload -Algorithm SHA256).Hash
+    $defines += "/DKronoPayloadUrl=$PayloadUrl", "/DKronoPayloadSize=$payloadSize", "/DKronoPayloadHash=$payloadHash"
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($payload)
+    try {
+        $installedFiles = @($archive.Entries | Where-Object Name | ForEach-Object { $_.FullName.Replace('/', '\') })
+    } finally { $archive.Dispose() }
+}
+[IO.File]::WriteAllLines((Join-Path $root 'release/Krono-InstalledFiles.txt'), [string[]]$installedFiles, [Text.UTF8Encoding]::new($true))
+& $compiler @defines (Join-Path $PSScriptRoot 'krono-setup.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }

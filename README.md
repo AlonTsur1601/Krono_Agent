@@ -10,7 +10,7 @@ See [implementation status](IMPLEMENTATION_STATUS.md) and [.kiro requirements](.
 
 ## Develop on Windows
 
-For Windows x64, [download the Krono Agent installer](https://github.com/AlonTsur1601/Krono_Agent/releases/latest/download/Krono-Agent-Setup-x64.exe). You can choose the installation folder and add a desktop shortcut named **Krono Agent**. An internet connection is required when you click Install.
+For Windows x64, [download the Krono Agent installer](https://github.com/AlonTsur1601/Krono_Agent/releases/latest/download/Krono-Agent-Setup-x64.exe). The installer works offline and lets you choose the installation folder and add a desktop shortcut named **Krono Agent**.
 
 To build from source, install Node 24+ and .NET 10 SDK, then:
 
