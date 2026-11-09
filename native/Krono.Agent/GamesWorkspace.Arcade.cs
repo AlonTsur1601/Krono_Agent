@@ -15,6 +15,7 @@ public sealed partial class GamesWorkspace
     readonly ToggleButton jigsawPreview = new() { Content = "Show reference", HorizontalAlignment = HorizontalAlignment.Center };
     Canvas? dartboard, flapScenery;
     const int MazeChase = 16, Flap = 17, Darts = 18, Jigsaw = 19;
+    const double FlapLift = -9.6, FlapGravity = .72;
     void BuildArcadeControls(StackPanel footer)
     {
         AutomationProperties.SetAutomationId(arcadeAction, "ArcadeAction");
@@ -35,7 +36,7 @@ public sealed partial class GamesWorkspace
     void ArcadeAction()
     {
         if (ended || paused) return;
-        if (game == Flap) { arcade.FlapStarted = true; arcade.BirdVelocity = -7.6; }
+        if (game == Flap) { arcade.FlapStarted = true; arcade.BirdVelocity = FlapLift; }
         if (game == Darts) {
             if (!arcade.XLocked) { arcade.DartX = AimX; arcade.DartAxisTick = tick; arcade.XLocked = true; }
             else { var y = AimY; var points = ArcadeRules.DartScore(arcade.DartX, y); arcade.Hits.Add([arcade.DartX, y]); arcade.XLocked = false; score += points; gameMessage = $"Last dart {points}"; if (arcade.Hits.Count == 9) End("Nine darts thrown"); }
@@ -67,7 +68,7 @@ public sealed partial class GamesWorkspace
             Draw();
         }
         if (game == Flap && arcade.FlapStarted) {
-            arcade.BirdVelocity = Math.Min(12, arcade.BirdVelocity + .45); arcade.BirdY += arcade.BirdVelocity;
+            arcade.BirdVelocity = Math.Min(12, arcade.BirdVelocity + FlapGravity); arcade.BirdY += arcade.BirdVelocity;
             foreach (var pipe in arcade.Pipes) {
                 pipe[0] -= 3.1;
                 if (ArcadeRules.FlapHits(arcade.BirdY, pipe[0], pipe[1])) { End("Wing clipped"); Draw(); return; }
