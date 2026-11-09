@@ -83,7 +83,7 @@
 </StackPanel>
 <StackPanel x:Name="ExistingAccountPrompt" Visibility="Collapsed" Spacing="4">
 <TextBlock Text="Already have an account?" HorizontalAlignment="Center" Foreground="{ThemeResource KronoMuted}"/>
-<HyperlinkButton x:Name="BackToSignInButton" Content="Sign in" HorizontalAlignment="Center" Click="BackToLogin"/>
+<Button x:Name="BackToSignInButton" Content="Sign in" HorizontalAlignment="Stretch" Click="BackToLogin"/>
 </StackPanel>
 </Grid>
 </Border>
