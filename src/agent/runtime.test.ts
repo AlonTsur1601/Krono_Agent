@@ -8,6 +8,7 @@ function provider(responses: any[][]) {
   const adapter = {
     id: 'test',
     async configure() {},
+    getModelCapabilities(model: string) { return { supportsReasoningEffort: model === 'reasoning-model' } },
     async *createCompletion(request: CompletionRequest) {
       requests.push(structuredClone({ ...request, signal: undefined }))
       for (const chunk of responses.shift() ?? [{ type: 'done' }]) yield chunk
@@ -17,6 +18,15 @@ function provider(responses: any[][]) {
 }
 const call = { type: 'tool_call', toolCall: { id: 'call-1', name: 'write_test', arguments: { value: 'ok' } } }
 describe('agent execution boundaries', () => {
+  it('forwards reasoning effort only to a model that supports it', async () => {
+    const runtime = new AgentRuntime()
+    const fake = provider([])
+    runtime.registerProvider(fake.adapter)
+    for (const modelId of ['reasoning-model', 'plain-model']) {
+      for await (const chunk of runtime.execute([], { mode: 'chat', permissions: 'ask', providerId: 'test', modelId, reasoningEffort: 'high' })) void chunk
+    }
+    expect(fake.requests.map(request => request.reasoningEffort)).toEqual(['high', undefined])
+  })
   it('omits command tools in Project mode and redacts provider credentials in results', async () => {
     const runtime = new AgentRuntime()
     const secret = 'fixture-private-provider-credential'

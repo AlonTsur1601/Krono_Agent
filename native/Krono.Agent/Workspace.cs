@@ -54,13 +54,14 @@ public sealed partial class Workspace : IDisposable
         }
         return result;
     }
-    public async Task<bool> Login(string email, string password, bool register = false)
+    public async Task<bool> Login(string email, string password, bool register = false, CancellationToken cancellation = default)
     {
         Configure();
         var epoch = ++sessionEpoch;
         if (password.Length < 8) throw new InvalidOperationException("Use a password of at least eight characters.");
         var endpoint = register ? "signup?redirect_to=" + Uri.EscapeDataString(ConfirmationRedirect) : "token?grant_type=password";
         var result = await Auth(endpoint, new { email, password });
+        cancellation.ThrowIfCancellationRequested();
         if (epoch != sessionEpoch) throw new OperationCanceledException();
         if (result["access_token"] is null) {
             if (register) return false;
@@ -121,10 +122,12 @@ public sealed partial class Workspace : IDisposable
     public void SaveKey(string provider, string secret) => Protect(Path.Combine(dataHome, "native-credentials", AccountId, provider + ".bin"), secret);
     public string Key(string provider) => Unprotect(Path.Combine(dataHome, "native-credentials", AccountId, provider + ".bin")) ?? "";
     public string CreateChat(string? project = null) { var id = Guid.NewGuid().ToString("N"); Execute("INSERT INTO chats(id,account_id,project_id,name,created_at,updated_at) VALUES($p0,$p1,$p2,'New chat',$p3,$p3)", id, AccountId, project, Now); return id; }
-    public void AddMessage(string chat, string role, string content) {
+    public string AddMessage(string chat, string role, string content) {
         if (Query("SELECT id FROM chats WHERE id=$p0 AND deleted_at IS NULL", chat).Count == 0 || Query("SELECT chat_id FROM side_chats WHERE chat_id=$p0 AND expires_at<=$p1", chat, Now).Count > 0) throw new InvalidOperationException("This conversation is no longer available.");
-        Execute("INSERT INTO messages(id,chat_id,role,content,created_at) VALUES($p0,$p1,$p2,$p3,$p4)", Guid.NewGuid().ToString("N"), chat, role, content, Now); Execute("UPDATE chats SET updated_at=$p0 WHERE id=$p1", Now, chat);
+        var id = Guid.NewGuid().ToString("N");
+        Execute("INSERT INTO messages(id,chat_id,role,content,created_at) VALUES($p0,$p1,$p2,$p3,$p4)", id, chat, role, content, Now); Execute("UPDATE chats SET updated_at=$p0 WHERE id=$p1", Now, chat);
         if (role is "user" or "assistant") Execute("UPDATE side_chats SET expires_at=$p0 WHERE chat_id=$p1", Now + SideLifetime, chat);
+        return id;
     }
     public void Dispose() { db?.Dispose(); http.Dispose(); }
 }

@@ -65,6 +65,18 @@ export class OpenAIProvider implements ProviderAdapter {
   }
 
   private getCapabilitiesForModel(modelId: string): ModelCapabilities {
+    if (modelId === 'gpt-5-mini' || modelId.startsWith('gpt-5-mini-')) {
+      return {
+        supportsTools: true,
+        supportsImages: true,
+        supportsReasoningEffort: true,
+        supportsStructuredOutput: true,
+        contextWindow: 400000,
+        maxOutputTokens: 128000,
+        streamingSupported: true,
+      }
+    }
+
     // GPT-4 and GPT-4 Turbo
     if (modelId.includes('gpt-4')) {
       return {
@@ -122,6 +134,10 @@ export class OpenAIProvider implements ProviderAdapter {
     const input = request.messages.flatMap((message): any[] => {
       if (message.role === 'tool') return [{ type: 'function_call_output', call_id: message.toolCallId, output: message.content }]
       if (message.toolCalls) return message.toolCalls.map(call => ({ type: 'function_call', call_id: call.id, name: call.name, arguments: JSON.stringify(call.arguments) }))
+      if (message.role === 'user' && message.imagePng) return [{ role: 'user', content: [
+        { type: 'input_text', text: message.content },
+        { type: 'input_image', image_url: `data:image/png;base64,${message.imagePng}`, detail: 'auto' },
+      ] }]
       return [{ role: message.role, content: message.content }]
     })
     const stream = await this.client.responses.create({

@@ -10,6 +10,45 @@ namespace Krono_Agent;
 public sealed class GameBackdrop : Grid
 {
     readonly Canvas tiles = new();
+    bool halloween;
+
+    public void SetHalloween(bool enabled)
+    {
+        if (halloween == enabled) return;
+        halloween = enabled;
+        ArrangePattern(new Size(ActualWidth, ActualHeight));
+    }
+
+    static GeometryGroup HalloweenMotif(int index)
+    {
+        var shape = new GeometryGroup();
+        void Line(params Point[] points)
+        {
+            for (var i = 1; i < points.Length; i++)
+                shape.Children.Add(new LineGeometry { StartPoint = points[i - 1], EndPoint = points[i] });
+        }
+        void Oval(double x, double y, double rx, double ry) =>
+            shape.Children.Add(new EllipseGeometry { Center = new Point(x, y), RadiusX = rx, RadiusY = ry });
+        switch (index % 4) {
+            case 0:
+                Line(new(0, 2), new(7, 5), new(10, 3), new(13, 7), new(16, 3), new(19, 5), new(26, 2), new(22, 12), new(18, 10), new(13, 15), new(8, 10), new(4, 12), new(0, 2));
+                break;
+            case 1:
+                Oval(12, 13, 11, 8); Oval(12, 13, 5, 8);
+                Line(new(12, 5), new(14, 1), new(18, 1));
+                break;
+            case 2:
+                Line(new(1, 20), new(1, 9), new(4, 3), new(9, 0), new(14, 3), new(17, 9), new(17, 20), new(13, 17), new(9, 20), new(5, 17), new(1, 20));
+                Oval(6, 9, 1, 1.5); Oval(12, 9, 1, 1.5);
+                break;
+            default:
+                Line(new(0, 0), new(20, 0), new(20, 20), new(0, 0), new(20, 9));
+                Line(new(6, 0), new(7, 3), new(5, 5));
+                Line(new(13, 0), new(14, 6), new(10, 10));
+                break;
+        }
+        return shape;
+    }
 
 
     static List<GeometryGroup> MakeTile()
@@ -118,7 +157,7 @@ public sealed class GameBackdrop : Grid
                 .Take(5).Select(mark => mark.Motif).ToHashSet();
             var choices = Enumerable.Range(0, motifs.Count).Where(index => !neighbors.Contains(index)).ToArray();
             var motifIndex = choices[random.Next(choices.Length)];
-            var motif = motifs[motifIndex];
+            var motif = halloween ? HalloweenMotif(motifIndex) : motifs[motifIndex];
             var bounds = motif.Bounds;
             var mark = new Path { Data = motif, StrokeThickness = 1.4 };
             Canvas.SetLeft(mark, center.X - bounds.X - bounds.Width / 2);

@@ -12,12 +12,126 @@ namespace Krono_Agent;
 
 public sealed class KronoTextBox : TextBox
 {
-    public KronoTextBox() => KronoInputMotion.Attach(this, "KronoTextInput");
+    internal bool PressMotionEnabled { get; init; } = true;
+    public KronoTextBox()
+    {
+        KronoInputMotion.Attach(this, "KronoTextInput");
+        UpdateContentAlignment();
+        RegisterPropertyChangedCallback(AcceptsReturnProperty, (_, _) => UpdateContentAlignment());
+        RegisterPropertyChangedCallback(TextWrappingProperty, (_, _) => UpdateContentAlignment());
+    }
+
+    void UpdateContentAlignment() =>
+        VerticalContentAlignment = AcceptsReturn || TextWrapping != TextWrapping.NoWrap
+            ? VerticalAlignment.Top
+            : VerticalAlignment.Center;
 }
 
 public sealed class KronoComboBox : ComboBox
 {
-    public KronoComboBox() => KronoInputMotion.Attach(this);
+    static readonly Dictionary<string, string> ItemPalette = new() {
+        ["ComboBoxItemBackgroundPointerOver"] = "KronoSidebar",
+        ["ComboBoxItemBackgroundPressed"] = "KronoInputFace",
+        ["ComboBoxItemBackgroundSelected"] = "KronoSidebar",
+        ["ComboBoxItemBackgroundSelectedUnfocused"] = "KronoSidebar",
+        ["ComboBoxItemBackgroundSelectedPointerOver"] = "KronoInputFace",
+        ["ComboBoxItemBackgroundSelectedPressed"] = "KronoInputFace",
+        ["ComboBoxItemForegroundSelected"] = "KronoAccentForeground",
+        ["ComboBoxItemForegroundSelectedUnfocused"] = "KronoAccentForeground",
+        ["ComboBoxItemForegroundSelectedPointerOver"] = "KronoAccentForeground",
+        ["ComboBoxItemForegroundSelectedPressed"] = "KronoAccentForeground",
+        ["ComboBoxItemPillFillBrush"] = "KronoAccentForeground",
+    };
+
+    public KronoComboBox()
+    {
+        KronoInputMotion.Attach(this);
+        Loaded += (_, _) => RefreshPalette();
+        ActualThemeChanged += (_, _) => RefreshPalette();
+        DropDownOpened += (_, _) => RefreshPalette();
+        GotFocus += (_, _) => RefreshEditableFocus(true);
+        LostFocus += (_, _) => DispatcherQueue.TryEnqueue(() => RefreshEditableFocus(
+            FocusState != FocusState.Unfocused || GetTemplateChild("EditableText") is TextBox { FocusState: not FocusState.Unfocused }));
+    }
+
+    void RefreshEditableFocus(bool focused)
+    {
+        if (!IsEditable || new AccessibilitySettings().HighContrast || GetTemplateChild("Background") is not Border face) return;
+        var rim = (LinearGradientBrush)KronoDesign.ThemeBrush("KronoInputRim", ActualTheme);
+        if (!focused) {
+            face.BorderBrush = rim;
+            return;
+        }
+        var accent = ((SolidColorBrush)KronoDesign.ThemeBrush("KronoAccentForeground", ActualTheme)).Color;
+        var focusedRim = new LinearGradientBrush { StartPoint = rim.StartPoint, EndPoint = rim.EndPoint };
+        foreach (var stop in rim.GradientStops) {
+            var color = stop.Color;
+            color.R = (byte)((color.R + accent.R) / 2);
+            color.G = (byte)((color.G + accent.G) / 2);
+            color.B = (byte)((color.B + accent.B) / 2);
+            focusedRim.GradientStops.Add(new GradientStop { Color = color, Offset = stop.Offset });
+        }
+        face.BorderBrush = focusedRim;
+    }
+
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        if (GetTemplateChild("HighlightBackground") is Border highlight) {
+            highlight.Margin = new Thickness(1);
+            highlight.CornerRadius = new CornerRadius(Math.Max(0, CornerRadius.TopLeft - 1));
+            highlight.BorderThickness = new Thickness(1);
+            highlight.Background = null;
+        }
+        if (GetTemplateChild("PopupBorder") is Border popup) {
+            popup.CornerRadius = new CornerRadius(16);
+            popup.Padding = new Thickness(6);
+            popup.BorderThickness = new Thickness(1, 1, 1, 3);
+            if (GetTemplateChild("Popup") is Popup flyout && new UISettings().AnimationsEnabled)
+                flyout.ChildTransitions = new TransitionCollection { new PopupThemeTransition() };
+        }
+    }
+
+    protected override void PrepareContainerForItemOverride(DependencyObject element, object item)
+    {
+        base.PrepareContainerForItemOverride(element, item);
+        if (element is ComboBoxItem row) {
+            row.CornerRadius = new CornerRadius(10);
+            row.Margin = new Thickness(0, 2, 0, 2);
+            row.Padding = new Thickness(12, 7, 12, 7);
+            row.MinHeight = 34;
+            row.FontFamily = FontFamily;
+            row.FontSize = FontSize;
+        }
+    }
+
+    void RefreshPalette()
+    {
+        KronoDesign.ApplyControlAccents(this);
+        var background = KronoDesign.ThemeBrush("KronoSurface", ActualTheme);
+        var border = KronoDesign.ThemeBrush("KronoBorder", ActualTheme);
+        Resources["ComboBoxDropDownBackground"] = background;
+        Resources["ComboBoxDropDownBorderBrush"] = border;
+        if (new AccessibilitySettings().HighContrast) {
+            foreach (var key in ItemPalette.Keys) Resources.Remove(key);
+            return;
+        }
+
+        if (GetTemplateChild("EditableText") is TextBox editor) {
+            editor.FontFamily = FontFamily;
+            editor.FontSize = FontSize;
+            editor.UseSystemFocusVisuals = false;
+            editor.ApplyTemplate();
+            foreach (var part in KronoInputMotion.Descendants(editor).OfType<Border>().Where(part => part.Name == "BorderElement"))
+                part.Opacity = 0;
+        }
+        if (GetTemplateChild("PopupBorder") is Border popup) {
+            popup.Background = background;
+            popup.BorderBrush = border;
+        }
+        foreach (var (key, brush) in ItemPalette)
+            Resources[key] = KronoDesign.ThemeBrush(brush, ActualTheme);
+    }
 }
 
 internal static class KronoInputMotion
@@ -40,11 +154,11 @@ internal static class KronoInputMotion
         void StyleParts() {
             field.ApplyTemplate();
             foreach (var child in Descendants(field).ToArray())
-                if (child is ButtonBase button) StyleButton(button);
+                if (child is ButtonBase button) StyleButton(button, field is not KronoTextBox { PressMotionEnabled: false });
                 else if (child is Border border) {
                     border.BackgroundTransition = new BrushTransition { Duration = TimeSpan.FromMilliseconds(180) };
                 }
-            if (highlight is null && Descendants(field).OfType<Border>().FirstOrDefault(border => border.Name == "BorderElement") is { Parent: Grid grid } face) {
+            if (highlight is null && field is not KronoComboBox && Descendants(field).OfType<Border>().FirstOrDefault(border => border.Name == "BorderElement") is { Parent: Grid grid } face) {
                 rim = new LinearGradientBrush { StartPoint = new(0, 0), EndPoint = new(0, 1) };
                 foreach (var stop in ((LinearGradientBrush)KronoDesign.ThemeBrush("KronoInputRim", field.ActualTheme)).GradientStops)
                     rim.GradientStops.Add(new GradientStop { Color = stop.Color, Offset = stop.Offset });
@@ -76,17 +190,19 @@ internal static class KronoInputMotion
 
         void Refresh()
         {
-            var active = field.IsEnabled && (field.FocusState != FocusState.Unfocused || hover);
+            var focused = field.FocusState != FocusState.Unfocused ||
+                field is KronoComboBox { IsEditable: true } && Descendants(field).OfType<TextBox>().Any(editor => editor.FocusState != FocusState.Unfocused);
+            var active = field.IsEnabled && (focused || hover);
             var pressing = field.IsEnabled && (pressed || pressFeedback.IsEnabled);
-            AnimateSurface(field, pressing ? .99f : active ? 1.006f : 1, active && !pressing ? -1.5f : 0);
+            AnimateSurface(field, pressing && field is not KronoTextBox { PressMotionEnabled: false } ? .99f : 1);
             if (highlight is null) return;
             var accent = ((SolidColorBrush)KronoDesign.ThemeBrush("KronoAccentForeground", field.ActualTheme)).Color;
-            accent.A = active ? (byte)(field.FocusState != FocusState.Unfocused ? 220 : 100) : (byte)0;
+            accent.A = active ? (byte)(focused ? 220 : 100) : (byte)0;
             var storyboard = new Storyboard();
             AddColorAnimation(storyboard, highlight, accent);
             if (rim is not null) {
                 var normal = (LinearGradientBrush)KronoDesign.ThemeBrush("KronoInputRim", field.ActualTheme);
-                var blend = active ? (field.FocusState != FocusState.Unfocused ? .5 : .25) : 0;
+                var blend = active ? (focused ? .5 : .25) : 0;
                 for (var i = 0; i < rim.GradientStops.Count; i++) {
                     var color = normal.GradientStops[i].Color;
                     color.R = (byte)(color.R + (accent.R - color.R) * blend);
@@ -126,13 +242,13 @@ internal static class KronoInputMotion
         field.Unloaded += (_, _) => { hover = pressed = false; pressFeedback.Stop(); AnimateSurface(field, 1); };
     }
 
-    internal static void StyleButton(ButtonBase button)
+    internal static void StyleButton(ButtonBase button, bool motionEnabled = true)
     {
         if (StyledButtons.TryGetValue(button, out _)) return;
         StyledButtons.Add(button, new object());
         if (button.Name is "DeleteButton" or "PasswordVisibility") {
             if (button.Name == "DeleteButton")
-                button.Content = new FontIcon { Glyph = "\uE894", FontSize = 14 };
+                button.Content = new FontIcon { Glyph = "\uE894", FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 14 };
             button.Template = (ControlTemplate)Application.Current.Resources["KronoInputButtonTemplate"];
             button.Width = 34;
             button.Height = 28;
@@ -145,12 +261,12 @@ internal static class KronoInputMotion
         button.VerticalAlignment = VerticalAlignment.Center;
         void Paint(string key) => button.Background = KronoDesign.ThemeBrush(key, button.ActualTheme);
         bool hover = false;
-        void Normal() { Paint(hover ? "ButtonBackgroundPointerOver" : "KronoInputFace"); Animate(button, hover ? .96f : 1); }
+        void Normal() { Paint(hover ? "ButtonBackgroundPointerOver" : "KronoInputFace"); if (motionEnabled) Animate(button, hover ? .96f : 1); }
         Normal();
         button.ActualThemeChanged += (_, _) => Normal();
         button.PointerEntered += (_, _) => { hover = true; Normal(); };
         button.PointerExited += (_, _) => { hover = false; Normal(); };
-        button.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => { Paint("ButtonBackgroundPressed"); Animate(button, .88f); }), true);
+        button.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => { Paint("ButtonBackgroundPressed"); if (motionEnabled) Animate(button, .88f); }), true);
         button.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, _) => Normal()), true);
         button.PointerCaptureLost += (_, _) => Normal();
     }
@@ -221,7 +337,7 @@ internal static class KronoInputMotion
         visual.StartAnimation("Translation", translation);
     }
 
-    static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
+    internal static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
     {
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++) {
             var child = VisualTreeHelper.GetChild(parent, i);

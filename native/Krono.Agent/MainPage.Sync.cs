@@ -20,7 +20,7 @@ public sealed partial class MainPage
     {
         panel.Children.Add(Heading("Account sync"));
         panel.Children.Add(new TextBlock { Text = "Sync chats, projects, memories, appearance and game progress with this account. Keys, tool permissions, local folders and temporary side chats stay on this device.", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
-        var enable = new ToggleSwitch { Header = "Sync account data", IsOn = workspace.SyncEnabled };
+        var enable = new ToggleSwitch { Header = "Sync account data", OnContent = "On", OffContent = "Off", IsOn = workspace.SyncEnabled };
         AutomationProperties.SetAutomationId(enable, "AccountSyncEnabled");
         enable.Toggled += async (_, _) => {
             workspace.SetSetting("native.accountSync", enable.IsOn ? "true" : "false");
@@ -79,7 +79,7 @@ public sealed partial class MainPage
             void Compare() { var item = differences[Math.Max(0, picker.SelectedIndex)]; local.Text = Describe(item.Local); cloud.Text = Describe(item.Cloud); }
             picker.SelectionChanged += (_, _) => Compare(); Compare();
             var content = new StackPanel { Spacing = 10 }; content.Children.Add(picker); content.Children.Add(local); content.Children.Add(cloud);
-            var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Resolve account differences", Content = content, PrimaryButtonText = "Use this device", SecondaryButtonText = "Use cloud", CloseButtonText = "Later", DefaultButton = ContentDialogButton.Close };
+            var dialog = new KronoDialog { XamlRoot = XamlRoot, Title = "Resolve account differences", Content = content, PrimaryButtonText = "Use this device", SecondaryButtonText = "Use cloud", CloseButtonText = "Later", DefaultButton = ContentDialogButton.Close };
             var answer = await dialog.ShowAsync();
             if (generation != sessionGeneration || answer == ContentDialogResult.None) return;
             workspace.ResolveSyncConflict(differences[Math.Max(0, picker.SelectedIndex)], answer == ContentDialogResult.Primary); RefreshSyncedViews();

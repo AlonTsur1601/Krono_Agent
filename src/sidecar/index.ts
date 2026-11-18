@@ -60,8 +60,10 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       if (method === 'models') { send({ id, result: await runtime.getProvider(provider)!.listModels() }); return }
       if (method === 'test') { send({ id, result: await runtime.getProvider(provider)!.testConnection() }); return }
       {
-        const config = z.object({ mode: z.enum(['chat','plan','agent','goal']), permissions: z.enum(['ask','project','full']), modelId: z.string().min(1), projectDirs: z.array(z.string()), instructions: z.string(), memories: z.array(z.string()) }).parse(data)
-        const messages = z.array(z.object({ role: z.enum(['user','assistant','system']), content: z.string() })).parse(data.messages)
+        const config = z.object({ mode: z.enum(['chat','plan','agent','goal']), permissions: z.enum(['ask','project','full']), modelId: z.string().min(1), reasoningEffort: z.enum(['low','medium','high']).optional(), projectDirs: z.array(z.string()), instructions: z.string(), memories: z.array(z.string()) }).parse(data)
+        const messages = z.array(z.object({ role: z.enum(['user','assistant','system']), content: z.string(), imagePng: z.string().max(5_592_408).regex(/^iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/).optional() })).parse(data.messages)
+        if (messages.some(message => message.imagePng && (provider !== 'openai' || message.role !== 'user')))
+          throw new Error('Pasted images require an OpenAI model that accepts images.')
         for await (const chunk of runtime.execute(messages, { ...config, toolsEnabled, providerId: provider, signal: controller.signal, requestApproval: async action => {
           const approvalId = randomUUID()
           return new Promise(resolve => {

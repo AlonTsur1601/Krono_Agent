@@ -56,19 +56,19 @@ public sealed partial class GamesWorkspace
         if (paused || ended) return;
         if (game == 8 && index is >= 0 and < 25) {
             ToggleLights(index); moves++;
-            if (board.Take(25).All(value => value == 0)) { score = Math.Max(1, 1000 - moves * 10); End("All lights out"); }
+            if (board.Take(25).All(value => value == 0)) { score = Math.Max(1, 1000 - moves * 10); End("All lights out", won: true); }
         }
         if (game == 9 && index is >= 0 and < 4 && simonWaiting) {
             if (index != sequence[simonInput]) End("Pattern missed");
             else if (++simonInput == sequence.Count) {
                 score += sequence.Count * 10;
-                if (sequence.Count == 20) End("All 20 patterns remembered");
+                if (sequence.Count == 20) End("All 20 patterns remembered", won: true);
                 else { sequence.Add(random.Next(4)); simonInput = 0; simonStart = tick + 20; simonWaiting = false; simonVisual = -3; }
             }
         }
         if (game == 10 && index is >= 0 and < 16) {
             if (index != oddCell) End("Different shade missed");
-            else { score += 100; if (oddRound++ == 20) End("20 shades found"); else NextOddColor(); }
+            else { score += 100; if (oddRound++ == 20) End("20 shades found", won: true); else NextOddColor(); }
         }
         Draw();
         SaveCurrent();

@@ -1,0 +1,7 @@
+click.wav, pickup.wav, success.wav
+Kenney Interface Sounds, CC0
+https://kenney.nl/assets/interface-sounds
+
+failure.mp3
+Fail Sound (Wa-Wa-Wah, with Staccato) by YoshikaMiyafuji, CC0
+https://freesound.org/people/YoshikaMiyafuji/sounds/835112/

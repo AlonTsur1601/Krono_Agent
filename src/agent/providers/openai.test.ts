@@ -6,6 +6,16 @@ import { OpenAIProvider } from './openai'
 async function* events(items: unknown[]) { for (const item of items) yield item }
 describe('OpenAI Responses transport', () => {
   beforeEach(() => create.mockReset())
+  it('sends pasted PNG data as image input alongside the prompt', async () => {
+    create.mockResolvedValue(events([]))
+    const provider = new OpenAIProvider(); await provider.configure({ apiKey: 'test-placeholder' })
+    const imagePng = 'iVBORw0KGgo='
+    for await (const chunk of provider.createCompletion({ model: 'test-model', messages: [{ role: 'user', content: 'Describe this', imagePng }] })) void chunk
+    expect(create.mock.calls[0][0].input).toEqual([{ role: 'user', content: [
+      { type: 'input_text', text: 'Describe this' },
+      { type: 'input_image', image_url: `data:image/png;base64,${imagePng}`, detail: 'auto' },
+    ] }])
+  })
   it('uses Responses without storing content and omits tools for plain chat', async () => {
     create.mockResolvedValue(events([{ type: 'response.output_text.delta', delta: 'Hello' }, { type: 'response.completed', response: { usage: { input_tokens: 1, output_tokens: 2, total_tokens: 3 } } }]))
     const provider = new OpenAIProvider(); await provider.configure({ apiKey: 'test-placeholder' })

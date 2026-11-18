@@ -135,9 +135,9 @@ var next = TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeMilliseconds(Work
 Check(next.Day == 2 && next.Hour == 9, "Daily schedule drifted across timezone change");
 Console.WriteLine("NATIVE_SCHEDULE_PASS: opt-in, pause/cancel, one-time, concurrent claim, single catch-up, timezone and DST");
 var textFile = Path.Combine(localFixtureRoot, "fixture-source.txt");
-await File.WriteAllTextAsync(textFile, "שלום\n```\nreference\n```", System.Text.Encoding.Unicode);
+await File.WriteAllTextAsync(textFile, "\u05e9\u05dc\u05d5\u05dd\n```\nreference\n```", System.Text.Encoding.Unicode);
 var attachment = await TextAttachment.Read(textFile); var composed = TextAttachment.Compose("Read this", [attachment]);
-Check(attachment.Name == "fixture-source.txt" && composed.Contains("שלום") && composed.Contains("\n~~~\nשלום") && !composed.Contains(localFixtureRoot), "Attachment encoding, fences or basename-only snapshot");
+Check(attachment.Name == "fixture-source.txt" && composed.Contains("\u05e9\u05dc\u05d5\u05dd") && composed.Contains("\n~~~\n\u05e9\u05dc\u05d5\u05dd") && !composed.Contains(localFixtureRoot), "Attachment encoding, fences or basename-only snapshot");
 await File.WriteAllBytesAsync(textFile, new byte[TextAttachment.MaxBytes + 1]);
 try { _ = await TextAttachment.Read(textFile); throw new Exception("Oversized attachment accepted"); } catch (InvalidOperationException) { }
 await File.WriteAllBytesAsync(textFile, [0, 1, 2]);

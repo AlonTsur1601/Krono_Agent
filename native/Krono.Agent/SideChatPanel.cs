@@ -15,7 +15,7 @@ public sealed class SideChatPanel : Grid, IDisposable
     readonly Action<string> openChat;
     readonly Action transferQueued;
     readonly StackPanel transcript = new() { Spacing = 14 };
-    readonly ComboBox saved = new() { Header = "Temporary chats", HorizontalAlignment = HorizontalAlignment.Stretch, DisplayMemberPath = "Name" };
+    readonly ComboBox saved = new KronoComboBox { Header = "Branches of this chat", HorizontalAlignment = HorizontalAlignment.Stretch, DisplayMemberPath = "Name" };
     readonly TextBlock expiry = new() { FontSize = 12, Opacity = .7, TextWrapping = TextWrapping.Wrap };
     readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .8 };
     readonly KronoTextBox input = new() { PlaceholderText = "Ask in this side chat…", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 70, MaxHeight = 120 };
@@ -54,14 +54,14 @@ public sealed class SideChatPanel : Grid, IDisposable
             if (type == "chunk" && data?["type"]?.ToString() == "text") { response += data["content"]?.ToString(); if (streaming is not null) streaming.Text = response; scroll.ChangeView(null, scroll.ScrollableHeight, null); }
         };
         saved.SelectionChanged += (_, _) => { if (runId is null && saved.SelectedItem is SavedSide side) { chatId = side.Id; Render(); } };
-        RefreshList(); Render(); timer.Tick += (_, _) => UpdateExpiry(); timer.Start();
+        Render(); RefreshList(); timer.Tick += (_, _) => UpdateExpiry(); timer.Start();
     }
     Button ActionButton(string text, Action action) { var button = new Button { Content = text }; button.Click += (_, _) => { try { action(); } catch (Exception error) { status.Text = error.Message; } }; return button; }
     Button ActionButton(string text, Func<Task> action) { var button = new Button { Content = text }; button.Click += async (_, _) => { try { await action(); } catch (Exception error) { if (!disposed) status.Text = error.Message; } }; return button; }
     bool Available() => workspace.Query("SELECT chat_id FROM side_chats WHERE chat_id=$p0 AND expires_at>$p1", chatId, Workspace.Now).Count > 0;
     void RefreshList()
     {
-        var items = workspace.Query("SELECT c.id,c.name FROM chats c JOIN side_chats s ON s.chat_id=c.id WHERE s.expires_at>$p0 ORDER BY c.updated_at DESC", Workspace.Now).Select(row => new SavedSide(row["id"]!.ToString(), row["name"]!.ToString())).ToArray();
+        var items = workspace.Query("SELECT c.id,c.name FROM chats c JOIN side_chats s ON s.chat_id=c.id WHERE s.parent_chat_id=$p0 AND s.expires_at>$p1 ORDER BY c.updated_at DESC", parent, Workspace.Now).Select(row => new SavedSide(row["id"]!.ToString(), row["name"]!.ToString())).ToArray();
         saved.ItemsSource = items; saved.SelectedItem = items.FirstOrDefault(item => item.Id == chatId);
     }
     void Render()
@@ -112,7 +112,7 @@ public sealed class SideChatPanel : Grid, IDisposable
         var latest = workspace.Query("SELECT content FROM messages WHERE chat_id=$p0 AND role='assistant' AND deleted_at IS NULL ORDER BY created_at DESC,rowid DESC LIMIT 1", chatId).FirstOrDefault()?["content"]?.ToString();
         if (string.IsNullOrWhiteSpace(latest)) { status.Text = "There is no assistant reply to transfer."; return; }
         var preview = new KronoTextBox { Text = latest, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 320, MinWidth = 320 }; AutomationProperties.SetAutomationId(preview, "SideTransferPreview");
-        var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Append context to parent", Content = preview, PrimaryButtonText = "Transfer", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close }; transferDialog = dialog;
+        var dialog = new KronoDialog { XamlRoot = XamlRoot, Title = "Append context to parent", Content = preview, PrimaryButtonText = "Transfer", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close }; transferDialog = dialog;
         var accepted = await dialog.ShowAsync(); transferDialog = null;
         if (accepted != ContentDialogResult.Primary || disposed || !Available() || string.IsNullOrWhiteSpace(preview.Text)) return;
         workspace.QueueSideTransfer(parent, preview.Text); transferQueued(); status.Text = "Transfer accepted · appended when the parent's current run finishes.";

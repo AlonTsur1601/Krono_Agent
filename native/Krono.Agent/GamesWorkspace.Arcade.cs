@@ -36,10 +36,11 @@ public sealed partial class GamesWorkspace
     void ArcadeAction()
     {
         if (ended || paused) return;
+        if (game is Flap or Darts) PlayGameSound(GameSound.Click);
         if (game == Flap) { arcade.FlapStarted = true; arcade.BirdVelocity = FlapLift; }
         if (game == Darts) {
             if (!arcade.XLocked) { arcade.DartX = AimX; arcade.DartAxisTick = tick; arcade.XLocked = true; }
-            else { var y = AimY; var points = ArcadeRules.DartScore(arcade.DartX, y); arcade.Hits.Add([arcade.DartX, y]); arcade.XLocked = false; score += points; gameMessage = $"Last dart {points}"; if (arcade.Hits.Count == 9) End("Nine darts thrown"); }
+            else { var y = AimY; var points = ArcadeRules.DartScore(arcade.DartX, y); arcade.Hits.Add([arcade.DartX, y]); arcade.XLocked = false; score += points; gameMessage = $"Last dart {points}"; if (arcade.Hits.Count == 9) End("Nine darts thrown", won: true); }
         }
         Draw(); SaveCurrent();
     }
@@ -52,8 +53,8 @@ public sealed partial class GamesWorkspace
             if (next != arcade.MazePlayer) arcade.MazeDirection = arcade.WantedDirection;
             arcade.MazePlayer = ArcadeRules.MazeNext(arcade.MazePlayer, arcade.MazeDirection);
             var pellet = arcade.Pellets[arcade.MazePlayer];
-            if (pellet > 0) { score += pellet == 2 ? 30 : 10; if (pellet == 2) arcade.Power = 24; arcade.Pellets[arcade.MazePlayer] = 0; }
-            if (arcade.Pellets.All(n => n == 0)) { End("Maze cleared"); Draw(); return; }
+            if (pellet > 0) { PlayGameSound(GameSound.Pickup); score += pellet == 2 ? 30 : 10; if (pellet == 2) arcade.Power = 24; arcade.Pellets[arcade.MazePlayer] = 0; }
+            if (arcade.Pellets.All(n => n == 0)) { End("Maze cleared", won: true); Draw(); return; }
             for (var i = 0; i < arcade.Ghosts.Length; i++) {
                 if (arcade.Ghosts[i] == arcade.MazePlayer || (tick / 5 + i) % 2 == 0) arcade.Ghosts[i] = ArcadeRules.GhostMove(arcade.Ghosts[i], arcade.MazePlayer, arcade.Power > 0);
                 if (arcade.Ghosts[i] != arcade.MazePlayer) continue;
@@ -69,10 +70,11 @@ public sealed partial class GamesWorkspace
         }
         if (game == Flap && arcade.FlapStarted) {
             arcade.BirdVelocity = Math.Min(12, arcade.BirdVelocity + FlapGravity); arcade.BirdY += arcade.BirdVelocity;
+            var pipeSpeed = Math.Min(4.6, 2.6 + score * .0075);
             foreach (var pipe in arcade.Pipes) {
-                pipe[0] -= 3.1;
+                pipe[0] -= pipeSpeed;
                 if (ArcadeRules.FlapHits(arcade.BirdY, pipe[0], pipe[1])) { End("Wing clipped"); Draw(); return; }
-                if (pipe[0] + 56 < 107 && pipe[2] == 0) { pipe[2] = 1; score += 10; }
+                if (pipe[0] + 56 < 107 && pipe[2] == 0) { pipe[2] = 1; score += 10; PlayGameSound(GameSound.Pickup); }
             }
             arcade.Pipes.RemoveAll(p => p[0] < -56);
             if (arcade.Pipes.Count == 0 || arcade.Pipes[^1][0] < 245) arcade.Pipes.Add([480, random.Next(140, 341), 0]);
@@ -88,7 +90,7 @@ public sealed partial class GamesWorkspace
         else if (arcade.Piece == index) arcade.Piece = -1;
         else {
             (board[index], board[arcade.Piece]) = (board[arcade.Piece], board[index]); arcade.Piece = -1; moves++;
-            if (board.Take(16).Select((piece, i) => piece == i).All(v => v)) { score = Math.Max(1, 1000 - moves * 15); End("Picture complete"); }
+            if (board.Take(16).Select((piece, i) => piece == i).All(v => v)) { score = Math.Max(1, 1000 - moves * 15); End("Picture complete", won: true); }
         }
         Draw(); SaveCurrent();
     }
@@ -118,13 +120,17 @@ public sealed partial class GamesWorkspace
             }
             var y = arcade.BirdY;
             var wing = arcade.FlapStarted && !ended ? Math.Sin(tick * .65) * 4 : 0;
-            ArcadePolygon(canvas, Ink(0xc95750), (108, y + 2), (94, y - 4), (101, y + 8), (111, y + 8));
-            Rect(105, y - 13, 29, 26, RaisedFace(Ink(0xffb64c)), 13);
-            Rect(112, y + 3, 17, 7, Ink(0xffd99b), 3);
-            Rect(102, y - 1 + wing, 17, 9, RaisedFace(Ink(0xef8650)), 4);
-            Rect(122, y - 8, 9, 10, Ink(0xfff2d8), 4);
-            Rect(126, y - 6, 4, 6, Ink(0x242139), 2);
-            ArcadePolygon(canvas, Ink(0xf57547), (132, y - 1), (144, y + 2), (133, y + 6));
+            Rect(0, 468, 480, 12, Ink(0x315c58), 0);
+            Rect(0, 468, 480, 2, Ink(0x8ac2a1), 0);
+            ArcadePolygon(canvas, Ink(0xc35c3f), (109, y + 1), (98, y - 4), (103, y + 6), (110, y + 8));
+            Rect(105, y - 13, 30, 26, Ink(0xcb6d38), 13);
+            Rect(106, y - 13, 28, 23, Ink(0xffb85e), 12);
+            Rect(112, y + 2, 17, 8, Ink(0xffdfa5), 4);
+            Rect(106, y - 3 + wing, 15, 10, Ink(0xe88742), 5);
+            Rect(109, y - 3 + wing, 11, 6, Ink(0xffcf78), 3);
+            Rect(122, y - 8, 9, 10, Ink(0xfff4dc), 4.5);
+            Rect(126, y - 6, 3.5, 5, Ink(0x283136), 1.75);
+            ArcadePolygon(canvas, Ink(0xef8040), (132, y - 1), (141, y + 2), (132, y + 6));
         }
         if (game == Darts) {
             arcadeAction.Content = arcade.XLocked ? "Lock height & throw" : "Lock horizontal aim";
@@ -172,29 +178,33 @@ public sealed partial class GamesWorkspace
     static Canvas MakeFlapScenery()
     {
         var sky = new LinearGradientBrush { StartPoint = new(0, 0), EndPoint = new(0, 1) };
-        sky.GradientStops.Add(new GradientStop { Color = Ink(0x272952).Color, Offset = 0 });
-        sky.GradientStops.Add(new GradientStop { Color = Ink(0xe59185).Color, Offset = .77 });
-        sky.GradientStops.Add(new GradientStop { Color = Ink(0xffcf98).Color, Offset = 1 });
+        sky.GradientStops.Add(new GradientStop { Color = Ink(0x5d939e).Color, Offset = 0 });
+        sky.GradientStops.Add(new GradientStop { Color = Ink(0xadd5cc).Color, Offset = .62 });
+        sky.GradientStops.Add(new GradientStop { Color = Ink(0xffdfa5).Color, Offset = 1 });
         var scenery = new Canvas { Width = 480, Height = 480, Background = sky, IsHitTestVisible = false };
         void Disc(double x, double y, double size, Brush brush)
         {
             var disc = new Ellipse { Width = size, Height = size, Fill = brush };
             Canvas.SetLeft(disc, x); Canvas.SetTop(disc, y); scenery.Children.Add(disc);
         }
-        Disc(317, 61, 120, Ink(0xb67c8c)); Disc(332, 76, 90, Ink(0xffc995));
-        for (var i = 0; i < 16; i++) Disc(13 + i * 67 % 450, 18 + i * 41 % 150, 2 + i % 3, Ink(0xf4c7b5));
-        ArcadePolygon(scenery, Ink(0x86709a), (0, 358), (91, 241), (162, 316), (240, 223), (340, 335), (420, 264), (480, 325), (480, 480), (0, 480));
-        ArcadePolygon(scenery, Ink(0x60597e), (0, 370), (65, 335), (127, 376), (218, 300), (290, 365), (386, 313), (480, 357), (480, 480), (0, 480));
-        ArcadePolygon(scenery, Ink(0x384963), (0, 405), (75, 382), (177, 415), (272, 376), (365, 421), (448, 383), (480, 393), (480, 480), (0, 480));
+        Disc(339, 62, 78, Ink(0xe9dcaf)); Disc(347, 70, 62, Ink(0xffeabc));
+        foreach (var (x, y) in new[] { (37, 86), (188, 143), (359, 200) }) {
+            var cloud = Ink(0xd6e5d6);
+            Disc(x, y + 8, 25, cloud); Disc(x + 13, y, 34, cloud); Disc(x + 35, y + 9, 24, cloud);
+        }
+        ArcadePolygon(scenery, Ink(0x83aaa0), (0, 355), (68, 290), (120, 319), (208, 256), (293, 337), (373, 277), (480, 342), (480, 480), (0, 480));
+        ArcadePolygon(scenery, Ink(0x5c8a7d), (0, 401), (68, 360), (145, 385), (223, 333), (308, 385), (400, 342), (480, 371), (480, 480), (0, 480));
+        ArcadePolygon(scenery, Ink(0x416f65), (0, 436), (92, 408), (172, 429), (254, 395), (347, 429), (432, 398), (480, 418), (480, 480), (0, 480));
         return scenery;
     }
     void FlapPipe(double x, double y, double height, double collar)
     {
-        Rect(x, y, 56, height, Ink(0x255d57), 0);
-        Rect(x + 9, y, 30, height, Ink(0x41997a), 0);
-        Rect(x + 12, y, 5, height, Ink(0x78c3a0), 0);
-        Rect(x, collar, 56, 15, RaisedFace(Ink(0x61b690)), 4);
-        Rect(x + 5, collar + 3, 46, 2, Ink(0x9adbbb), 1);
+        Rect(x, y, 56, height, Ink(0x244c50), 0);
+        Rect(x + 5, y, 45, height, Ink(0x3b7571), 0);
+        Rect(x + 9, y, 4, height, Ink(0x5d9690), 0);
+        Rect(x, collar, 56, 15, Ink(0x244c50), 4);
+        Rect(x + 2, collar + 1, 52, 11, Ink(0x78ab91), 3);
+        Rect(x + 7, collar + 3, 42, 2, Ink(0xb0ceb1), 1);
     }
     Canvas MakeDartboard()
     {

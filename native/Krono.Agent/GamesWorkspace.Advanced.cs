@@ -63,7 +63,7 @@ public sealed partial class GamesWorkspace
                 NativeGameRules.ReversiPlace(board, choice, 2);
             } while (NativeGameRules.ReversiMoves(board, 1).Length == 0);
             var yours = board.Count(value => value == 1); var theirs = board.Count(value => value == 2); score = yours;
-            if (NativeGameRules.ReversiMoves(board, 1).Length == 0 && NativeGameRules.ReversiMoves(board, 2).Length == 0) End(yours == theirs ? "Draw" : yours > theirs ? "You won" : "Bot won");
+            if (NativeGameRules.ReversiMoves(board, 1).Length == 0 && NativeGameRules.ReversiMoves(board, 2).Length == 0) End(yours == theirs ? "Draw" : yours > theirs ? "You won" : "Bot won", won: yours > theirs);
             else gameMessage = NativeGameRules.ReversiMoves(board, 2).Length == 0 ? "Bot passes · your turn" : "Your turn";
         }
         Draw(); SaveCurrent();
@@ -73,7 +73,7 @@ public sealed partial class GamesWorkspace
         if (game != 13 || paused || ended || selectedSquare < 0 || clues[selectedSquare]) return;
         if (digit > 0 && !NativeGameRules.SudokuLegal(sudoku, selectedSquare, digit)) { gameMessage = "That digit conflicts with its row, column or box"; Draw(); return; }
         sudoku[selectedSquare] = digit; moves++; score = Enumerable.Range(0, 81).Count(i => !clues[i] && sudoku[i] > 0) * 10; gameMessage = "";
-        if (sudoku.All(value => value > 0)) End("Sudoku complete");
+        if (sudoku.All(value => value > 0)) End("Sudoku complete", won: true);
         Draw(); SaveCurrent();
     }
     void UpdateAdvanced()
@@ -99,7 +99,7 @@ public sealed partial class GamesWorkspace
         if (game != 15 || paused || ended || tick < colorStart || chosenColors.Count >= 5) return;
         var color = CurrentColor; var distance = NativeGameRules.DeltaE(targetColors[chosenColors.Count], color);
         score += (int)Math.Round(100 * Math.Max(0, 1 - distance / 100)); chosenColors.Add(color);
-        if (chosenColors.Count == 5) End("Gauntlet complete");
+        if (chosenColors.Count == 5) End("Gauntlet complete", won: true);
         else {
             colorStart = tick + ColorMemoryTicks;
             SetColor(0xff808080);

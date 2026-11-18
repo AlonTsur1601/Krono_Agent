@@ -11,7 +11,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
     readonly TabView tabs = new() { VerticalAlignment = VerticalAlignment.Stretch };
     readonly Dictionary<string, TerminalBuffer> buffers = new();
     readonly Dictionary<string, (TabViewItem Tab, TextBox Output)> terminals = new();
-    readonly KronoTextBox input = new() { PlaceholderText = "PowerShell input · Enter to send", FontFamily = KronoDesign.CodeFont };
+    readonly KronoTextBox input = new() { PlaceholderText = "PowerShell input · Enter to send", FontFamily = KronoDesign.CodeFont, PressMotionEnabled = false };
     public TerminalWorkspace(AgentWorker worker, DispatcherQueue queue)
     {
         this.worker = worker;
@@ -26,17 +26,22 @@ public sealed class TerminalWorkspace : Grid, IDisposable
         SetTabPalette();
         ActualThemeChanged += (_, _) => SetTabPalette();
         Children.Add(tabs);
+        tabs.Loaded += (_, _) => KronoDesign.NameTemplateButton(tabs, "AddButton", "Add new tab");
         var commands = new Grid { ColumnSpacing = 8 };
         commands.ColumnDefinitions.Add(new ColumnDefinition());
         commands.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         commands.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         commands.Children.Add(input);
-        var send = new Button { Content = "Run input" }; send.Click += async (_, _) => await WriteInput(); Grid.SetColumn(send, 1); commands.Children.Add(send);
-        var interrupt = new Button { Content = "Interrupt" }; interrupt.Click += async (_, _) => { var id = SelectedId(); if (id is not null) await worker.Request(Guid.NewGuid().ToString(), "terminal:write", new { id, content = "\u0003" }); }; Grid.SetColumn(interrupt, 2); commands.Children.Add(interrupt);
+        var flat = (Style)Application.Current.Resources["KronoFlatButton"];
+        var send = new Button { Content = "Run input", Style = flat }; send.Click += async (_, _) => await WriteInput(); Grid.SetColumn(send, 1); commands.Children.Add(send);
+        var interrupt = new Button { Content = "Interrupt", Style = flat }; interrupt.Click += async (_, _) => { var id = SelectedId(); if (id is not null) await worker.Request(Guid.NewGuid().ToString(), "terminal:write", new { id, content = "\u0003" }); }; Grid.SetColumn(interrupt, 2); commands.Children.Add(interrupt);
         Grid.SetRow(commands, 1); Children.Add(commands);
         tabs.AddTabButtonClick += async (_, _) => await Create();
+        tabs.SelectionChanged += (_, _) => {
+            if (tabs.SelectedItem is TabViewItem { Content: FrameworkElement frame }) KronoDesign.AnimateThemeChange(frame);
+        };
         tabs.TabCloseRequested += async (_, args) => { var entry = terminals.FirstOrDefault(t => t.Value.Tab == args.Tab); if (entry.Key is not null) { await worker.Request(Guid.NewGuid().ToString(), "terminal:close", new { id = entry.Key }); terminals.Remove(entry.Key); tabs.TabItems.Remove(args.Tab); } };
-        input.KeyDown += async (_, args) => {
+        input.PreviewKeyDown += async (_, args) => {
             var id = terminals.FirstOrDefault(t => ReferenceEquals(t.Value.Tab, tabs.SelectedItem)).Key; if (id is null) return;
             if (args.Key == Windows.System.VirtualKey.Enter) { args.Handled = true; await WriteInput(); }
         };
@@ -47,9 +52,12 @@ public sealed class TerminalWorkspace : Grid, IDisposable
     async Task Create()
     {
         var id = Guid.NewGuid().ToString();
-        var output = new KronoTextBox { IsReadOnly = true, AcceptsReturn = true, FontFamily = KronoDesign.CodeFont, FontSize = KronoDesign.CodeSize, TextWrapping = TextWrapping.NoWrap, BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(0, 0, 10, 10) };
+        var output = new KronoTextBox { IsReadOnly = true, AcceptsReturn = true, PressMotionEnabled = false, FontFamily = KronoDesign.CodeFont, FontSize = KronoDesign.CodeSize, TextWrapping = TextWrapping.NoWrap, BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(0, 0, 10, 10) };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(output, "TerminalOutput");
-        var tab = new TabViewItem { Header = "PowerShell", Content = output }; terminals[id] = (tab, output); buffers[id] = new TerminalBuffer(); tabs.TabItems.Add(tab); tabs.SelectedItem = tab;
+        var tab = new TabViewItem { Header = "PowerShell", Content = KronoDesign.FrameTabContent(output) };
+        KronoDesign.StyleTabHeader(tab);
+        tab.Loaded += (_, _) => KronoDesign.NameTemplateButton(tab, "CloseButton", "Close tab");
+        terminals[id] = (tab, output); buffers[id] = new TerminalBuffer(); tabs.TabItems.Add(tab); tabs.SelectedItem = tab;
         try { await worker.Request(id, "terminal:create", new { }); } catch (Exception error) { output.Text = error.Message; }
     }
     public void Receive(string id, string type, JsonNode? data)

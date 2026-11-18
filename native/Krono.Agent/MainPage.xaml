@@ -1,42 +1,43 @@
-<Page x:Class="Krono_Agent.MainPage" FontFamily="{ThemeResource KronoTextFont}" FontSize="{ThemeResource KronoTextSize}" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:Krono_Agent" xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives">
+<Page x:Class="Krono_Agent.MainPage" Language="en-US" FlowDirection="LeftToRight" FontFamily="{ThemeResource KronoTextFont}" FontSize="{ThemeResource KronoTextSize}" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:Krono_Agent" xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives">
 <Grid Background="{ThemeResource KronoBackground}">
-<NavigationView x:Name="Nav" Visibility="Collapsed" IsBackButtonVisible="Collapsed" IsSettingsVisible="False" PaneDisplayMode="Auto" OpenPaneLength="240" Background="{ThemeResource KronoSidebar}" SelectionChanged="Navigate">
+<NavigationView x:Name="Nav" Visibility="Collapsed" IsBackButtonVisible="Collapsed" IsSettingsVisible="False" IsPaneOpen="False" IsPaneToggleButtonVisible="False" PaneDisplayMode="LeftCompact" CompactPaneLength="48" Background="{ThemeResource KronoSidebar}" SelectionChanged="Navigate" ItemInvoked="InvokeNavigationAction">
 <NavigationView.PaneHeader><StackPanel Orientation="Horizontal" Spacing="5" Margin="18,8,0,22" AutomationProperties.Name="Krono Agent"><Image Width="34" Height="34"><Image.Source><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg"/></Image.Source></Image><StackPanel VerticalAlignment="Center"><TextBlock Text="KRONO" FontSize="19" FontWeight="Bold" CharacterSpacing="160"/><TextBlock Text="AGENT" FontSize="9" CharacterSpacing="220" Foreground="{ThemeResource KronoMuted}"/></StackPanel></StackPanel></NavigationView.PaneHeader>
 <NavigationView.MenuItems>
 <NavigationViewItem Content="Chats" Icon="Message" Tag="chats" IsSelected="True"/>
 <NavigationViewItem Content="Projects &amp; memory" Icon="Folder" Tag="projects"/>
 <NavigationViewItem Content="Browser" Icon="World" Tag="browser"/>
 <NavigationViewItem Content="Games" Icon="Play" Tag="games"/>
-<NavigationViewItem Content="Terminal" Icon="Document" Tag="terminal"/>
+<NavigationViewItem Content="Terminal" Tag="terminal"><NavigationViewItem.Icon><FontIcon Glyph="&#xE756;" FontFamily="Segoe Fluent Icons"/></NavigationViewItem.Icon></NavigationViewItem>
 <NavigationViewItem Content="Scheduled tasks" Icon="Clock" Tag="schedule"/>
 </NavigationView.MenuItems>
 <NavigationView.FooterMenuItems>
-<NavigationViewItem Content="Settings" Icon="Setting" Tag="settings"/>
-</NavigationView.FooterMenuItems>
-<NavigationView.PaneFooter>
-<StackPanel>
-<Button x:Name="UpdateButton" Style="{StaticResource KronoFlatButton}" Visibility="Collapsed" Margin="4,0,4,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="40" Padding="10,6" Background="Transparent" BorderThickness="0" FontWeight="Normal" Click="UpdateAction">
+<NavigationViewItem x:Name="UpdateButton" Visibility="Collapsed" SelectsOnInvoked="False" Tag="update">
+<NavigationViewItem.Icon><SymbolIcon Symbol="Download" Foreground="{ThemeResource KronoAccentForeground}"/></NavigationViewItem.Icon>
 <StackPanel Spacing="5">
-<StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center"><SymbolIcon Symbol="Download" Width="20" Height="20"/><TextBlock x:Name="UpdateLabel" VerticalAlignment="Center"/></StackPanel>
+<TextBlock x:Name="UpdateLabel" Foreground="{ThemeResource KronoAccentForeground}"/>
 <ProgressBar x:Name="UpdateProgress" Visibility="Collapsed" AutomationProperties.Name="Update download progress"/>
 </StackPanel>
-</Button>
-<Button x:Name="SignOutButton" Style="{StaticResource KronoFlatButton}" AutomationProperties.Name="Sign out" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinHeight="40" Margin="4,0" Padding="10,6" Background="Transparent" BorderThickness="0" FontWeight="Normal" Click="SignOut">
-<StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
-<PathIcon Width="20" Height="20" Data="M2,2 H10 V4 H4 V16 H10 V18 H2 Z M8,9 H15 L12,6 L13.5,4.5 L19,10 L13.5,15.5 L12,14 L15,11 H8 Z"/>
-<TextBlock x:Name="SignOutLabel" Text="Sign out" VerticalAlignment="Center"/>
-</StackPanel>
-</Button>
-</StackPanel>
-</NavigationView.PaneFooter>
-<Grid Padding="28,20,28,24" RowSpacing="12" Background="{ThemeResource KronoBackground}"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+</NavigationViewItem>
+<NavigationViewItem Content="Settings" Icon="Setting" Tag="settings"/>
+<NavigationViewItem x:Name="SignOutButton" Content="Sign out" SelectsOnInvoked="False" Tag="signout"><NavigationViewItem.Icon><PathIcon Data="M4,2 H12 V3.5 H4 V16.5 H12 V18 H4 Q2.5,18 2.5,16.5 V3.5 Q2.5,2 4,2 Z M9,9.25 H16.4 L13.6,6.45 L14.65,5.4 L19.25,10 L14.65,14.6 L13.6,13.55 L16.4,10.75 H9 Z"/></NavigationViewItem.Icon></NavigationViewItem>
+</NavigationView.FooterMenuItems>
+<Grid Background="{ThemeResource KronoSidebar}">
+<Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+<Border x:Name="ContextRail" Background="{ThemeResource KronoSidebar}" Width="0" Visibility="Collapsed" SizeChanged="ContextRailSizeChanged">
+<ScrollViewer Width="252" HorizontalAlignment="Left" Padding="16,20,16,16" VerticalScrollBarVisibility="Auto"><ContentControl x:Name="ContextBody" Width="220" HorizontalContentAlignment="Stretch"/></ScrollViewer>
+</Border>
+<Border Grid.Column="1" CornerRadius="14,0,0,0" Background="{ThemeResource KronoBackground}">
+<Grid Padding="28,20,28,24" RowSpacing="12"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
 <Grid x:Name="WorkspacePattern" Grid.RowSpan="3" Margin="0,-20,0,0" IsHitTestVisible="False"/>
-<Viewbox x:Name="HalloweenCorner" Grid.RowSpan="3" Width="184" Height="138" Margin="0,0,18,0" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed" IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw">
+<Viewbox x:Name="HalloweenCorner" Grid.RowSpan="3" Width="184" Height="138" Margin="0,-20,-28,0" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed" IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw">
 <Canvas Width="184" Height="138">
 <Path Stroke="{ThemeResource KronoMuted}" StrokeThickness="1" Opacity=".33"
       Data="M184,0 L45,0 M184,0 L67,43 M184,0 L100,76 M184,0 L140,102 M184,0 L184,110 M157,0 Q163,8 161,9 Q170,11 168,15 Q175,15 176,19 Q180,18 184,21 M128,0 Q141,15 137,17 Q152,20 150,31 Q165,29 166,42 Q176,38 184,47 M96,0 Q111,22 110,27 Q128,30 128,51 Q151,48 155,68 Q169,64 184,75 M64,0 Q82,25 81,38 Q104,44 103,73 Q132,66 144,93 Q162,84 184,101"/>
-<Path Stroke="{ThemeResource KronoMuted}" StrokeThickness="1" Opacity=".6" Data="M140,102 V116"/>
-<Path Canvas.Left="125" Canvas.Top="110" Fill="{ThemeResource KronoAccentFill}" Opacity=".8"
+</Canvas>
+</Viewbox>
+<Viewbox x:Name="HalloweenPumpkin" Grid.RowSpan="3" Width="34" Height="30" Margin="0,0,-18,-15" HorizontalAlignment="Right" VerticalAlignment="Bottom" Visibility="Collapsed" IsHitTestVisible="False" Canvas.ZIndex="1" AutomationProperties.AccessibilityView="Raw">
+<Canvas Width="30" Height="26">
+<Path Fill="{ThemeResource KronoAccentFill}" Opacity=".8"
       Data="F0 M15,6 C10,0 2,5 2,13 C2,21 8,25 15,23 C22,25 28,21 28,13 C28,5 20,0 15,6 Z M8,11 L13,13 L8,15 Z M22,11 L17,13 L22,15 Z M10,18 L13,18 L14,20 L16,18 L20,18 Q15,23 10,18 Z M14,5 Q14,1 18,0 L18,2 Q16,3 16,6 Z"/>
 </Canvas>
 </Viewbox>
@@ -49,14 +50,14 @@
 <primitives:Thumb x:Name="SideGrip" Grid.Column="1" Width="8" Margin="8,0" Background="{ThemeResource KronoBorder}" Visibility="Collapsed" DragDelta="ResizeSideChat"/>
 <Border x:Name="SideSurface" Grid.Column="2" Visibility="Collapsed" CornerRadius="18" BorderThickness="1" BorderBrush="{ThemeResource KronoBorder}" Background="{ThemeResource KronoSidebar}" Padding="16"><ContentControl x:Name="SideBody" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/></Border>
 </Grid>
-</Grid></NavigationView>
+</Grid></Border></Grid></NavigationView>
 <ProgressRing x:Name="StartupProgress" IsActive="True" Width="36" Height="36" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 <ScrollViewer x:Name="SignIn" Visibility="Collapsed" VerticalScrollBarVisibility="Hidden" VerticalContentAlignment="Stretch" HorizontalContentAlignment="Stretch">
 <Grid Background="{ThemeResource KronoLoginBackdrop}">
 <Grid x:Name="LoginPattern" IsHitTestVisible="False"/>
 <Border x:Name="AuthCard" Margin="24" MaxWidth="440" HorizontalAlignment="Stretch" VerticalAlignment="Center" Padding="32" CornerRadius="22" Background="{ThemeResource KronoSurface}" BorderBrush="{ThemeResource KronoBorder}" BorderThickness="1">
 <Grid>
-<StackPanel x:Name="LoginForm" Spacing="14">
+<StackPanel x:Name="LoginForm" Spacing="14" PreviewKeyDown="SubmitPassword">
 <Image Width="72" Height="72" HorizontalAlignment="Left"><Image.Source><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg"/></Image.Source></Image>
 <TextBlock x:Name="AuthTitle" Text="Welcome to Krono" FontFamily="{ThemeResource KronoDisplayFont}" Style="{ThemeResource TitleTextBlockStyle}"/>
 <TextBlock x:Name="AuthSubtitle" Text="Sign in to your workspace." Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
@@ -66,13 +67,14 @@
 <Grid>
 <PasswordBox x:Name="PasswordInput" AutomationProperties.Name="Password" PasswordRevealMode="Hidden" Padding="12,8,46,8" Loaded="CenterPasswordContent"/>
 <ToggleButton x:Name="PasswordVisibility" AutomationProperties.Name="Show password" ToolTipService.ToolTip="Show password" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,5,0" Width="34" Height="28" Padding="0" Background="Transparent" BorderThickness="0" Checked="PasswordVisibilityChanged" Unchecked="PasswordVisibilityChanged">
-<FontIcon x:Name="PasswordEye" Glyph="&#xE890;" FontSize="16"/>
+<FontIcon x:Name="PasswordEye" Glyph="&#xE890;" FontFamily="Segoe Fluent Icons" FontSize="16"/>
 </ToggleButton>
 </Grid>
 </StackPanel>
+<Grid>
 <Button x:Name="LoginButton" Content="Sign in" Style="{StaticResource KronoPrimaryButton}" HorizontalAlignment="Stretch" Click="Login"/>
 <Button x:Name="CreateAccountButton" Content="Create account" Visibility="Collapsed" Style="{StaticResource KronoPrimaryButton}" HorizontalAlignment="Stretch" Click="CreateAccount"/>
-<ProgressRing x:Name="AuthProgress" Visibility="Collapsed" IsActive="False" Width="24" Height="24"/>
+</Grid>
 <TextBlock x:Name="AuthError" Visibility="Collapsed" TextWrapping="Wrap" Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
 <TextBlock Text="Your sign-in is encrypted on this Windows account and remembered until you sign out." TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 <Border BorderBrush="{ThemeResource KronoBorder}" BorderThickness="0,1,0,0" Padding="0,16,0,0" Margin="0,8,0,0">
@@ -81,7 +83,7 @@
 <TextBlock Text="New to Krono?" HorizontalAlignment="Center" Foreground="{ThemeResource KronoMuted}"/>
 <Button x:Name="RegisterButton" Content="Create an account" HorizontalAlignment="Stretch" Click="Register"/>
 </StackPanel>
-<StackPanel x:Name="ExistingAccountPrompt" Visibility="Collapsed" Spacing="4">
+<StackPanel x:Name="ExistingAccountPrompt" Visibility="Collapsed" Spacing="8">
 <TextBlock Text="Already have an account?" HorizontalAlignment="Center" Foreground="{ThemeResource KronoMuted}"/>
 <Button x:Name="BackToSignInButton" Content="Sign in" HorizontalAlignment="Stretch" Click="BackToLogin"/>
 </StackPanel>
@@ -95,7 +97,7 @@
 </StackPanel>
 <TextBlock x:Name="ConfirmationInstructions" TextWrapping="Wrap"/>
 <TextBlock x:Name="ConfirmationAddress" TextWrapping="Wrap" FontWeight="SemiBold"/>
-<TextBlock Text="Open the confirmation link, then return to Krono Agent and sign in. If you do not see the email, check your spam or junk folder." TextWrapping="Wrap" Foreground="{ThemeResource KronoMuted}"/>
+<TextBlock x:Name="ConfirmationHelp" TextWrapping="Wrap" Foreground="{ThemeResource KronoMuted}"/>
 <Grid ColumnSpacing="8" Margin="0,4,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
 <Button x:Name="BackToLoginButton" Content="Back to sign in" Style="{StaticResource KronoPrimaryButton}" HorizontalAlignment="Stretch" Click="BackToLogin"/>
 <Button Grid.Column="1" x:Name="ResendConfirmationButton" Content="Send a new email" HorizontalAlignment="Stretch" Click="ResendConfirmation"/>

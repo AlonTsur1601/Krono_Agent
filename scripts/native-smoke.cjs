@@ -10,7 +10,9 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), 'krono-native-'))
 const user = { id: '33333333-3333-4333-8333-333333333333', email: 'native-fixture@example.com' }
 const requests = []
 let revoked = false
+let signupConfirmed = false
 let browserIsolated = false
+let browserSelection = ''
 let localNoTools = false
 let localKeyIsolated = false
 let localModelBNoTools = false
@@ -65,9 +67,16 @@ const server = http.createServer((request, response) => {
   else if (request.url === '/sync-proof') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ memory: syncRows.get('memories:global')?.content, games: [...syncRows.keys()].filter(key => key.startsWith('game_saves:')).length, sideLeaked: [...syncRows.values()].some(row => row.name?.startsWith('Side · ') && row.name?.includes('expire')) })) }
   else if (request.url === '/sync-remote-memory') { const memory = syncRows.get('memories:global'); memory.content = 'Cloud fixture memory'; memory.version++; response.end('ok') }
   else if (request.url === '/schedule-proof') {
-    const proof = fixtureDb(db => ({ runs: db.prepare('SELECT state,chat_id FROM scheduled_runs').all(), response: db.prepare("SELECT content FROM messages WHERE role='assistant' AND content='Native scheduled result.'").get()?.content })); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(proof))
+    const proof = fixtureDb(db => ({ tasks: db.prepare('SELECT name FROM scheduled_tasks').all().map(task => task.name), runs: db.prepare('SELECT state,chat_id FROM scheduled_runs').all(), response: db.prepare("SELECT content FROM messages WHERE role='assistant' AND content='Native scheduled result.'").get()?.content })); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(proof))
   }
   else if (request.url === '/attachment-proof') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ accepted: attachmentAccepted })) }
+  else if (request.url === '/chat-project-proof') {
+    const project = fixtureDb(db => db.prepare(
+      'SELECT projects.name FROM chats JOIN projects ON projects.id = chats.project_id WHERE chats.name = ? AND chats.deleted_at IS NULL'
+    ).get('Native test message')?.name)
+    response.setHeader('Content-Type', 'application/json')
+    response.end(JSON.stringify({ project }))
+  }
   else if (request.url === '/game-proof') { const saves = fixtureDb(db => db.prepare('SELECT game_id,state FROM game_saves WHERE account_id=? ORDER BY game_id').all(user.id).map(row => ({ game: row.game_id, state: JSON.parse(row.state) }))); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ saves })) }
   else if (request.url === '/local-reply-proof') { const count = fixtureDb(db => db.prepare("SELECT count(*) AS n FROM messages WHERE role='assistant' AND content='Native local endpoint reply.'").get().n); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ count })) }
   else if (request.url === '/corrupt-game') { fixtureDb(db => db.prepare("UPDATE game_saves SET state='{}' WHERE game_id='Snake'").run()); response.end('ok') }
@@ -80,7 +89,7 @@ const server = http.createServer((request, response) => {
     }); response.end('ok')
   }
   else if (request.url === '/poison-font-sizes') { fixtureDb(db => { db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('native.textSize','NaN')").run(); db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('native.codeSize','Infinity')").run() }); response.end('ok') }
-  else if (request.url === '/font-proof') { const proof = fixtureDb(db => ({ text: db.prepare("SELECT value FROM settings WHERE key='native.textSize'").get()?.value, code: db.prepare("SELECT value FROM settings WHERE key='native.codeSize'").get()?.value })); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(proof)) }
+  else if (request.url === '/font-proof') { const proof = fixtureDb(db => ({ text: db.prepare("SELECT value FROM settings WHERE key='native.textSize'").get()?.value, code: db.prepare("SELECT value FROM settings WHERE key='native.codeSize'").get()?.value, codeFamily: db.prepare("SELECT value FROM settings WHERE key='native.codeFont'").get()?.value })); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(proof)) }
   else if (request.url === '/side-proof') {
     const proof = fixtureDb(db => {
       const side = db.prepare('SELECT * FROM side_chats ORDER BY rowid DESC LIMIT 1').get()
@@ -112,16 +121,39 @@ const server = http.createServer((request, response) => {
       response.end(event('Native local endpoint ') + event('reply.') + event('', 'stop') + 'data: [DONE]\n\n')
     })
   }
-  else if (request.url === '/v1/models') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ object: 'list', data: [{ id: 'native-fixture-model', object: 'model' }] })) }
+  else if (request.url === '/v1/models') {
+    response.setHeader('Content-Type', 'application/json')
+    response.end(JSON.stringify({ object: 'list', data: ['native-fixture-model', 'gpt-5-mini'].map(id => ({ id, object: 'model' })) }))
+  }
+  else if (request.url === '/seed-chat-history' && request.method === 'POST') {
+    fixtureDb(db => {
+      const { id } = db.prepare('SELECT id FROM chats WHERE name = ?').get('Native test message')
+      const insert = db.prepare('INSERT INTO messages(id,chat_id,role,content,created_at) VALUES(?,?,?,?,?)')
+      const start = Date.now() + 60000
+      for (let i = 0; i < 24; i++) {
+        insert.run('fixture-history-' + i, id, i % 2 ? 'assistant' : 'user', 'Fixture history message ' + i, start + i)
+      }
+    })
+    response.end('ok')
+  }
+  else if (request.url === '/reasoning-proof') {
+    response.setHeader('Content-Type', 'application/json')
+    const request = requests.find(request => request.model === 'gpt-5-mini' && request.reasoning?.effort === 'high')
+    const history = request?.input.filter(message => message.role !== 'system') ?? []
+    response.end(JSON.stringify({ accepted: Boolean(request), history: history.map(message => message.content) }))
+  }
   else if (request.url === '/v1/responses') {
     let body = ''; request.on('data', chunk => body += chunk); request.on('end', () => {
       const input = JSON.parse(body); requests.push(input)
       fs.writeFileSync(path.join(home, 'provider-fixture-requests.json'), JSON.stringify(requests, null, 2))
       response.setHeader('Content-Type', 'text/event-stream')
       const last = input.input.at(-1)?.content
-      const lastUser = input.input.filter(message => message.role === 'user').at(-1)?.content
+      const lastUserContent = input.input.filter(message => message.role === 'user').at(-1)?.content
+      const lastUser = Array.isArray(lastUserContent)
+        ? lastUserContent.filter(part => part.type === 'input_text').map(part => part.text).join('\n')
+        : lastUserContent
       if (lastUser?.startsWith('Use the selected fixture file')) {
-        attachmentAccepted = !input.tools && lastUser.includes('fixture-attachment.txt') && lastUser.includes('ATTACHMENT_PROOF_TEXT שלום') && !lastUser.includes(home)
+        attachmentAccepted = !input.tools && lastUser.includes('fixture-attachment.txt') && lastUser.includes('ATTACHMENT_PROOF_TEXT \u05e9\u05dc\u05d5\u05dd') && !lastUser.includes(home)
         complete(response, 'Native attachment fixture result.'); return
       }
       if (lastUser === 'NATIVE_SCHEDULE_PROOF') { if (input.tools) { response.writeHead(400); response.end(); return }; complete(response, 'Native scheduled result.'); return }
@@ -152,6 +184,7 @@ const server = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserIsolated, localNoTools, localKeyIsolated, localModelBNoTools, commandRan, completions: requests.length, chatHasNoTools: requests.length > 0 && !requests[0].tools, globalOnly: firstContext.includes('Native global memory fixture') && !firstContext.includes('Native project memory fixture'), projectScope: secondContext.includes('Native global memory fixture') && secondContext.includes('Native project memory fixture'), toolWrite: fs.existsSync(path.join(home, 'native-tool-proof.txt')) }))
   }
   else if (request.url === '/revoke') { revoked = true; response.end('ok') }
+  else if (request.url === '/confirm-signup' && request.method === 'POST') { signupConfirmed = true; response.end('ok') }
   else if (request.url.startsWith('/auth/')) {
     response.setHeader('Content-Type', 'application/json')
     let body = ''; request.on('data', chunk => body += chunk)
@@ -166,9 +199,11 @@ const server = http.createServer((request, response) => {
           response.end('{}')
           return
         }
-        response.writeHead(400)
-        response.end(JSON.stringify({ error_code: 'email_not_confirmed', msg: 'Email not confirmed' }))
-        return
+        if (!signupConfirmed) {
+          response.writeHead(400)
+          response.end(JSON.stringify({ error_code: 'email_not_confirmed', msg: 'Email not confirmed' }))
+          return
+        }
       }
       if (input.refresh_token && revoked) { response.writeHead(400); response.end(JSON.stringify({ msg: 'Refresh token revoked' })); return }
       if (input.password && input.password !== 'fixture-password') { response.writeHead(400); response.end(JSON.stringify({ msg: 'Invalid login credentials' })); return }
@@ -176,7 +211,14 @@ const server = http.createServer((request, response) => {
       response.end(JSON.stringify({ user, access_token: 'native-fixture-access', refresh_token: 'native-fixture-refresh', expires_in: 3600, token_type: 'bearer' }))
     })
   } else if (request.url.startsWith('/browser-proof')) { const query = new URL(request.url, 'http://localhost').searchParams; browserIsolated = query.get('api') === 'undefined' && query.get('node') === 'undefined'; response.end('ok') }
-  else { response.setHeader('Content-Type', 'text/html'); response.end('<title>Native browser fixture</title><h1>WebView2 fixture</h1><script>fetch("/browser-proof?api="+typeof window.api+"&node="+typeof require)</script>') }
+  else if (request.url.startsWith('/browser-selection?')) { browserSelection = new URL(request.url, 'http://localhost').searchParams.get('text'); response.end('ok') }
+  else if (request.url === '/browser-selection') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserSelection })) }
+  else if (request.url === '/browser-home-proof') {
+    const homePage = fixtureDb(db => db.prepare('SELECT value FROM settings WHERE key = ?').get('browser.homePage')?.value)
+    response.setHeader('Content-Type', 'application/json')
+    response.end(JSON.stringify({ homePage }))
+  }
+  else { response.setHeader('Content-Type', 'text/html'); response.end('<title>' + (request.url === '/home' ? 'Native browser home' : 'Native browser fixture') + '</title><h1>WebView2 fixture</h1><script>fetch("/browser-proof?api="+typeof window.api+"&node="+typeof require);document.addEventListener("selectionchange",()=>fetch("/browser-selection?text="+encodeURIComponent(String(getSelection()))))</script>') }
 })
 server.listen(0, '127.0.0.1', () => {
   const root = `http://127.0.0.1:${server.address().port}`

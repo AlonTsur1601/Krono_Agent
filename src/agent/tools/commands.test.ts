@@ -16,11 +16,11 @@ const context = (overrides: Partial<ExecutionContext> = {}): ExecutionContext =>
 
 describe('real bounded command execution', () => {
   it('preserves working directories, UTF-8 output and exit status', async () => {
-    const job = await script("console.log('42 · שלום'); console.log(process.cwd()); process.exit(7)")
+    const job = await script("console.log('42 · \\u05e9\\u05dc\\u05d5\\u05dd'); console.log(process.cwd()); process.exit(7)")
     await writeFile(join(job.folder, 'powershell.exe'), 'fixture decoy: do not execute')
     const result = await runCommandTool.execute({ command: job.command, cwd: job.folder }, context())
     expect(result.success).toBe(false)
-    expect(result.output).toContain('42 · שלום')
+    expect(result.output).toContain('42 · \u05e9\u05dc\u05d5\u05dd')
     expect(result.output).toContain(await realpath(job.folder))
     expect(result.output).toContain('Exit code: 7')
   }, 15000)

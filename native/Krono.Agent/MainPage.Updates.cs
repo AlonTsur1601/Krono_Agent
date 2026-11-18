@@ -17,6 +17,7 @@ public sealed partial class MainPage
     readonly record struct AvailableUpdate(Version Version, Uri Url, long Size, string Hash);
     AvailableUpdate? availableUpdate;
     string? downloadedInstaller;
+    Button? settingsUpdateButton;
     bool checkingUpdate, downloadingUpdate;
     static Version InstalledVersion => typeof(MainPage).Assembly.GetName().Version ?? new Version(0, 0);
     internal bool HasBackgroundWork => runId is not null || scheduledRun is not null ||
@@ -27,7 +28,6 @@ public sealed partial class MainPage
         Loaded += async (_, _) => { updateTimer.Start(); await CheckUpdates(); };
         updateTimer.Tick += async (_, _) => await CheckUpdates();
         Unloaded += (_, _) => { updateTimer.Stop(); updateLifetime.Cancel(); DeleteDownload(downloadedInstaller); };
-        Nav.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => RefreshUpdateButton());
     }
 
     void AddUpdateSettings(StackPanel panel)
@@ -35,7 +35,13 @@ public sealed partial class MainPage
         var version = InstalledVersion.ToString(3);
         panel.Children.Add(new TextBlock { Text = "Krono Agent " + version });
         panel.Children.Add(Button("Check for updates", async () => await CheckUpdates(true)));
-        panel.Children.Add(new HyperlinkButton { Content = "Download updates", NavigateUri = new Uri(ReleaseRoot + "/latest") });
+        settingsUpdateButton = new Button { Style = (Style)Application.Current.Resources["KronoPrimaryButton"] };
+        settingsUpdateButton.Click += (_, _) => {
+            if (availableUpdate.HasValue) UpdateAction();
+            else Process.Start(new ProcessStartInfo(ReleaseRoot + "/latest") { UseShellExecute = true });
+        };
+        panel.Children.Add(settingsUpdateButton);
+        RefreshUpdateButton();
     }
 
     async Task CheckUpdates(bool manual = false)
@@ -83,12 +89,15 @@ public sealed partial class MainPage
         UpdateButton.IsEnabled = !downloadingUpdate;
         var label = downloadedInstaller is not null ? "Install update" : downloadingUpdate ? "Downloading…" : "Download update";
         UpdateLabel.Text = label;
-        UpdateLabel.Visibility = Nav.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
         AutomationProperties.SetName(UpdateButton, label);
         ToolTipService.SetToolTip(UpdateButton, label);
+        if (settingsUpdateButton is not null) {
+            settingsUpdateButton.Content = availableUpdate.HasValue ? label : "Download updates";
+            settingsUpdateButton.IsEnabled = !downloadingUpdate;
+        }
     }
 
-    async void UpdateAction(object sender, RoutedEventArgs args)
+    async void UpdateAction()
     {
         if (downloadingUpdate || availableUpdate is not { } update) return;
         if (downloadedInstaller is { } installer) {

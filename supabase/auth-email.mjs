@@ -24,9 +24,8 @@ const [title, intro, action, code] = template;
 const followup = action || code
   ? 'If you did not request this, you can ignore this email.'
   : 'If you did not make this change, review your account security.';
-const buttonWidths = { confirmation: 158, invite: 185, magic_link: 150, email_change: 174, recovery: 174 };
 const content = action
-  ? `<a class="krono-action" href="{{ .ConfirmationURL }}" style="display:inline-block;color:#84e6b1;text-decoration:none;font-family:Rubik,Arial,sans-serif;font-weight:600"><img src="https://alontsur1601.github.io/Krono_Agent/email/${process.argv[2]}.gif" width="${buttonWidths[process.argv[2]]}" height="58" alt="${action}" style="display:block;border:0;max-width:100%;height:auto;color:#84e6b1;font-family:Rubik,Arial,sans-serif;font-size:16px"></a>`
+  ? `<a class="krono-action" href="{{ .ConfirmationURL }}" style="display:inline-block;background:#3b9f72;border-radius:16px;padding-bottom:4px;text-decoration:none"><span class="krono-action-face" style="display:block;background:#84e6b1;background-image:linear-gradient(#a4f0c8,#69d6a0);color:#10231f;border-radius:16px;padding:10px 18px;font-family:Rubik,Arial,sans-serif;font-size:14px;font-weight:600;line-height:20px">${action}</span></a>`
   : code
     ? `<p style="font:700 24px monospace;letter-spacing:.18em;color:#84e6b1">${code}</p>`
     : '';
@@ -39,10 +38,11 @@ console.log(`Subject: ${title} · Krono Agent
 <style>
 @font-face{font-family:Rubik;src:url('https://alontsur1601.github.io/Krono_Agent/fonts/Rubik.ttf') format('truetype');font-weight:100 900;font-display:swap}
 @font-face{font-family:'Space Grotesk';src:url('https://alontsur1601.github.io/Krono_Agent/fonts/SpaceGrotesk.ttf') format('truetype');font-weight:300 700;font-display:swap}
-.krono-action{transition:transform .18s ease}
-.krono-action:hover{transform:translateY(-2px)}
-.krono-action:active{transform:translateY(2px)}
-@media(prefers-reduced-motion:reduce){.krono-action{transition:none}}
+.krono-action-face{transition:transform 100ms ease-out,filter 100ms ease-out}
+.krono-action:hover .krono-action-face{transform:translateY(-2px);filter:brightness(1.06)}
+.krono-action:active .krono-action-face{transition:none;transform:translateY(2px);filter:brightness(.92)}
+.krono-action:focus-visible{outline:2px solid #a4f0c8;outline-offset:3px}
+@media(prefers-reduced-motion:reduce){.krono-action-face{transition:none}.krono-action:hover .krono-action-face,.krono-action:active .krono-action-face{transform:none}}
 </style></head>
 <body style="margin:0;background:#10151d;color:#f4f8f6;font-family:Rubik,Arial,sans-serif">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#10151d">

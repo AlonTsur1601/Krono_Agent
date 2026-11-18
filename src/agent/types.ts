@@ -60,6 +60,7 @@ export interface CompletionRequest {
 export interface Message {
   role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
+  imagePng?: string
   toolCallId?: string
   toolCalls?: ToolCall[]
   providerState?: Record<string, unknown>

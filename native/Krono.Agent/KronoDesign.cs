@@ -129,12 +129,13 @@ public static class KronoDesign
         Application.Current.Resources["KronoCodeSize"] = codeSize;
         RefreshTypography(MainWindow.Instance?.Content is DependencyObject windowRoot ? windowRoot : root);
     }
-    static void RefreshTypography(DependencyObject root)
+    internal static void RefreshTypography(DependencyObject root)
     {
         var text = TextFont; var code = CodeFont; var textSize = TextSize; var codeSize = CodeSize;
         Refresh(root);
         void Refresh(DependencyObject element, bool codeContext = false)
         {
+            if (element is IconElement) return;
             var isCode = codeContext;
             if (element is Control control) {
                 if (control is NumberBox) KronoInputMotion.Attach(control);
@@ -142,7 +143,7 @@ public static class KronoDesign
                 var gameCode = control.Tag?.ToString() == "game-code";
                 isCode |= id is "TerminalInput" or "TerminalOutput" or "ToolApprovalDetails" || gameCode;
                 control.FontFamily = isCode ? code : text;
-                if (!gameCode && !id.StartsWith("GameCell", StringComparison.Ordinal) && control is TextBox or PasswordBox or ComboBox or NumberBox or Button) control.FontSize = isCode ? codeSize : control.Tag?.ToString() == "caption" ? Math.Max(11, textSize - 3) : textSize;
+                if (!gameCode && !id.StartsWith("GameCell", StringComparison.Ordinal) && control is TextBox or PasswordBox or ComboBox or NumberBox or Button or AppBarButton) control.FontSize = isCode ? codeSize : control.Tag?.ToString() == "caption" ? Math.Max(11, textSize - 3) : textSize;
             }
             for (var i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++) Refresh(VisualTreeHelper.GetChild(element, i), isCode);
         }
@@ -152,10 +153,63 @@ public static class KronoDesign
         if (ReferenceEquals(host.Content, content)) { RefreshTypography(content); return; }
         host.Content = content;
         RefreshTypography(content);
-        if (!new UISettings().AnimationsEnabled) return;
-        var visual = ElementCompositionPreview.GetElementVisual(host);
-        var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
-        animation.InsertKeyFrame(0, 0); animation.InsertKeyFrame(1, 1);
-        animation.Duration = PageMotion; visual.StartAnimation("Opacity", animation);
+        AnimateOpacity(host, 0);
+    }
+
+    public static void AnimateThemeChange(FrameworkElement surface) => AnimateOpacity(surface, .78f);
+
+    internal static void StyleTabHeader(TabViewItem tab)
+    {
+        void Refresh()
+        {
+            if (new AccessibilitySettings().HighContrast) return;
+            var surface = ThemeBrush(tab.IsSelected ? "KronoSurface" : "KronoSidebar", tab.ActualTheme);
+            tab.Background = surface;
+            foreach (var part in KronoInputMotion.Descendants(tab)) {
+                if (part is Grid { Name: "TabContainer" } header) header.Background = surface;
+                if (part is Microsoft.UI.Xaml.Shapes.Path { Name: "SelectedBackgroundPath" } selected) selected.Fill = surface;
+            }
+        }
+        tab.Loaded += (_, _) => Refresh();
+        tab.ActualThemeChanged += (_, _) => Refresh();
+        tab.RegisterPropertyChangedCallback(TabViewItem.IsSelectedProperty, (_, _) => tab.DispatcherQueue.TryEnqueue(Refresh));
+    }
+
+    internal static Border FrameTabContent(UIElement content)
+    {
+        const float radius = 12;
+        var frame = new Border { CornerRadius = new CornerRadius(radius), Child = content };
+        void ApplyPalette() => frame.Background = ThemeBrush("KronoSurface", frame.ActualTheme);
+        frame.Loaded += (_, _) => ApplyPalette();
+        frame.ActualThemeChanged += (_, _) => ApplyPalette();
+        var visual = ElementCompositionPreview.GetElementVisual(frame);
+        var shape = visual.Compositor.CreateRoundedRectangleGeometry();
+        shape.CornerRadius = new System.Numerics.Vector2(radius);
+        visual.Clip = visual.Compositor.CreateGeometricClip(shape);
+        frame.SizeChanged += (_, args) => shape.Size = new System.Numerics.Vector2((float)args.NewSize.Width, (float)args.NewSize.Height);
+        return frame;
+    }
+
+    static void AnimateOpacity(FrameworkElement surface, float from)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(surface);
+        if (!new UISettings().AnimationsEnabled) {
+            visual.StopAnimation("Opacity");
+            visual.Opacity = 1;
+            return;
+        }
+
+        var fade = visual.Compositor.CreateScalarKeyFrameAnimation();
+        fade.InsertKeyFrame(0, from);
+        fade.InsertKeyFrame(1, 1);
+        fade.Duration = PageMotion;
+        visual.StartAnimation("Opacity", fade);
+    }
+
+    public static void NameTemplateButton(Control control, string part, string label)
+    {
+        if (KronoInputMotion.Descendants(control).OfType<Button>().FirstOrDefault(button => button.Name == part) is not { } target) return;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(target, label);
+        ToolTipService.SetToolTip(target, label);
     }
 }

@@ -41,7 +41,7 @@ While agents execute long-running tasks—file operations, terminal commands, we
 - Dark, Light, Halloween, and Follow system themes
 - Custom typography with Inter/JetBrains Mono and user font selection
 - Original vector logo suggesting hourglass/K through negative space
-- Resizable sidebar, content workspace, right panel, terminal drawer
+- Fixed compact navigation rail, collapsible screen-specific sidebars, content workspace, and split side chats
 - 8px spacing rhythm, restrained motion, accessible controls
 
 ### Out of Scope

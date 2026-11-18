@@ -29,7 +29,7 @@ public sealed partial class GamesWorkspace
                 try { var data = System.Text.Json.Nodes.JsonNode.Parse(saved); compatible = data?["Version"]?.ToString() == "1" && data?["Game"]?.ToString() == names[index]; }
                 catch (JsonException) { compatible = false; }
                 if (compatible) {
-                    var choice = new ContentDialog { XamlRoot = XamlRoot, Title = names[index], Content = "Continue where you left off, or replace the save with a new game.", PrimaryButtonText = "Continue saved game", SecondaryButtonText = "New game", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
+                    var choice = new KronoDialog { XamlRoot = XamlRoot, Title = names[index], Content = "Continue where you left off, or replace the save with a new game.", PrimaryButtonText = "Continue saved game", SecondaryButtonText = "New game", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
                     Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(choice, "GameSaveChoice");
                     var result = await choice.ShowAsync();
                     if (disposed || result == ContentDialogResult.None) return;

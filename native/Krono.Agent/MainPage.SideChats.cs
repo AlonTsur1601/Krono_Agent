@@ -19,17 +19,20 @@ public sealed partial class MainPage
             sideChat = new SideChatPanel(workspace, id, () => {
                 return new JsonObject { ["providerId"] = provider, ["apiKey"] = ConnectionKey(), ["modelId"] = model, ["endpoint"] = ProviderEndpoint, ["toolsEnabled"] = false };
             }, CloseSideChat, OpenNormalChat, () => { if (runId is null) { workspace.FlushSideTransfers(); ReloadChats(); LoadChat(); } });
-            SideSurface.Visibility = SideGrip.Visibility = Visibility.Visible;
-            SideColumn.Width = new GridLength(double.TryParse(workspace.Setting("native.sideWidth"), out var width) ? Math.Clamp(width, 300, 620) : 380);
             KronoDesign.Present(SideBody, sideChat);
-            if (chatView is not null) { ((FrameworkElement)chatView.Children[0]).Visibility = Visibility.Collapsed; chatView.ColumnDefinitions[0].Width = new GridLength(0); }
+            SetSideChatVisible(true);
         } catch (Exception error) { Error(error); }
     }
     void CloseSideChat()
     {
         sideChat?.Dispose(); sideChat = null; SideBody.Content = null;
-        SideSurface.Visibility = SideGrip.Visibility = Visibility.Collapsed; SideColumn.Width = new GridLength(0);
-        if (chatView is not null) { ((FrameworkElement)chatView.Children[0]).Visibility = Visibility.Visible; chatView.ColumnDefinitions[0].Width = GridLength.Auto; }
+        SetSideChatVisible(false);
+    }
+    void SetSideChatVisible(bool visible)
+    {
+        SideSurface.Visibility = SideGrip.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        var width = visible ? (double.TryParse(workspace.Setting("native.sideWidth"), out var saved) ? Math.Clamp(saved, 300, 620) : 380) : 0;
+        SideColumn.Width = new GridLength(width);
     }
     void OpenNormalChat(string id)
     {

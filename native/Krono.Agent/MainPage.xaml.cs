@@ -4,27 +4,32 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using System.Text.Json.Nodes;
+using System.Text.Json;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Input;
 
 namespace Krono_Agent;
 
 public sealed partial class MainPage : Page
 {
     readonly Workspace workspace = new();
+    CancellationTokenSource? confirmationWait;
+    bool authenticating;
     AgentWorker? worker;
     string? chatId, runId, approvalId;
+    string? draftProject;
     JsonNode? approvalDetails;
     ContentDialog? approvalDialog;
     string? activityChatId;
     string provider = "openai", model = "", mode = "chat", permissions = "ask";
     readonly ListView chatList = new() { Width = 220, SelectionMode = ListViewSelectionMode.Single };
-    readonly StackPanel messages = new() { Spacing = 20, MaxWidth = 850, HorizontalAlignment = HorizontalAlignment.Stretch };
-    readonly KronoTextBox composer = new() { PlaceholderText = "Message Krono…", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80, MaxHeight = 180 };
+    readonly StackPanel messages = new() { Spacing = 20, MaxWidth = 850, HorizontalAlignment = HorizontalAlignment.Left, FlowDirection = FlowDirection.LeftToRight };
+    readonly KronoTextBox composer = new() { PlaceholderText = "Message Krono…", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80, MaxHeight = 180, FlowDirection = FlowDirection.LeftToRight, TextAlignment = TextAlignment.Left };
     readonly ScrollViewer transcript;
     readonly TextBlock progress = new() { Text = "", TextWrapping = TextWrapping.Wrap, Opacity = .7 };
     readonly Button modelChoice = new() { Content = "Choose model" };
+    Button? sideChatButton;
     readonly Button send = new() { Content = "Send" };
-    readonly Button stop = new() { Content = "Stop", IsEnabled = false };
     Grid? chatView;
     ComboBox? permissionSelector, modeSelector;
     int sessionGeneration;
@@ -38,18 +43,26 @@ public sealed partial class MainPage : Page
     bool refreshingSession;
     public MainPage()
     {
-        InitializeComponent(); transcript = new ScrollViewer { Content = messages, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        InitializeComponent(); transcript = new ScrollViewer { Content = messages, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalContentAlignment = HorizontalAlignment.Left, FlowDirection = FlowDirection.LeftToRight };
+        transcript.SizeChanged += (_, args) => messages.Width = Math.Min(messages.MaxWidth, Math.Max(0, args.NewSize.Width - 16));
         WorkspacePattern.Children.Add(new GameBackdrop());
         LoginPattern.Children.Add(new GameBackdrop());
         Nav.Resources["NavigationViewSelectionIndicatorForeground"] = KronoDesign.ThemeBrush("KronoAccentFill", ElementTheme.Dark);
-        Nav.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => {
-            SignOutLabel.Visibility = Nav.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
-        });
+        void NamePaneToggle() => KronoDesign.NameTemplateButton(Nav, "TogglePaneButton", Nav.IsPaneOpen ? "Close navigation" : "Open navigation");
+        Nav.Loaded += (_, _) => NamePaneToggle();
+        Nav.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => DispatcherQueue.TryEnqueue(NamePaneToggle));
         ToolTipService.SetToolTip(SignOutButton, "Sign out");
         InitializeUpdates();
+        InitializeNavigationIconMotion();
         InitializeSync(); InitializeSchedule();
         AutomationProperties.SetAutomationId(composer, "Composer");
-        modelChoice.Click += (_, _) => Nav.SelectedItem = Nav.FooterMenuItems.OfType<NavigationViewItem>().First(item => item.Tag?.ToString() == "settings");
+        composer.Paste += PasteComposerImage;
+        composer.PreviewKeyDown += (_, args) => {
+            if (args.Key != Windows.System.VirtualKey.V ||
+                !Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down)) return;
+            if (TryPasteComposerImage()) args.Handled = true;
+        };
+        modelChoice.Click += async (_, _) => { try { await ChooseChatModel(); } catch (Exception error) { Error(error); } };
         sessionTimer.Tick += async (_, _) => {
             if (refreshingSession || workspace.AccountId.Length == 0) return;
             refreshingSession = true; var generation = sessionGeneration;
@@ -62,11 +75,17 @@ public sealed partial class MainPage : Page
             catch (Exception error) { SetAuthError(error.Message); }
             finally { StartupProgress.IsActive = false; StartupProgress.Visibility = Visibility.Collapsed; if (Nav.Visibility != Visibility.Visible) SignIn.Visibility = Visibility.Visible; }
         };
-        Unloaded += (_, _) => { sessionGeneration++; sessionTimer.Stop(); StopSync(); StopSchedules(); sideChat?.Dispose(); worker?.Dispose(); browser?.Dispose(); terminal?.Dispose(); games?.Dispose(); workspace.Dispose(); };
+        Unloaded += (_, _) => { confirmationWait?.Cancel(); sessionGeneration++; sessionTimer.Stop(); StopSync(); StopSchedules(); sideChat?.Dispose(); worker?.Dispose(); browser?.Dispose(); terminal?.Dispose(); games?.Dispose(); workspace.Dispose(); };
     }
     async void Login(object sender, RoutedEventArgs e) => await Authenticate(false);
     void Register(object sender, RoutedEventArgs e) => SetRegistrationMode(true);
     async void CreateAccount(object sender, RoutedEventArgs e) => await Authenticate(true);
+    async void SubmitPassword(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != Windows.System.VirtualKey.Enter || PasswordInput.FocusState == FocusState.Unfocused) return;
+        e.Handled = true;
+        await Authenticate(CreateAccountButton.Visibility == Visibility.Visible);
+    }
     void SetRegistrationMode(bool register)
     {
         AuthTitle.Text = register ? "Create your account" : "Welcome to Krono";
@@ -110,15 +129,52 @@ public sealed partial class MainPage : Page
     }
     async Task Authenticate(bool register)
     {
-        LoginButton.IsEnabled = RegisterButton.IsEnabled = CreateAccountButton.IsEnabled = BackToSignInButton.IsEnabled = false; AuthProgress.Visibility = Visibility.Visible; AuthProgress.IsActive = true; SetAuthError("");
+        var submit = register ? CreateAccountButton : LoginButton;
+        if (authenticating) return;
+        authenticating = true;
+        var label = submit.Content;
+        submit.Content = new ProgressRing { Width = 18, Height = 18, IsActive = true, Foreground = submit.Foreground };
+        submit.IsHitTestVisible = false;
+        RegisterButton.IsEnabled = BackToSignInButton.IsEnabled = false;
+        SetAuthError("");
         var email = EmailInput.Text.Trim();
+        var password = PasswordInput.Password;
         try {
-            if (!await workspace.Login(email, PasswordInput.Password, register)) { ShowConfirmation(email, true); return; }
+            if (!await workspace.Login(email, password, register)) { ShowConfirmation(email, true); _ = WaitForConfirmation(email, password); return; }
             PasswordInput.Password = ""; PasswordVisibility.IsChecked = false; Enter();
         }
         catch (Workspace.EmailConfirmationRequiredException) { ShowConfirmation(email, false); }
         catch (Exception error) { SetAuthError(error.Message); }
-        finally { LoginButton.IsEnabled = RegisterButton.IsEnabled = CreateAccountButton.IsEnabled = BackToSignInButton.IsEnabled = true; AuthProgress.IsActive = false; AuthProgress.Visibility = Visibility.Collapsed; }
+        finally {
+            submit.Content = label;
+            submit.IsHitTestVisible = true;
+            RegisterButton.IsEnabled = BackToSignInButton.IsEnabled = true;
+            authenticating = false;
+        }
+    }
+    async Task WaitForConfirmation(string email, string password)
+    {
+        using var wait = new CancellationTokenSource(TimeSpan.FromMinutes(15));
+        confirmationWait = wait;
+        try {
+            while (true) {
+                await Task.Delay(TimeSpan.FromSeconds(15), wait.Token);
+                try {
+                    await workspace.Login(email, password, cancellation: wait.Token);
+                    Enter();
+                    return;
+                }
+                catch (Workspace.EmailConfirmationRequiredException) { }
+                catch (HttpRequestException) { }
+                catch (TaskCanceledException) when (!wait.IsCancellationRequested) { }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception) {
+            ConfirmationStatus.Text = "After confirming your email, return to sign in.";
+            ConfirmationStatus.Visibility = Visibility.Visible;
+        }
+        finally { if (confirmationWait == wait) confirmationWait = null; }
     }
     void ShowConfirmation(string email, bool sent)
     {
@@ -126,6 +182,10 @@ public sealed partial class MainPage : Page
         PasswordVisibility.IsChecked = false;
         ConfirmationAddress.Text = email;
         ConfirmationInstructions.Text = sent ? "We sent a confirmation link to:" : "Confirm the email address for this account:";
+        ConfirmationHelp.Text = (sent
+            ? "Open the confirmation link and keep Krono Agent open to sign in automatically."
+            : "Open the confirmation link, then return to Krono Agent to sign in.")
+            + " If you do not see the email, check your spam or junk folder.";
         ConfirmationStatus.Text = "";
         ConfirmationStatus.Visibility = Visibility.Collapsed;
         AuthCard.Padding = new Thickness(24);
@@ -135,6 +195,7 @@ public sealed partial class MainPage : Page
     }
     void BackToLogin(object sender, RoutedEventArgs args)
     {
+        confirmationWait?.Cancel();
         ConfirmationForm.Visibility = Visibility.Collapsed;
         LoginForm.Visibility = Visibility.Visible;
         AuthCard.Padding = new Thickness(32);
@@ -168,7 +229,18 @@ public sealed partial class MainPage : Page
         accountSyncTimer.Start(); _ = SyncAccount(false);
         scheduleTimer.Start();
     }
-    async void SignOut(object sender, RoutedEventArgs args)
+    void InvokeNavigationAction(NavigationView sender, NavigationViewItemInvokedEventArgs args)
+    {
+        if (ReferenceEquals(args.InvokedItemContainer, SignOutButton)) SignOut();
+        else if (ReferenceEquals(args.InvokedItemContainer, UpdateButton)) UpdateAction();
+        else if (!sectionChangedThisDispatch && args.InvokedItemContainer?.Tag as string == activeSection &&
+            ContextBody.Content is not null) {
+            contextOpen = !contextOpen;
+            RefreshContextVisibility();
+        }
+    }
+
+    async void SignOut()
     {
         if (workspace.AccountId.Length == 0 || !SignOutButton.IsEnabled) return;
         SignOutButton.IsEnabled = false;
@@ -184,6 +256,15 @@ public sealed partial class MainPage : Page
     {
         if (workspace.AccountId.Length == 0 || args.SelectedItem is not NavigationViewItem item) return;
         try {
+            var section = item.Tag as string;
+            if (section != activeSection) {
+                activeSection = section ?? "";
+                contextOpen = true;
+                sectionChangedThisDispatch = true;
+                DispatcherQueue.TryEnqueue(() => sectionChangedThisDispatch = false);
+                ShowContext(null);
+            }
+            if (item.Tag?.ToString() != "chats" && sideChat is not null) SetSideChatVisible(false);
             switch (item.Tag?.ToString()) {
                 case "chats": ShowChats(); break;
                 case "projects": ShowProjects(); break;
@@ -208,7 +289,7 @@ public sealed partial class MainPage : Page
         sessionTimer.Stop(); worker?.Dispose(); worker = null; browser?.Dispose(); browser = null; terminal?.Dispose(); terminal = null; games?.Dispose(); games = null;
         try { await workspace.Logout(allDevices); }
         finally {
-            chatId = runId = loadedContext = approvalId = null; Body.Content = null; chatList.ItemsSource = null; chatList.IsEnabled = send.IsEnabled = true; stop.IsEnabled = false;
+            chatId = runId = loadedContext = approvalId = draftProject = null; Body.Content = null; chatList.ItemsSource = null; chatList.IsEnabled = true; RefreshComposerAction();
             messages.Children.Clear(); composer.Text = fullResponse = progress.Text = ""; streaming = null; model = ""; modelChoice.Content = "Choose model";
             ClearAttachments();
             mode = "chat"; permissions = "ask"; if (modeSelector is not null) modeSelector.SelectedItem = mode; if (permissionSelector is not null) permissionSelector.SelectedItem = permissions;
@@ -217,7 +298,7 @@ public sealed partial class MainPage : Page
     }
     public async Task<bool> Confirm(string title, string message, string action = "Allow")
     {
-        var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = title, Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap }, PrimaryButtonText = action, CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
+        var dialog = new KronoDialog { XamlRoot = XamlRoot, Title = title, Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap }, PrimaryButtonText = action, CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
         KronoDesign.ApplyControlAccents(dialog);
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
@@ -230,12 +311,26 @@ public sealed partial class MainPage : Page
         AutomationProperties.SetAutomationId(box, label.Replace(" ", ""));
         box.SelectionChanged += (_, _) => { if (box.SelectedItem is string value) change(value); }; return box;
     }
+    static void MarkFullAccess(ComboBox control, string permissions)
+    {
+        if (permissions == "full") control.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 221, 120, 38));
+        else control.ClearValue(Control.ForegroundProperty);
+    }
+
     void ShowChats()
     {
         if (chatView is null) {
-            chatView = new Grid { ColumnSpacing = 24 }; chatView.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); chatView.ColumnDefinitions.Add(new ColumnDefinition());
+            chatView = new Grid();
             var history = new StackPanel { Spacing = 12, Width = 220 }; history.Children.Add(Heading("Chats"));
-            history.Children.Add(Button("+ New chat", () => { if (runId is null) { chatId = workspace.CreateChat(); ReloadChats(); LoadChat(); } }));
+            history.Children.Add(Button("+ New chat", () => {
+                if (runId is not null) return;
+                draftProject = chatId is null ? draftProject : workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).FirstOrDefault()?["project_id"]?.ToString();
+                CloseSideChat();
+                chatId = null;
+                chatList.SelectedItem = null;
+                LoadChat();
+                composer.Focus(FocusState.Programmatic);
+            }));
             chatList.DisplayMemberPath = "Name"; chatList.SelectionChanged += (_, _) => { if (runId is null && chatList.SelectedItem is ChatItem item) { chatId = item.Id; LoadChat(); } }; history.Children.Add(chatList);
             history.Children.Add(Button("Delete selected chat", async () => {
                 var id = chatId; var account = workspace.AccountId;
@@ -245,49 +340,117 @@ public sealed partial class MainPage : Page
                 workspace.Execute("UPDATE chats SET deleted_at=$p0 WHERE id=$p1", Workspace.Now, id);
                 chatId = null; ReloadChats(); LoadChat();
             }));
-            chatView.Children.Add(history);
-            var conversation = new Grid { RowSpacing = 12 }; Grid.SetColumn(conversation, 1); chatView.Children.Add(conversation);
+            chatHistory = history;
+            var conversation = new Grid { RowSpacing = 12 }; chatView.Children.Add(conversation);
             foreach (var height in new[] { GridLength.Auto, new GridLength(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto }) conversation.RowDefinitions.Add(new RowDefinition { Height = height });
             var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-            modeSelector = Choices("Mode", ["chat", "plan", "agent", "goal"], mode, value => mode = value); modeSelector.MinWidth = 110; toolbar.Children.Add(modeSelector); permissionSelector = Choices("Permissions", ["ask", "project", "full"], permissions, value => permissions = value); permissionSelector.MinWidth = 110; toolbar.Children.Add(permissionSelector);
+            modeSelector = Choices("Mode", ["chat", "plan", "agent", "goal"], mode, value => mode = value); modeSelector.MinWidth = 110; toolbar.Children.Add(modeSelector);
+            permissionSelector = Choices("Permissions", ["ask", "project", "full"], permissions, _ => { });
+            permissionSelector.MinWidth = 110; toolbar.Children.Add(permissionSelector);
+            var permissionBox = permissionSelector;
+            permissionBox.SelectionChanged += async (_, _) => {
+                if (permissionBox.SelectedItem is not string value) return;
+                if (value == "full" && permissions != "full") {
+                    permissionBox.SelectedItem = permissions;
+                    permissionBox.IsEnabled = false;
+                    var generation = sessionGeneration;
+                    var selectedChat = chatId;
+                    try {
+                        if (!await Confirm("Enable full access?", "Tools can run commands and change files with your Windows permissions without asking.", "Enable full access") || generation != sessionGeneration || selectedChat != chatId) return;
+                        permissions = "full";
+                        permissionBox.SelectedItem = permissions;
+                    } finally { permissionBox.IsEnabled = true; }
+                    return;
+                }
+                permissions = value;
+                MarkFullAccess(permissionBox, value);
+            };
             ToolTipService.SetToolTip(permissionSelector, "Ask: approve changes/commands. Project: bounded file tools; no shell or desktop execution. Full: supplied tools run with your Windows account.");
             toolbar.Children.Add(Button("Project…", async () => {
-                if (chatId is null || runId is not null) return;
+                if (runId is not null) return;
+                var target = chatId;
+                var generation = sessionGeneration;
+                var currentProject = target is null ? draftProject :
+                    workspace.Query("SELECT project_id FROM chats WHERE id=$p0", target).FirstOrDefault()?["project_id"]?.ToString();
                 var projects = workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name");
-                var selector = new KronoComboBox { MinWidth = 260, ItemsSource = new[] { "No project" }.Concat(projects.Select(p => p["name"]!.ToString())).ToArray(), SelectedIndex = 0 };
+                var selector = new KronoComboBox {
+                    MinWidth = 260,
+                    ItemsSource = new[] { "No project" }.Concat(projects.Select(p => p["name"]!.ToString())).ToArray(),
+                    SelectedIndex = projects.FindIndex(p => p["id"]?.ToString() == currentProject) + 1,
+                };
                 AutomationProperties.SetAutomationId(selector, "ChatProjectSelector");
-                var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Move chat to project", Content = selector, PrimaryButtonText = "Move", CloseButtonText = "Cancel" };
-                dialog.PrimaryButtonClick += (_, _) => { workspace.Execute("UPDATE chats SET project_id=$p0,updated_at=$p1 WHERE id=$p2", selector.SelectedIndex > 0 ? projects[selector.SelectedIndex - 1]["id"]!.ToString() : null, Workspace.Now, chatId); LoadChat(); };
-                await dialog.ShowAsync();
+                var dialog = new KronoDialog { XamlRoot = XamlRoot, Title = target is null ? "Choose project for new chat" : "Move chat to project", Content = selector, PrimaryButtonText = target is null ? "Choose" : "Move", CloseButtonText = "Cancel" };
+                if (await dialog.ShowAsync() != ContentDialogResult.Primary ||
+                    generation != sessionGeneration || target != chatId || runId is not null) return;
+                var project = selector.SelectedIndex > 0 ? projects[selector.SelectedIndex - 1]["id"]!.ToString() : null;
+                if (project == currentProject) return;
+                if (target is null) draftProject = project;
+                else workspace.Execute("UPDATE chats SET project_id=$p0,updated_at=$p1 WHERE id=$p2 AND deleted_at IS NULL", project, Workspace.Now, target);
+                LoadChat();
             }));
-            conversation.Children.Add(toolbar); Grid.SetRow(transcript, 1); conversation.Children.Add(transcript);
+            Grid.SetRow(transcript, 1); conversation.Children.Add(transcript);
             Grid.SetRow(progress, 2); conversation.Children.Add(progress);
             var input = new StackPanel { Spacing = 10 }; input.Children.Add(attachmentTray); input.Children.Add(composer); var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
-            send.Style = (Style)Application.Current.Resources["KronoPrimaryButton"]; send.Click += async (_, _) => await SendMessage();
-            stop.Click += async (_, _) => { if (scheduledRun is not null) await StopScheduledRun(); else if (runId is not null) await worker!.Send(Guid.NewGuid().ToString(), "cancel", new { id = runId }); };
-            var primaryActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 }; primaryActions.Children.Add(send); primaryActions.Children.Add(stop);
-            var secondaryActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 }; modelChoice.MaxWidth = 170; secondaryActions.Children.Add(modelChoice); secondaryActions.Children.Add(Button("Attach files…", PickAttachments)); secondaryActions.Children.Add(Button("Side chat", OpenSideChat));
-            actions.Children.Add(primaryActions); actions.Children.Add(secondaryActions); actions.SizeChanged += (_, args) => actions.Orientation = args.NewSize.Width < 500 ? Orientation.Vertical : Orientation.Horizontal;
-            input.Children.Add(actions); Grid.SetRow(input, 3); conversation.Children.Add(input);
+            send.Style = (Style)Application.Current.Resources["KronoPrimaryButton"];
+            send.Click += async (_, _) => {
+                if (!ComposerCanStop) await SendMessage();
+                else if (scheduledRun is not null) await StopScheduledRun();
+                else if (runId is { } activeRun) await worker!.Send(Guid.NewGuid().ToString(), "cancel", new { id = activeRun });
+            };
+            composer.TextChanged += (_, _) => RefreshComposerAction();
+            var attach = Button("+", PickAttachments);
+            AutomationProperties.SetName(attach, "Attach files…");
+            ToolTipService.SetToolTip(attach, "Attach files…");
+            var primaryActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 }; primaryActions.Children.Add(attach); primaryActions.Children.Add(send);
+            var secondaryActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            modelChoice.MaxWidth = 240;
+            secondaryActions.Children.Add(modelChoice);
+            sideChatButton = Button("Side chat", OpenSideChat);
+            AutomationProperties.SetAutomationId(sideChatButton, "OpenSideChatButton");
+            secondaryActions.Children.Add(sideChatButton);
+            actions.Children.Add(primaryActions); actions.Children.Add(secondaryActions);
+            actions.LayoutUpdated += (_, _) => {
+                var required = primaryActions.DesiredSize.Width + secondaryActions.DesiredSize.Width + actions.Spacing;
+                var orientation = actions.ActualWidth < required ? Orientation.Vertical : Orientation.Horizontal;
+                if (actions.Orientation != orientation) actions.Orientation = orientation;
+            };
+            input.SizeChanged += (_, args) => {
+                var orientation = args.NewSize.Width < 360 ? Orientation.Vertical : Orientation.Horizontal;
+                if (toolbar.Orientation != orientation) toolbar.Orientation = orientation;
+            };
+            input.Children.Add(toolbar); input.Children.Add(actions); Grid.SetRow(input, 3); conversation.Children.Add(input);
         }
-        modelChoice.Content = new TextBlock { Text = model.Length == 0 ? "Choose model" : model, TextTrimming = TextTrimming.CharacterEllipsis };
-        ToolTipService.SetToolTip(modelChoice, ProviderCatalog.Name(provider) + " / " + model);
+        ShowContext(chatHistory);
+        RefreshChatModelLabel();
         KronoDesign.Present(Body, chatView); ReloadChats(); if (runId is null) LoadChat();
+        SetSideChatVisible(sideChat is not null && sideChat.ParentChatId == chatId);
         Nav.SelectedItem = Nav.MenuItems.OfType<NavigationViewItem>().First(item => item.Tag?.ToString() == "chats");
         UpdateActivityVisibility();
+    }
+    bool ComposerCanStop => (runId is not null || scheduledRun is not null) && string.IsNullOrWhiteSpace(composer.Text);
+    void RefreshComposerAction()
+    {
+        var canStop = ComposerCanStop;
+        send.Content = canStop ? "Stop" : "Send";
+        send.IsEnabled = canStop || (runId is null && scheduledRun is null);
     }
     record ChatItem(string Id, string Name);
     void ReloadChats() { chatList.ItemsSource = workspace.Query("SELECT id,name FROM chats WHERE deleted_at IS NULL AND id NOT IN (SELECT chat_id FROM side_chats) ORDER BY updated_at DESC").Select(row => new ChatItem(row["id"]!.ToString(), row["name"]!.ToString())).ToList(); }
     void LoadChat()
     {
-        if (attachments.Count > 0 && attachmentChat != chatId) ClearAttachments();
+        if (sideChatButton is not null)
+            sideChatButton.Visibility = chatId is null ? Visibility.Collapsed : Visibility.Visible;
+        if (sideChat is not null && sideChat.ParentChatId != chatId) CloseSideChat();
+        if ((attachments.Count > 0 || pastedImage is not null) && attachmentChat != chatId) ClearAttachments();
         messages.Children.Clear();
         if (chatId is null) {
-            var welcome = new StackPanel { Spacing = 18, Margin = new Thickness(0, 80, 0, 0), MaxWidth = 520 };
-            welcome.Children.Add(new Image { Source = new SvgImageSource(new Uri("ms-appx:///Assets/Krono.svg")), Width = 92, Height = 92, HorizontalAlignment = HorizontalAlignment.Left });
-            welcome.Children.Add(new TextBlock { Text = "What would you like to work on?", FontFamily = (FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 34, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-            welcome.Children.Add(new TextBlock { Text = "Start a conversation, work on a project, or pick up where you left off.", FontSize = 15, Opacity = .65, TextWrapping = TextWrapping.Wrap });
-            welcome.Children.Add(Button("+ Start a conversation", () => { chatId = workspace.CreateChat(); ReloadChats(); LoadChat(); }));
+            var welcome = new Grid { ColumnSpacing = 12, Margin = new Thickness(0, 12, 0, 0), MaxWidth = 520 };
+            welcome.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            welcome.ColumnDefinitions.Add(new ColumnDefinition());
+            welcome.Children.Add(new Image { Source = new SvgImageSource(new Uri("ms-appx:///Assets/Krono.svg")), Width = 40, Height = 40, VerticalAlignment = VerticalAlignment.Center });
+            var welcomeTitle = new TextBlock { Text = "What would you like to work on?", FontFamily = (FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 28, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(welcomeTitle, 1);
+            welcome.Children.Add(welcomeTitle);
             messages.Children.Add(welcome); return;
         }
         var project = workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).First()["project_id"]?.ToString();
@@ -315,28 +478,38 @@ public sealed partial class MainPage : Page
         workspace.Setting("native.codePalette"));
     async Task SendMessage()
     {
-        if (runId is not null || scheduledRun is not null || (string.IsNullOrWhiteSpace(composer.Text) && attachments.Count == 0)) return;
+        if (runId is not null || scheduledRun is not null || (string.IsNullOrWhiteSpace(composer.Text) && attachments.Count == 0 && pastedImage is null)) return;
         var generation = sessionGeneration;
         try {
             var apiKey = ConnectionKey();
-            var title = string.IsNullOrWhiteSpace(composer.Text) ? "Attached text files" : composer.Text;
+            var image = pastedImage;
+            if (image is not null && provider != "openai") throw new InvalidOperationException("Choose an OpenAI model that supports images, or remove the pasted image.");
+            var title = string.IsNullOrWhiteSpace(composer.Text) ? (image is null ? "Attached text files" : "Clipboard image") : composer.Text;
             var text = TextAttachment.Compose(composer.Text, attachments);
-            chatId ??= workspace.CreateChat(); workspace.AddMessage(chatId, "user", text); composer.Text = ""; ClearAttachments();
+            if (image is not null) text = (text.Length == 0 ? "" : text + "\n\n") + "[Clipboard image attached]";
+            chatId ??= workspace.CreateChat(draftProject);
+            var messageId = workspace.AddMessage(chatId, "user", text);
+            composer.Text = ""; ClearAttachments();
             if (workspace.Query("SELECT id FROM messages WHERE chat_id=$p0", chatId).Count == 1) workspace.Execute("UPDATE chats SET name=$p0 WHERE id=$p1", title[..Math.Min(42, title.Length)], chatId);
             LoadChat(); ReloadChats(); streaming = new TextBlock { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontFamily = (FontFamily)Application.Current.Resources["KronoTextFont"], FontSize = (double)Application.Current.Resources["KronoTextSize"], LineHeight = 24 }; messages.Children.Add(streaming); fullResponse = "";
             var project = workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).First()["project_id"]?.ToString();
             var config = project is null ? null : workspace.ProjectPreferences(project);
             var dirs = project is null ? [] : workspace.Query("SELECT path FROM project_directories WHERE project_id=$p0", project).Select(p => p["path"]!.ToString()).ToArray();
             var memories = workspace.Query("SELECT content FROM memories WHERE deleted_at IS NULL AND (project_id IS NULL OR project_id=$p0)", project).Select(p => p["content"]!.ToString()).ToArray();
-            runId = Guid.NewGuid().ToString(); send.IsEnabled = false; chatList.IsEnabled = false; stop.IsEnabled = true; progress.Text = "Working…";
+            runId = Guid.NewGuid().ToString(); RefreshComposerAction(); chatList.IsEnabled = false; progress.Text = "Working…";
             activityChatId = chatId; RunActivity.Title = "Agent running"; RunActivity.Message = workspace.Query("SELECT name FROM chats WHERE id=$p0", chatId).First()["name"]?.ToString(); RunActivity.IsClosable = false; UpdateActivityVisibility();
-            var history = workspace.Query("SELECT role,content FROM messages WHERE chat_id=$p0 AND deleted_at IS NULL ORDER BY created_at", chatId).Select(p => new { role = p["role"]!.ToString(), content = p["content"]!.ToString() }).ToArray();
-            await worker!.Request(runId, "run", new { providerId = provider, apiKey, endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled, modelId = model, mode, permissions, messages = history, projectDirs = dirs, instructions = config?["instructions"]?.ToString() ?? "", memories });
+            var history = workspace.Query("SELECT role,content FROM messages WHERE chat_id=$p0 AND deleted_at IS NULL ORDER BY id=$p1,created_at,rowid", chatId, messageId).Select(p => new { role = p["role"]!.ToString(), content = p["content"]!.ToString() }).ToArray();
+            if (workspace.Setting("native.chatContext") == "Recent messages") history = history.TakeLast(20).ToArray();
+            var reasoning = workspace.Setting(ChatReasoningKey);
+            var request = JsonSerializer.SerializeToNode(new { providerId = provider, apiKey, endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled, modelId = model, mode, permissions, messages = history, projectDirs = dirs, instructions = config?["instructions"]?.ToString() ?? "", memories })!.AsObject();
+            if (image is not null) request["messages"]!.AsArray()[^1]!["imagePng"] = image;
+            if (reasoning is "low" or "medium" or "high") request["reasoningEffort"] = reasoning;
+            await worker!.Request(runId, "run", request);
             if (generation != sessionGeneration) return;
             workspace.AddMessage(chatId, "assistant", fullResponse); progress.Text = "Done";
             RunActivity.Title = "Response ready"; RunActivity.IsClosable = true; if (ReferenceEquals(Body.Content, chatView)) activityChatId = null; UpdateActivityVisibility();
         } catch (Exception error) { if (generation == sessionGeneration) { Error(error); progress.Text = "Stopped"; RunActivity.Title = "Agent stopped"; RunActivity.IsClosable = true; if (ReferenceEquals(Body.Content, chatView)) activityChatId = null; UpdateActivityVisibility(); } }
-        finally { if (generation == sessionGeneration) { runId = null; send.IsEnabled = true; chatList.IsEnabled = true; stop.IsEnabled = false; Approval.IsOpen = false; approvalId = null; ClearApprovalDetails(); if (workspace.AccountId.Length > 0) { workspace.FlushSideTransfers(); LoadChat(); } } }
+        finally { if (generation == sessionGeneration) { runId = null; RefreshComposerAction(); chatList.IsEnabled = true; Approval.IsOpen = false; approvalId = null; ClearApprovalDetails(); if (workspace.AccountId.Length > 0) { workspace.FlushSideTransfers(); LoadChat(); } } }
     }
     void WorkerEvent(string id, string type, JsonNode? data) {
         terminal?.Receive(id, type, data);
@@ -360,16 +533,19 @@ public sealed partial class MainPage : Page
         if (approvalDetails is null || approvalDialog is not null) return;
         var details = new KronoTextBox { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinWidth = 350, MaxHeight = 480, FontFamily = KronoDesign.CodeFont, FontSize = KronoDesign.CodeSize, Text = approvalDetails.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) };
         AutomationProperties.SetAutomationId(details, "ToolApprovalDetails");
-        var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Action details", Content = details, CloseButtonText = "Close details" }; approvalDialog = dialog;
+        var dialog = new KronoDialog { XamlRoot = XamlRoot, Title = "Action details", Content = details, CloseButtonText = "Close details" }; approvalDialog = dialog;
         try { await dialog.ShowAsync(); } catch (Exception error) { Error(error); } finally { if (ReferenceEquals(approvalDialog, dialog)) approvalDialog = null; }
     }
-    void ApplyTheme(string value)
+    void ApplyTheme(string value, bool animate = false)
     {
         KronoDesign.ApplyPalette(value == "halloween");
         RequestedTheme = value == "light" ? ElementTheme.Light : value is "dark" or "halloween" ? ElementTheme.Dark : ElementTheme.Default;
         if (MainWindow.Instance?.Content is FrameworkElement root) root.RequestedTheme = RequestedTheme;
-        HalloweenCorner.Visibility = value == "halloween" ? Visibility.Visible : Visibility.Collapsed;
+        HalloweenPumpkin.Visibility = HalloweenCorner.Visibility = value == "halloween" ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var backdrop in WorkspacePattern.Children.OfType<GameBackdrop>().Concat(LoginPattern.Children.OfType<GameBackdrop>()))
+            backdrop.SetHalloween(value == "halloween");
         MainWindow.Instance?.ShowHalloween(value == "halloween");
+        if (animate) KronoDesign.AnimateThemeChange(this);
     }
     bool CompatibleEndpoint => ProviderCatalog.Compatible(provider);
     string ProviderEndpoint => workspace.Setting("native.endpoint." + provider) is { Length: > 0 } endpoint ? endpoint : ProviderCatalog.Endpoint(provider);
@@ -382,13 +558,40 @@ public sealed partial class MainPage : Page
         if (key.Length == 0 && (ProviderCatalog.RequiresKey(provider) || endpoint is not null && !ProviderCatalog.Local(endpoint))) throw new InvalidOperationException("Save this provider's API key in Settings first.");
         return key;
     }
+    string settingsCategory = "Account";
     void ShowSettings()
     {
-        var panel = new StackPanel { Spacing = 18, MaxWidth = 650, HorizontalAlignment = HorizontalAlignment.Left }; panel.Children.Add(Heading("Settings"));
+        var pages = new Dictionary<string, StackPanel>();
+        StackPanel AddCategory(string name)
+        {
+            var section = new StackPanel { Spacing = 16, MaxWidth = 650, HorizontalAlignment = HorizontalAlignment.Left };
+            section.Children.Add(Heading(name));
+            pages.Add(name, section);
+            return section;
+        }
+        var panel = AddCategory("Account");
         panel.Children.Add(new TextBlock { Text = workspace.Email, Opacity = .65 });
         panel.Children.Add(Button("Sign out on all devices", async () => { if (await Confirm("Sign out on all devices?", "You’ll need to sign in again on each device.", "Sign out everywhere")) await Leave(true); }));
-        panel.Children.Add(Choices("Appearance", ["system", "dark", "light", "halloween"], workspace.Setting("native.theme") is { Length: > 0 } t ? t : "system", value => { workspace.SetSetting("native.theme", value); ApplyTheme(value); }));
+        AddSyncSettings(panel);
+        panel = AddCategory("Updates");
         AddUpdateSettings(panel);
+        panel = AddCategory("Browser");
+        var homePage = new KronoTextBox { Header = "Browser new tab URL", Text = workspace.Setting("browser.homePage") is { Length: > 0 } home ? home : "https://www.google.com/" };
+        AutomationProperties.SetAutomationId(homePage, "BrowserHomePage");
+        void SaveBrowserHome()
+        {
+            var value = homePage.Text.Trim();
+            if (value.Length > 0 && (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http"))) {
+                Error(new InvalidOperationException("Enter a full HTTP or HTTPS address."));
+                return;
+            }
+            workspace.SetSetting("browser.homePage", value);
+            homePage.Text = value.Length > 0 ? value : "https://www.google.com/";
+        }
+        homePage.PreviewKeyDown += (_, args) => { if (args.Key == Windows.System.VirtualKey.Enter) { args.Handled = true; SaveBrowserHome(); } };
+        panel.Children.Add(homePage);
+        panel.Children.Add(Button("Save browser home page", SaveBrowserHome));
+        panel = AddCategory("Model provider");
         var secret = new PasswordBox { Header = "Provider API key · optional for local servers", HorizontalAlignment = HorizontalAlignment.Stretch };
         KronoInputMotion.Attach(secret, "KronoPasswordInput");
         var endpoint = new KronoTextBox { Header = "Server base URL · include /v1", Text = ProviderEndpoint };
@@ -398,10 +601,12 @@ public sealed partial class MainPage : Page
         var connectionStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .7 }; AutomationProperties.SetAutomationId(connectionStatus, "ProviderConnectionStatus");
         var models = new KronoComboBox { Header = "Model", HorizontalAlignment = HorizontalAlignment.Stretch, IsEditable = true, Text = model };
         var profileHelp = new TextBlock { Text = ProviderCatalog.Help(provider), TextWrapping = TextWrapping.Wrap, Opacity = .65 };
-        var saveEndpoint = Button("Save endpoint", () => { try {
+        void SaveEndpoint() { try {
             var url = ProviderCatalog.ParseEndpoint(endpoint.Text);
             workspace.SetSetting("native.endpoint." + provider, url.AbsoluteUri.TrimEnd('/')); connectionStatus.Text = "Endpoint saved.";
-        } catch (Exception error) { Error(error); } });
+        } catch (Exception error) { Error(error); } }
+        var saveEndpoint = Button("Save endpoint", SaveEndpoint);
+        endpoint.PreviewKeyDown += (_, args) => { if (args.Key == Windows.System.VirtualKey.Enter) { args.Handled = true; SaveEndpoint(); } };
         void EndpointVisibility() { endpoint.Visibility = tools.Visibility = saveEndpoint.Visibility = CompatibleEndpoint ? Visibility.Visible : Visibility.Collapsed; tools.IsEnabled = model.Length > 0; }
         ToolTipService.SetToolTip(tools, "Choose Use model first. Tool support is saved separately for each provider and model.");
         var providerIds = ProviderCatalog.Ids; var providerNames = providerIds.Select(ProviderCatalog.Name).ToArray();
@@ -411,35 +616,88 @@ public sealed partial class MainPage : Page
         tools.Checked += (_, _) => { if (CompatibleEndpoint && model.Length > 0) workspace.SetSetting(ModelToolsSetting, "true"); }; tools.Unchecked += (_, _) => { if (CompatibleEndpoint && model.Length > 0) workspace.SetSetting(ModelToolsSetting, "false"); };
         EndpointVisibility(); panel.Children.Add(endpoint); panel.Children.Add(saveEndpoint); panel.Children.Add(tools); panel.Children.Add(secret);
         AutomationProperties.SetAutomationId(secret, "ProviderKey");
-        panel.Children.Add(Button("Save key", () => { if (!string.IsNullOrWhiteSpace(secret.Password)) { workspace.SaveKey(provider, secret.Password.Trim()); secret.Password = ""; } }));
+        void SaveKey()
+        {
+            if (string.IsNullOrWhiteSpace(secret.Password)) return;
+            try { workspace.SaveKey(provider, secret.Password.Trim()); secret.Password = ""; }
+            catch (Exception error) { Error(error); }
+        }
+        secret.PreviewKeyDown += (_, args) => { if (args.Key == Windows.System.VirtualKey.Enter) { args.Handled = true; SaveKey(); } };
+        panel.Children.Add(Button("Save key", SaveKey));
         panel.Children.Add(Button("Test connection", async () => { try { var result = await worker!.Request(Guid.NewGuid().ToString(), "test", new { providerId = provider, apiKey = workspace.Key(provider), endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled }); connectionStatus.Text = result?["success"]?.GetValue<bool>() == true ? "Connected · " + result["latencyMs"] + " ms" : "Connection failed. Check the server, endpoint and credentials."; } catch (Exception error) { Error(error); } }));
         panel.Children.Add(connectionStatus); panel.Children.Add(models);
         AutomationProperties.SetAutomationId(models, "ModelSelector");
         panel.Children.Add(Button("Load available models", async () => { try { var result = await worker!.Request(Guid.NewGuid().ToString(), "models", new { providerId = provider, apiKey = workspace.Key(provider), endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled }); models.ItemsSource = result!.AsArray().Select(m => m!["id"]!.ToString()).ToArray(); } catch (Exception error) { Error(error); } }));
-        panel.Children.Add(Button("Use model", () => { model = models.Text.Trim(); workspace.SetSetting("native.model." + provider, model); tools.IsChecked = ProviderToolsEnabled; tools.IsEnabled = model.Length > 0; }));
+        void UseModel()
+        {
+            model = models.Text.Trim();
+            workspace.SetSetting("native.model." + provider, model);
+            tools.IsChecked = ProviderToolsEnabled;
+            tools.IsEnabled = model.Length > 0;
+        }
+        models.PreviewKeyDown += (_, args) => {
+            if (args.Key != Windows.System.VirtualKey.Enter || models.IsDropDownOpen) return;
+            args.Handled = true;
+            UseModel();
+        };
+        panel.Children.Add(Button("Use model", UseModel));
         panel.Children.Add(profileHelp);
+        panel.Children.Add(new TextBlock { Text = "API keys are encrypted for this Windows account. Provider usage and billing follow your provider account.", TextWrapping = TextWrapping.Wrap });
+        panel = AddCategory("Appearance");
+        panel.Children.Add(Choices("Appearance", ["system", "dark", "light", "halloween"], workspace.Setting("native.theme") is { Length: > 0 } t ? t : "system", value => { workspace.SetSetting("native.theme", value); ApplyTheme(value, animate: true); }));
         var textFont = new KronoTextBox { Header = "Text font", Text = workspace.Setting("native.textFont") is { Length: > 0 } tf ? tf : "Rubik" };
         var codeFont = new KronoTextBox { Header = "Code font", Text = workspace.Setting("native.codeFont") is { Length: > 0 } cf ? cf : "JetBrains Mono" };
         AutomationProperties.SetAutomationId(textFont, "TextFontFamily"); AutomationProperties.SetAutomationId(codeFont, "CodeFontFamily");
         var textSize = new NumberBox { Header = "Text size", Minimum = 11, Maximum = 28, Value = KronoDesign.TextSize };
         var codeSize = new NumberBox { Header = "Code size", Minimum = 10, Maximum = 26, Value = KronoDesign.CodeSize };
         AutomationProperties.SetAutomationId(textSize, "TextFontSize"); AutomationProperties.SetAutomationId(codeSize, "CodeFontSize");
-        panel.Children.Add(textFont); panel.Children.Add(textSize); panel.Children.Add(codeFont); panel.Children.Add(codeSize);
+        AddFontRow(textFont, textSize);
+        AddFontRow(codeFont, codeSize);
+        void AddFontRow(KronoTextBox family, NumberBox size)
+        {
+            var row = new Grid { ColumnSpacing = 12 };
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            size.Width = 110;
+            Grid.SetColumn(size, 1);
+            row.Children.Add(family);
+            row.Children.Add(size);
+            panel.Children.Add(row);
+        }
         panel.Children.Add(Choices("Code palette", ["classic", "mint", "halloween"], workspace.Setting("native.codePalette") is { Length: > 0 } palette ? palette : "classic", value => workspace.SetSetting("native.codePalette", value)));
-        panel.Children.Add(Button("Save typography", () => {
+        void SaveTypography() {
             workspace.SetSetting("native.textFont", textFont.Text.Trim()); workspace.SetSetting("native.codeFont", codeFont.Text.Trim());
             workspace.SetSetting("native.textSize", (double.IsFinite(textSize.Value) ? Math.Clamp(textSize.Value, 11, 28) : 14).ToString(System.Globalization.CultureInfo.InvariantCulture));
             workspace.SetSetting("native.codeSize", (double.IsFinite(codeSize.Value) ? Math.Clamp(codeSize.Value, 10, 26) : 14).ToString(System.Globalization.CultureInfo.InvariantCulture));
             KronoDesign.ApplyTypography(workspace, this);
-        }));
-        panel.Children.Add(new TextBlock { Text = "Bundled fonts: Rubik (including Hebrew), Space Grotesk and JetBrains Mono. You can also enter an installed font name. Text and code sizes are independent.", TextWrapping = TextWrapping.Wrap, Opacity = .65 });
-        panel.Children.Add(new TextBlock { Text = "API keys are encrypted for this Windows account. Provider usage and billing follow your provider account.", TextWrapping = TextWrapping.Wrap });
-        AddSyncSettings(panel);
-        KronoDesign.Present(Body, new ScrollViewer { Content = panel });
+        }
+        codeFont.PreviewKeyDown += (_, args) => {
+            if (args.Key != Windows.System.VirtualKey.Enter) return;
+            args.Handled = true;
+            SaveTypography();
+        };
+        panel.Children.Add(Button("Save typography", SaveTypography));
+        panel.Children.Add(new TextBlock { Text = "Bundled fonts: Rubik, Space Grotesk and JetBrains Mono. You can also enter an installed font name. Text and code sizes are independent.", TextWrapping = TextWrapping.Wrap, Opacity = .65 });
+        var categories = new ListView { ItemsSource = pages.Keys.ToArray(), SelectionMode = ListViewSelectionMode.Single };
+        AutomationProperties.SetAutomationId(categories, "SettingsCategories");
+        var sidebar = new StackPanel { Spacing = 4 };
+        sidebar.Children.Add(Heading("Settings"));
+        sidebar.Children.Add(categories);
+        ShowContext(sidebar);
+        var page = new ContentControl { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
+        var views = pages.ToDictionary(entry => entry.Key, entry => new ScrollViewer { Content = entry.Value, Padding = new Thickness(4, 0, 10, 0) });
+        categories.SelectionChanged += (_, _) => {
+            if (categories.SelectedItem is not string selected) return;
+            settingsCategory = selected;
+            KronoDesign.Present(page, views[selected]);
+        };
+        categories.SelectedItem = settingsCategory;
+        KronoDesign.Present(Body, page);
     }
     void ShowProjects()
     {
-        var panel = new StackPanel { Spacing = 14, MaxWidth = 800, HorizontalAlignment = HorizontalAlignment.Stretch }; panel.Children.Add(Heading("Projects & memory"));
+        var panel = new StackPanel { Spacing = 12 };
+        panel.Children.Add(Heading("Project"));
         var projects = workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name"); string? selected = null;
         var picker = new KronoComboBox { Header = "Project", ItemsSource = projects.Select(p => p["name"]!.ToString()).ToArray(), HorizontalAlignment = HorizontalAlignment.Stretch };
         var name = new KronoTextBox { Header = "Name" }; var folders = new KronoTextBox { Header = "Project folders · one absolute path per line", AcceptsReturn = true, MinHeight = 70 };
@@ -451,6 +709,7 @@ public sealed partial class MainPage : Page
         AutomationProperties.SetAutomationId(global, "GlobalMemory");
         string projectPermissions = "ask";
         var permissionBox = Choices("Default permissions", ["ask", "project", "full"], "ask", value => projectPermissions = value);
+        permissionBox.SelectionChanged += (_, _) => MarkFullAccess(permissionBox, projectPermissions);
         picker.SelectionChanged += (_, _) => { if (picker.SelectedIndex < 0) return; selected = projects[picker.SelectedIndex]["id"]!.ToString(); name.Text = projects[picker.SelectedIndex]["name"]!.ToString(); folders.Text = string.Join(Environment.NewLine, workspace.Query("SELECT path FROM project_directories WHERE project_id=$p0", selected).Select(p => p["path"]!.ToString())); var config = workspace.ProjectPreferences(selected); instructions.Text = config?["instructions"]?.ToString() ?? ""; permissionBox.SelectedItem = config?["permissions"]?.ToString() ?? "ask"; memory.Text = workspace.Query("SELECT content FROM memories WHERE id=$p0", "project:" + selected).FirstOrDefault()?["content"]?.ToString() ?? ""; };
         panel.Children.Add(picker); panel.Children.Add(Button("New project", () => { selected = null; picker.SelectedIndex = -1; name.Text = folders.Text = instructions.Text = memory.Text = ""; }));
         panel.Children.Add(name); panel.Children.Add(folders); panel.Children.Add(instructions); panel.Children.Add(permissionBox); panel.Children.Add(memory);
@@ -460,17 +719,54 @@ public sealed partial class MainPage : Page
             var folder = await folderPicker.PickSingleFolderAsync();
             if (folder is not null) folders.Text += (folders.Text.Length == 0 ? "" : Environment.NewLine) + folder.Path;
         }));
-        panel.Children.Add(Button("Save project", () => { try {
+        panel.Children.Add(Button("Save project", async () => { try {
             if (string.IsNullOrWhiteSpace(name.Text)) throw new InvalidOperationException("Give the project a name.");
             var directories = folders.Text.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(Path.GetFullPath).Distinct().ToArray(); if (directories.Any(p => !Directory.Exists(p))) throw new InvalidOperationException("Every project folder must exist.");
+            if (projectPermissions == "full" && (selected is null || workspace.ProjectPreferences(selected)?["permissions"]?.ToString() != "full")) {
+                var generation = sessionGeneration;
+                if (!await Confirm("Enable full access for this project?", "Tools in this project can run commands and change files with your Windows permissions without asking.", "Enable full access") || generation != sessionGeneration) return;
+            }
             var id = selected ?? Guid.NewGuid().ToString(); var now = Workspace.Now;
             workspace.Execute("BEGIN"); try {
             workspace.Execute("INSERT INTO projects(id,account_id,name,created_at,updated_at) VALUES($p0,$p1,$p2,$p3,$p3) ON CONFLICT(id) DO UPDATE SET name=excluded.name,updated_at=excluded.updated_at", id, workspace.AccountId, name.Text.Trim(), now);
             workspace.Execute("DELETE FROM project_directories WHERE project_id=$p0", id); foreach (var directory in directories) workspace.Execute("INSERT INTO project_directories(id,project_id,device_id,path) VALUES($p0,$p1,'local',$p2)", Guid.NewGuid().ToString(), id, directory);
             workspace.SetSetting("project." + id, new JsonObject { ["instructions"] = instructions.Text, ["permissions"] = projectPermissions }.ToJsonString()); SaveMemory("project:" + id, id, memory.Text); workspace.Execute("COMMIT"); } catch { workspace.Execute("ROLLBACK"); throw; } ShowProjects();
         } catch (Exception error) { Error(error); } }));
-        panel.Children.Add(global); panel.Children.Add(Button("Save global memory", () => SaveMemory("global", null, global.Text)));
-        KronoDesign.Present(Body, new ScrollViewer { Content = panel });
+        var memoryPanel = new StackPanel { Spacing = 12 };
+        memoryPanel.Children.Add(Heading("Shared memory"));
+        memoryPanel.Children.Add(new TextBlock { Text = "This memory applies across projects.", TextWrapping = TextWrapping.Wrap });
+        memoryPanel.Children.Add(global);
+        memoryPanel.Children.Add(Button("Save global memory", () => SaveMemory("global", null, global.Text)));
+        Border Card(StackPanel content)
+        {
+            var card = new Border { Child = content, CornerRadius = new CornerRadius(14), Padding = new Thickness(18), VerticalAlignment = VerticalAlignment.Top };
+            void SetPalette() => card.Background = KronoDesign.ThemeBrush("KronoSurface", card.ActualTheme);
+            card.Loaded += (_, _) => SetPalette();
+            card.ActualThemeChanged += (_, _) => SetPalette();
+            return card;
+        }
+        var columns = new Grid { ColumnSpacing = 16, RowSpacing = 16 };
+        columns.ColumnDefinitions.Add(new ColumnDefinition());
+        columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0) });
+        columns.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        columns.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var projectCard = Card(panel);
+        var memoryCard = Card(memoryPanel);
+        columns.Children.Add(projectCard);
+        columns.Children.Add(memoryCard);
+        Grid.SetRow(memoryCard, 1);
+        columns.SizeChanged += (_, args) => {
+            var wide = args.NewSize.Width >= 760;
+            columns.ColumnDefinitions[1].Width = wide ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+            Grid.SetRow(memoryCard, wide ? 0 : 1);
+            Grid.SetColumn(memoryCard, wide ? 1 : 0);
+        };
+        var page = new StackPanel { Spacing = 12, MaxWidth = 1020, HorizontalAlignment = HorizontalAlignment.Left };
+        page.Children.Add(Heading("Projects & memory"));
+        page.Children.Add(columns);
+        var scroller = new ScrollViewer { Content = page, HorizontalContentAlignment = HorizontalAlignment.Left };
+        scroller.SizeChanged += (_, args) => page.Width = Math.Min(page.MaxWidth, Math.Max(0, args.NewSize.Width - 16));
+        KronoDesign.Present(Body, scroller);
     }
     void SaveMemory(string id, string? project, string content) => workspace.Execute("INSERT INTO memories(id,account_id,project_id,content,created_at,updated_at) VALUES($p0,$p1,$p2,$p3,$p4,$p4) ON CONFLICT(id) DO UPDATE SET content=excluded.content,updated_at=excluded.updated_at", id, workspace.AccountId, project, content, Workspace.Now);
 }

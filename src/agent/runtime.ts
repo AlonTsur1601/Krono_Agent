@@ -17,6 +17,7 @@ interface AgentConfig {
   mode: 'chat' | 'plan' | 'agent' | 'goal'
   permissions: 'ask' | 'project' | 'full'
   modelId: string
+  reasoningEffort?: CompletionRequest['reasoningEffort']
   providerId: string
   projectPath?: string
   projectDirs?: string[]
@@ -90,6 +91,7 @@ export class AgentRuntime {
     // Create completion request
     const request: CompletionRequest = {
       model: config.modelId,
+      reasoningEffort: config.reasoningEffort && provider.getModelCapabilities(config.modelId).supportsReasoningEffort ? config.reasoningEffort : undefined,
       messages: allMessages,
       tools: availableTools.length > 0 ? this.convertToolsForProvider(availableTools) : undefined,
       stream: true,

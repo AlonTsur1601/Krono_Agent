@@ -132,7 +132,7 @@ public sealed partial class GamesWorkspace
         }
         if (moved) moves++;
         score = cards.Foundations.Sum() * 10;
-        if (score == 520) End("Solitaire complete");
+        if (score == 520) End("Solitaire complete", won: true);
         Draw(); SaveCurrent();
     }
     void DrawBoardGames()

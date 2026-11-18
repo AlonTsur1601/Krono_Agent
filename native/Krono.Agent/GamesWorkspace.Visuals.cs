@@ -76,8 +76,9 @@ public sealed partial class GamesWorkspace
         status.VerticalAlignment = VerticalAlignment.Center; status.TextWrapping = TextWrapping.Wrap; header.Children.Add(status);
         var score = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
         score.Children.Add(new TextBlock { Text = "SCORE", CharacterSpacing = 160, FontSize = 10, VerticalAlignment = VerticalAlignment.Center, Opacity = .72 });
+        scoreReadout.VerticalAlignment = VerticalAlignment.Center;
         score.Children.Add(scoreReadout); pointsGain.VerticalAlignment = VerticalAlignment.Center; score.Children.Add(pointsGain);
-        var badge = new Border { Padding = new Thickness(13, 5, 12, 5), CornerRadius = new CornerRadius(12), Child = score };
+        var badge = new Border { Padding = new Thickness(13, 5, 12, 5), CornerRadius = new CornerRadius(12), VerticalAlignment = VerticalAlignment.Center, Child = score };
         void SetPalette() => badge.Background = KronoDesign.ThemeBrush("KronoSurface", ActualTheme);
         SetPalette();
         ActualThemeChanged += (_, _) => SetPalette();
@@ -122,6 +123,10 @@ public sealed partial class GamesWorkspace
     void StageStatus()
     {
         if (previewOnly) return;
+        if (snakeEndCard is not null)
+            snakeEndCard.Visibility = game == 0 && ended && endMessage == "Game over" ? Visibility.Visible : Visibility.Collapsed;
+        if (replayButton is not null)
+            replayButton.Visibility = ended && snakeEndCard?.Visibility != Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
         var full = status.Text;
         AutomationProperties.SetName(status, full);
         var caption = string.Join(" · ", full.Split(" · ", StringSplitOptions.RemoveEmptyEntries).Where(part => !part.StartsWith("Score ", StringComparison.Ordinal)));
@@ -138,11 +143,10 @@ public sealed partial class GamesWorkspace
             var faint = new SolidColorBrush(Color.FromArgb(30, accent.R, accent.G, accent.B));
             var rail = new Rectangle { Width = 472, Height = 472, RadiusX = 11, RadiusY = 11, Stroke = faint, StrokeThickness = 1 };
             Canvas.SetLeft(rail, 4); Canvas.SetTop(rail, 4); playTexture.Children.Add(rail);
-            var pitch = game == Solitaire ? 16 : game is 0 or 5 or 7 or 11 or 14 or Darts ? 40 : 56;
-            for (var y = pitch / 2; y < 480; y += pitch)
-                for (var x = pitch / 2 + ((y / pitch) % 2) * (pitch / 3); x < 480; x += pitch) {
-                    var dot = new Ellipse { Width = 2, Height = 2, Fill = faint };
-                    Canvas.SetLeft(dot, x); Canvas.SetTop(dot, y); playTexture.Children.Add(dot);
+            if (game == 0)
+                for (var coordinate = 24; coordinate < 480; coordinate += 24) {
+                    playTexture.Children.Add(new Line { X1 = coordinate, X2 = coordinate, Y2 = 480, Stroke = faint, StrokeThickness = 1 });
+                    playTexture.Children.Add(new Line { Y1 = coordinate, Y2 = coordinate, X2 = 480, Stroke = faint, StrokeThickness = 1 });
                 }
         }
         canvas.Children.Add(playTexture);
