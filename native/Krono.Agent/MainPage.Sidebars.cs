@@ -34,8 +34,9 @@ public sealed partial class MainPage
         var target = show ? 252d : 0d;
         var current = ContextRail.ActualWidth;
         contextMotion?.Stop();
+        contextMotion = null;
+        ContextRail.Width = target;
         if (ContextBody.Content is null || !new UISettings().AnimationsEnabled || Math.Abs(current - target) < 1) {
-            ContextRail.Width = target;
             ContextRail.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             return;
         }
@@ -51,7 +52,6 @@ public sealed partial class MainPage
         contextMotion = motion;
         motion.Completed += (_, _) => {
             if (contextMotion != motion) return;
-            ContextRail.Width = target;
             motion.Stop();
             ContextRail.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             contextMotion = null;

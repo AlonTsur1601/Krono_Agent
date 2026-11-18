@@ -57,7 +57,13 @@ function PressEnterOn([string]$Id) {
 }
 function SetValue([string]$Id, [string]$Value) { $element = Find $Id; $pattern = $element.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern); $pattern.SetValue($Value) }
 function SetEditableChoice([string]$Id, [string]$Value) { $element = Find $Id; $edit = $element.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit))); ($edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).SetValue($Value) }
-function SelectNav([string]$Name) { $element = Find $Name -ByName; $pattern = $element.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern); $pattern.Select(); Start-Sleep -Milliseconds 400 }
+function SelectNav([string]$Name) {
+    $element = Find $Name -ByName
+    $pattern = $element.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)
+    if ($pattern.Current.IsSelected) { return }
+    $pattern.Select()
+    Start-Sleep -Milliseconds 400
+}
 function SelectSettingsCategory([string]$Name) {
     $rail = Find 'SettingsCategories'
     $condition = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, $Name)
