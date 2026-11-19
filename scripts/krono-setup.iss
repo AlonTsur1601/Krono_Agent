@@ -43,10 +43,9 @@ WelcomeLabel2=Choose where to install Krono Agent and where to place shortcuts. 
 #else
 WelcomeLabel2=Choose where to install Krono Agent and where to place shortcuts. Setup downloads the app after you click Install. An internet connection is required.
 #endif
-SelectTasksLabel2=Krono Agent is always added to Start > All apps. Choose any additional options.
+SelectTasksLabel2=Choose whether to create a desktop shortcut.
 
 [Tasks]
-Name: "startpinhelp"; Description: "Show how to pin Krono Agent to Start"; Flags: unchecked
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
@@ -131,8 +130,6 @@ var
   AppDir: String;
   Entry: TFindRec;
 begin
-  if (CurStep = ssDone) and (not WizardSilent) and WizardIsTaskSelected('startpinhelp') then
-    MsgBox('Open Start > All apps, right-click Krono Agent, and choose Pin to Start.', mbInformation, MB_OK);
   if (CurStep <> ssPostInstall) or not CleanUpgrade then Exit;
   AppDir := ExpandConstant('{app}');
   if not FindFirst(AppDir, Entry) then Exit;
@@ -161,13 +158,8 @@ end;
 function ShortcutSummary: String;
 begin
   Result := 'Start menu (All apps)';
-  if WizardIsTaskSelected('startpinhelp') then
-    Result := Result + ', Start pinning instructions';
   if WizardIsTaskSelected('desktopicon') then
-  begin
-    if Result <> '' then Result := Result + ', ';
-    Result := Result + 'Desktop';
-  end;
+    Result := Result + ', Desktop';
 end;
 
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo,
