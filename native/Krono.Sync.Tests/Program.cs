@@ -13,7 +13,7 @@ var offline = false; var loseNextWriteResponse = false; var raceNextMemoryUpdate
 var localFixtureRoot = Path.Combine(Path.GetTempPath(), "krono-sync-" + Guid.NewGuid().ToString("N"));
 static void Check(bool condition, string label) { if (!condition) throw new Exception(label); }
 static async Task<JsonObject> Body(HttpContext context) => JsonNode.Parse(await new StreamReader(context.Request.Body).ReadToEndAsync())!.AsObject();
-static string Unfilter(string? value) { if (value is null || value.Length < 4) return ""; var text = value[3..]; return text.StartsWith('"') ? JsonSerializer.Deserialize<string>(text)! : text; }
+static string Unfilter(string? value) => value is { Length: >= 3 } ? value[3..] : "";
 app.MapPost("/auth/v1/token", async (HttpContext context) => {
     var input = await Body(context); var second = input["email"]?.ToString() == "other@fixture.test" || input["refresh_token"]?.ToString() == "test-refresh-other";
     return Results.Json(new { user = new { id = second ? Other : Owner, email = second ? "other@fixture.test" : "owner@fixture.test" }, access_token = second ? "test-access-other" : "test-access-owner", refresh_token = second ? "test-refresh-other" : "test-refresh-owner" });

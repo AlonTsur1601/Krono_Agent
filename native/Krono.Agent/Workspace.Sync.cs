@@ -202,7 +202,7 @@ public sealed partial class Workspace
         throw new InvalidDataException("Too many cloud records in one synchronization.");
     }
     static int Revision(SyncTable table, JsonObject row) => !table.Versioned ? 1 : int.TryParse(row["version"]?.ToString(), out var version) && version > 0 ? version : throw new InvalidDataException("Cloud revision missing.");
-    static string Filter(string operation, string value) => operation + "." + Uri.EscapeDataString("\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"");
+    static string Filter(string operation, string value) => operation + "." + Uri.EscapeDataString(value);
     async Task<SyncRow?> PushSyncRow(SyncTable table, string id, JsonObject value, int? revision, string account, CancellationToken token)
     {
         var payload = value.DeepClone().AsObject(); payload["account_id"] = account;
