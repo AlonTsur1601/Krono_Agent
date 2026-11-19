@@ -187,9 +187,9 @@ internal static class KronoInputMotion
         if (Attached.TryGetValue(field, out _)) return;
         Attached.Add(field, new object());
         if (style is not null) field.Style = (Style)Application.Current.Resources[style];
-        SolidColorBrush? highlight = null;
-        LinearGradientBrush? rim = null;
-        GradientStop? shadowInk = null, shadowClear = null;
+        Border? inputFace = null;
+        SolidColorBrush? rim = null;
+        GradientStop? shade = null, fill = null;
         bool hover = false, pressed = false;
         long pressStarted = 0;
         var pressFeedback = new DispatcherTimer();
@@ -206,37 +206,20 @@ internal static class KronoInputMotion
                 else if (child is Border border) {
                     border.BackgroundTransition = new BrushTransition { Duration = TimeSpan.FromMilliseconds(180) };
                 }
-            if (highlight is null && Descendants(field).OfType<Border>().FirstOrDefault(border => border.Name == (field is KronoComboBox ? "Background" : "BorderElement")) is { Parent: Grid grid } face) {
-                rim = new LinearGradientBrush { StartPoint = new(0, 0), EndPoint = new(0, 1) };
-                foreach (var stop in ((LinearGradientBrush)KronoDesign.ThemeBrush("KronoInputRim", field.ActualTheme)).GradientStops)
-                    rim.GradientStops.Add(new GradientStop { Color = stop.Color, Offset = stop.Offset });
+            var faceName = field is KronoComboBox ? "Background" : "BorderElement";
+            var face = Descendants(field).OfType<Border>().FirstOrDefault(border => border.Name == faceName);
+            if (face is not null && face != inputFace && !new AccessibilitySettings().HighContrast && field.BorderThickness.Top > 0) {
+                inputFace = face;
+                shade = new GradientStop { Offset = 0 };
+                fill = new GradientStop { Offset = 1 };
+                rim = new SolidColorBrush();
                 face.BorderBrush = rim;
-                highlight = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                var outline = new Border { BorderBrush = highlight, BorderThickness = new Thickness(1.5), CornerRadius = field.CornerRadius,
-                    IsHitTestVisible = false, Margin = face.Margin };
-                Grid.SetRow(outline, Grid.GetRow(face));
-                Grid.SetColumn(outline, Grid.GetColumn(face));
-                Grid.SetRowSpan(outline, Grid.GetRowSpan(face));
-                Grid.SetColumnSpan(outline, Grid.GetColumnSpan(face));
-                if (field.BorderThickness.Top > 0) {
-                    shadowInk = new GradientStop { Offset = 0 };
-                    shadowClear = new GradientStop { Offset = 1 };
-                    var shadow = new Border {
-                        CornerRadius = new CornerRadius(Math.Max(0, field.CornerRadius.TopLeft - 1),
-                            Math.Max(0, field.CornerRadius.TopRight - 1), 0, 0),
-                        Margin = new Thickness(face.Margin.Left + 1, face.Margin.Top + 1, face.Margin.Right + 1, 0),
-                        IsHitTestVisible = false,
-                        Background = new LinearGradientBrush { MappingMode = BrushMappingMode.Absolute,
-                            StartPoint = new(0, 0), EndPoint = new(0, 7),
-                            GradientStops = { shadowInk, shadowClear } }
-                    };
-                    Grid.SetRow(shadow, Grid.GetRow(face));
-                    Grid.SetColumn(shadow, Grid.GetColumn(face));
-                    Grid.SetRowSpan(shadow, Grid.GetRowSpan(face));
-                    Grid.SetColumnSpan(shadow, Grid.GetColumnSpan(face));
-                    grid.Children.Insert(grid.Children.IndexOf(face) + 1, shadow);
-                }
-                grid.Children.Add(outline);
+                face.BackgroundSizing = BackgroundSizing.InnerBorderEdge;
+                face.BackgroundTransition = null;
+                face.Background = new LinearGradientBrush {
+                    MappingMode = BrushMappingMode.Absolute, StartPoint = new(0, 0), EndPoint = new(0, 6),
+                    GradientStops = { shade, fill }
+                };
             }
             foreach (var element in Descendants(field).OfType<FrameworkElement>())
                 foreach (var group in VisualStateManager.GetVisualStateGroups(element))
@@ -244,10 +227,10 @@ internal static class KronoInputMotion
                     if (rim is not null) {
                         foreach (var state in group.States) {
                             foreach (var setter in state.Setters.OfType<Setter>().Where(setter =>
-                                setter.Target?.Path?.Path is "BorderElement.BorderBrush" or "Background.BorderBrush").ToArray())
+                                setter.Target?.Path?.Path is "BorderElement.BorderBrush" or "Background.BorderBrush" or "BorderElement.Background" or "Background.Background").ToArray())
                                 state.Setters.Remove(setter);
                             if (state.Storyboard is { } storyboard)
-                                foreach (var animation in storyboard.Children.Where(animation => (Storyboard.GetTargetName(animation) is "BorderElement" or "Background") && Storyboard.GetTargetProperty(animation) == "BorderBrush").ToArray())
+                                foreach (var animation in storyboard.Children.Where(animation => (Storyboard.GetTargetName(animation) is "BorderElement" or "Background") && (Storyboard.GetTargetProperty(animation) is "BorderBrush" or "Background")).ToArray())
                                     storyboard.Children.Remove(animation);
                         }
                     }
@@ -267,29 +250,13 @@ internal static class KronoInputMotion
             var active = field.IsEnabled && (focused || hover);
             var pressing = field.IsEnabled && (pressed || pressFeedback.IsEnabled);
             AnimateSurface(field, pressing && field is not KronoTextBox { PressMotionEnabled: false } ? field is KronoComboBox ? .97f : .99f : 1, companion);
-            if (highlight is null) return;
-            var accent = ((SolidColorBrush)KronoDesign.ThemeBrush("KronoAccentForeground", field.ActualTheme)).Color;
-            accent.A = active ? (byte)(focused ? 220 : 100) : (byte)0;
+            if (rim is null || shade is null || fill is null) return;
+            var theme = field.ActualTheme;
+            shade.Color = ((SolidColorBrush)KronoDesign.ThemeBrush(field.IsEnabled ? "KronoInputShade" : "KronoInputFace", theme)).Color;
+            fill.Color = ((SolidColorBrush)KronoDesign.ThemeBrush("KronoInputFace", theme)).Color;
+            var role = active ? (focused ? "KronoAccentForeground" : "KronoOutlineHover") : "KronoInputRim";
             var storyboard = new Storyboard();
-            AddColorAnimation(storyboard, highlight, accent);
-            if (rim is not null) {
-                var normal = (LinearGradientBrush)KronoDesign.ThemeBrush("KronoInputRim", field.ActualTheme);
-                if (shadowInk is not null && shadowClear is not null) {
-                    var shadowColor = normal.GradientStops[0].Color;
-                    shadowColor.A = field.ActualTheme == ElementTheme.Light ? (byte)100 : (byte)190;
-                    shadowInk.Color = shadowColor;
-                    shadowColor.A = 0;
-                    shadowClear.Color = shadowColor;
-                }
-                var blend = active ? (focused ? .5 : .25) : 0;
-                for (var i = 0; i < rim.GradientStops.Count; i++) {
-                    var color = normal.GradientStops[i].Color;
-                    color.R = (byte)(color.R + (accent.R - color.R) * blend);
-                    color.G = (byte)(color.G + (accent.G - color.G) * blend);
-                    color.B = (byte)(color.B + (accent.B - color.B) * blend);
-                    AddColorAnimation(storyboard, rim.GradientStops[i], color);
-                }
-            }
+            AddColorAnimation(storyboard, rim, ((SolidColorBrush)KronoDesign.ThemeBrush(role, theme)).Color);
             storyboard.Begin();
         }
         field.PointerEntered += (_, _) => { hover = true; Refresh(); };

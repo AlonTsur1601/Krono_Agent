@@ -34,8 +34,8 @@ public static class KronoDesign
         Set(dark, "KronoContextRail", halloween ? "281B34" : "1A2430");
         Set(dark, "KronoSurface", halloween ? "2B1D39" : "1B2532");
         Set(dark, "KronoInputFace", halloween ? "2B1D39" : "19232F");
-        SetFace("KronoInputRim", halloween ? "160E20" : "0B1017", halloween ? "553764" : "344452");
-        ((LinearGradientBrush)dark["KronoInputRim"]).GradientStops[2].Color = Parse(halloween ? "553764" : "344452");
+        Set(dark, "KronoInputRim", halloween ? "553764" : "344452");
+        Set(dark, "KronoInputShade", halloween ? "20152D" : "111A24");
         Set(dark, "KronoDisabledFace", halloween ? "463952" : "354353");
         Set(dark, "KronoDisabledBase", halloween ? "2E2439" : "26323E");
         Set(dark, "KronoDisabledInk", halloween ? "E4D8EC" : "D2DCE5");
