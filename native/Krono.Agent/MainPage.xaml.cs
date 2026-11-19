@@ -78,6 +78,41 @@ public sealed partial class MainPage : Page
         Unloaded += (_, _) => { confirmationWait?.Cancel(); sessionGeneration++; sessionTimer.Stop(); StopSync(); StopSchedules(); sideChat?.Dispose(); worker?.Dispose(); browser?.Dispose(); terminal?.Dispose(); games?.Dispose(); workspace.Dispose(); };
     }
     async void Login(object sender, RoutedEventArgs e) => await Authenticate(false);
+    async void SignInWithGoogle(object sender, RoutedEventArgs e)
+    {
+        if (authenticating) return;
+        authenticating = true;
+        SetAuthError("");
+        try {
+            if (!await AuthorizeGoogle(false)) return;
+            PasswordInput.Password = "";
+            PasswordVisibility.IsChecked = false;
+            Enter();
+        }
+        catch (Exception error) { SetAuthError(error.Message); }
+        finally { authenticating = false; }
+    }
+
+    internal async Task<bool> AuthorizeGoogle(bool link)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var dialog = new KronoDialog {
+            XamlRoot = XamlRoot,
+            Title = link ? "Link your Google account" : "Sign in with Google",
+            Content = new TextBlock {
+                Text = "Complete Google authorization in your default browser, then return to Krono.",
+                TextWrapping = TextWrapping.Wrap
+            },
+            CloseButtonText = "Cancel"
+        };
+        var dismissal = dialog.ShowAsync().AsTask();
+        var authorization = workspace.GoogleAuthenticate(link, cancellation.Token);
+        if (await Task.WhenAny(dismissal, authorization) == dismissal) cancellation.Cancel();
+        else if (!dismissal.IsCompleted) dialog.Hide();
+        await dismissal;
+        try { await authorization; return true; }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return false; }
+    }
     void Register(object sender, RoutedEventArgs e) => SetRegistrationMode(true);
     async void CreateAccount(object sender, RoutedEventArgs e) => await Authenticate(true);
     async void SubmitPassword(object sender, KeyRoutedEventArgs e)
@@ -395,7 +430,7 @@ public sealed partial class MainPage : Page
             var fadedTranscript = KronoDesign.ScrollPage(transcript);
             Grid.SetRow(fadedTranscript, 1); conversation.Children.Add(fadedTranscript);
             Grid.SetRow(progress, 2); conversation.Children.Add(progress);
-            var input = new StackPanel { Spacing = 4, Margin = new Thickness(0, 0, 0, 21) };
+            var input = new StackPanel { Spacing = 4 };
             input.Children.Add(attachmentTray);
             input.Children.Add(composer);
             send.Click += async (_, _) => {
@@ -420,19 +455,18 @@ public sealed partial class MainPage : Page
             sideChatButton = Button("Side chat", OpenSideChat);
             AutomationProperties.SetAutomationId(sideChatButton, "OpenSideChatButton");
             toolbar.Children.Add(sideChatButton);
-            foreach (var selector in new[] { modeSelector, permissionSelector }) {
-                AutomationProperties.SetName(selector, selector.Header?.ToString() ?? "");
-                if (ToolTipService.GetToolTip(selector) is null) ToolTipService.SetToolTip(selector, selector.Header);
-                selector.Header = null;
-            }
-            foreach (var control in toolbar.Children.OfType<Control>()) control.VerticalAlignment = VerticalAlignment.Center;
+            foreach (var control in toolbar.Children.OfType<Control>()) control.VerticalAlignment = VerticalAlignment.Bottom;
             var actions = new Grid { ColumnSpacing = 12 };
             actions.ColumnDefinitions.Add(new ColumnDefinition());
             actions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             actions.Children.Add(new ScrollViewer { Content = toolbar, HorizontalScrollMode = ScrollMode.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollMode = ScrollMode.Disabled,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalAlignment = VerticalAlignment.Center });
-            var primaryActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
+            var primaryActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Bottom };
+            void KeepClearOfPumpkin() =>
+                primaryActions.Margin = new Thickness(0, 0, HalloweenPumpkin.Visibility == Visibility.Visible ? 16 : 0, 0);
+            HalloweenPumpkin.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => KeepClearOfPumpkin());
+            KeepClearOfPumpkin();
             primaryActions.Children.Add(attach);
             primaryActions.Children.Add(send);
             Grid.SetColumn(primaryActions, 1);
@@ -609,6 +643,15 @@ public sealed partial class MainPage : Page
         }
         var panel = AddCategory("Account");
         panel.Children.Add(new TextBlock { Text = workspace.Email, Opacity = .65 });
+        var googleStatus = new TextBlock { Opacity = .65, TextWrapping = TextWrapping.Wrap };
+        var googleLink = Button("Link Google account", async () => {
+            try { if (await AuthorizeGoogle(true)) ShowSettings(); }
+            catch (Exception error) { Error(error); }
+        });
+        if (workspace.GoogleEmail is { } google) {
+            googleStatus.Text = "Google account: " + google;
+            panel.Children.Add(googleStatus);
+        } else panel.Children.Add(googleLink);
         panel.Children.Add(Button("Sign out on all devices", async () => { if (await Confirm("Sign out on all devices?", "You’ll need to sign in again on each device.", "Sign out everywhere")) await Leave(true); }));
         AddSyncSettings(panel);
         panel = AddCategory("Updates");

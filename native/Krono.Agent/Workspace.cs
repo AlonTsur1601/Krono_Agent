@@ -77,9 +77,21 @@ public sealed partial class Workspace : IDisposable
     }
     private void Accept(JsonNode session)
     {
+        SaveSession(session);
+        Open(session["user"]!);
+    }
+    private void SaveSession(JsonNode session)
+    {
+        if (session is JsonObject data) {
+            data.Remove("provider_token");
+            data.Remove("provider_refresh_token");
+        }
+        var newAccess = session["access_token"]!.GetValue<string>();
+        var newRefresh = session["refresh_token"]!.GetValue<string>();
+        Protect(SessionFile, session.ToJsonString());
         IsOfflineSession = false;
-        access = session["access_token"]!.GetValue<string>(); refresh = session["refresh_token"]!.GetValue<string>();
-        Protect(SessionFile, session.ToJsonString()); Open(session["user"]!);
+        access = newAccess;
+        refresh = newRefresh;
     }
     public async Task<bool> Restore()
     {
@@ -96,11 +108,12 @@ public sealed partial class Workspace : IDisposable
     {
         sessionEpoch++;
         try { if (access.Length > 0) await Auth("logout?scope=" + (allDevices ? "global" : "local"), new { }, access); }
-        finally { if (File.Exists(SessionFile)) File.Delete(SessionFile); access = refresh = ""; db?.Dispose(); db = null; AccountId = Email = ""; }
+        finally { if (File.Exists(SessionFile)) File.Delete(SessionFile); access = refresh = ""; db?.Dispose(); db = null; AccountId = Email = ""; GoogleEmail = null; }
     }
     private void Open(JsonNode user)
     {
         AccountId = Guid.Parse(user["id"]!.GetValue<string>()).ToString(); Email = user["email"]!.GetValue<string>();
+        GoogleEmail = ReadGoogleEmail(user);
         db?.Dispose(); Directory.CreateDirectory(Path.Combine(dataHome, "databases"));
         db = new SqliteConnection($"Data Source={Path.Combine(dataHome, "databases", AccountId + ".db")}"); db.Open();
         Execute("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");

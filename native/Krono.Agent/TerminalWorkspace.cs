@@ -13,6 +13,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
 {
     readonly AgentWorker worker;
     readonly TabView tabs = new() { VerticalAlignment = VerticalAlignment.Stretch };
+    readonly ContentControl selectedTerminal = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
     readonly Dictionary<string, Session> terminals = new();
 
     sealed class Session(TabViewItem tab, TextBox screen)
@@ -27,12 +28,17 @@ public sealed class TerminalWorkspace : Grid, IDisposable
     public TerminalWorkspace(AgentWorker worker)
     {
         this.worker = worker;
-        KronoDesign.StyleTabs(tabs);
-        Children.Add(KronoDesign.FrameTabContent(tabs, "KronoSidebar"));
-        tabs.AddTabButtonClick += async (_, _) => await Create();
+        var frame = new Grid();
+        frame.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        frame.RowDefinitions.Add(new RowDefinition());
+        frame.Children.Add(KronoDesign.CreateTabStrip(tabs, () => _ = Create()));
+        frame.Children.Add(selectedTerminal);
+        Grid.SetRow(selectedTerminal, 1);
+        Children.Add(KronoDesign.FrameTabContent(frame, "KronoSidebar"));
         tabs.SelectionChanged += (_, _) => {
-            if (tabs.SelectedItem is TabViewItem { Content: TextBox screen })
-                DispatcherQueue.TryEnqueue(() => screen.Focus(FocusState.Programmatic));
+            var screen = terminals.Values.FirstOrDefault(terminal => ReferenceEquals(terminal.Tab, tabs.SelectedItem))?.Screen;
+            selectedTerminal.Content = screen;
+            if (screen is not null) DispatcherQueue.TryEnqueue(() => screen.Focus(FocusState.Programmatic));
         };
         tabs.TabCloseRequested += async (_, args) => {
             var id = terminals.FirstOrDefault(entry => ReferenceEquals(entry.Value.Tab, args.Tab)).Key;
@@ -58,7 +64,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(screen, "PowerShell terminal");
         screen.ActualThemeChanged += (_, _) => screen.Background = KronoDesign.ThemeBrush("KronoSurface", screen.ActualTheme);
         KronoInputMotion.RegisterPaletteRefresh(screen, () => screen.Background = KronoDesign.ThemeBrush("KronoSurface", screen.ActualTheme));
-        var tab = new TabViewItem { Header = "PowerShell", Content = screen };
+        var tab = new TabViewItem { Header = "PowerShell" };
         KronoDesign.StyleTabHeader(tab);
         var terminal = new Session(tab, screen);
         screen.BeforeTextChanging += (_, args) => args.Cancel = !terminal.Rendering;

@@ -160,11 +160,13 @@ public static class KronoDesign
 
     const double TabHeight = 34;
     const double TabButtonSize = 26;
+    const double TabStripInset = 6;
+    const double TabWidth = 164;
 
     internal static void StyleTabHeader(TabViewItem tab)
     {
         tab.KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
-        tab.MinWidth = 150;
+        tab.MinWidth = tab.MaxWidth = TabWidth;
         tab.HeaderTemplate = (DataTemplate)Application.Current.Resources["KronoTabTitle"];
         tab.MinHeight = TabHeight;
         tab.Padding = new Thickness(0);
@@ -172,32 +174,23 @@ public static class KronoDesign
         tab.Resources["TabViewSelectedItemBorderThickness"] = new Thickness(0);
         var hovered = false;
         var pressed = false;
+        Border? face = null;
         void Refresh()
         {
-            if (!tab.IsLoaded || new AccessibilitySettings().HighContrast) return;
-            var surface = ThemeBrush(tab.IsSelected ? "KronoSurface" :
-                pressed ? "ButtonBackgroundPressed" : hovered ? "ButtonBackgroundPointerOver" : "KronoSidebar", tab.ActualTheme);
-            tab.Background = surface;
-            tab.Resources["TabViewItemHeaderBackgroundSelected"] = surface;
-            tab.Resources["TabViewItemHeaderBackgroundSelectedPointerOver"] = surface;
-            tab.Resources["TabViewItemHeaderBackgroundSelectedPressed"] = surface;
+            if (face is null || new AccessibilitySettings().HighContrast) return;
+            face.Background = ThemeBrush(pressed ? "ButtonBackgroundPressed" :
+                hovered ? "ButtonBackgroundPointerOver" : tab.IsSelected ? "KronoSurface" : "KronoSidebar", tab.ActualTheme);
+        }
+        tab.Loaded += (_, _) => {
+            var highContrast = new AccessibilitySettings().HighContrast;
+            if (!highContrast) tab.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             foreach (var part in KronoInputMotion.Descendants(tab).ToArray()) {
                 if (part is Button { Name: "CloseButton" } close) {
-                    KronoInputMotion.StyleButton(close);
-                    close.ApplyTemplate();
-                    // TabView overrides the close button's Background with a transparent brush.
-                    if (KronoInputMotion.Descendants(close).OfType<Border>().FirstOrDefault(part => part.Name == "ButtonFace") is { } closeFace)
-                        closeFace.Background = ThemeBrush("KronoButtonFace", tab.ActualTheme);
-                    close.CornerRadius = new CornerRadius(7);
-                    close.Width = close.Height = TabButtonSize;
-                    close.VerticalAlignment = VerticalAlignment.Center;
-                    close.HorizontalAlignment = HorizontalAlignment.Right;
+                    StyleTabButton(close, add: false);
                     close.Margin = new Thickness(4, 0, 0, 0);
-                    close.HorizontalContentAlignment = HorizontalAlignment.Center;
-                    close.VerticalContentAlignment = VerticalAlignment.Center;
-                    if (close.Content is not PathIcon) close.Content = TabButtonIcon(add: false);
+                    close.HorizontalAlignment = HorizontalAlignment.Right;
                 }
-                if (part is Grid { Name: "TabContainer" } header) {
+                if (!highContrast && part is Grid { Name: "TabContainer" } header) {
                     header.MinHeight = TabHeight;
                     header.Margin = new Thickness(0);
                     header.BorderThickness = new Thickness(0);
@@ -206,29 +199,29 @@ public static class KronoDesign
                         title.HorizontalAlignment = HorizontalAlignment.Stretch;
                         title.VerticalAlignment = VerticalAlignment.Center;
                     }
-                    var face = header.Children.OfType<Border>().FirstOrDefault(child => child.Name == "KronoTabFace");
+                    face = header.Children.OfType<Border>().FirstOrDefault(child => child.Name == "KronoTabFace");
                     if (face is null) {
                         face = new Border { Name = "KronoTabFace", CornerRadius = new CornerRadius(9, 9, 0, 0),
                             IsHitTestVisible = false, Margin = new Thickness(-header.Padding.Left, -header.Padding.Top,
-                                -header.Padding.Right, -header.Padding.Bottom) };
+                                -header.Padding.Right, -header.Padding.Bottom),
+                            BackgroundTransition = new BrushTransition { Duration = TimeSpan.FromMilliseconds(120) } };
                         Grid.SetColumnSpan(face, header.ColumnDefinitions.Count);
                         header.Children.Insert(0, face);
                     }
-                    face.Background = surface;
                 }
-                if (part is Microsoft.UI.Xaml.Shapes.Path { Name: "SelectedBackgroundPath" or "LeftRadiusRenderArc" or "RightRadiusRenderArc" } decoration)
+                if (!highContrast && part is Microsoft.UI.Xaml.Shapes.Path { Name: "SelectedBackgroundPath" or "LeftRadiusRenderArc" or "RightRadiusRenderArc" } decoration)
                     decoration.Opacity = 0;
             }
-        }
+            Refresh();
+        };
         tab.PointerEntered += (_, _) => { hovered = true; Refresh(); };
         tab.PointerExited += (_, _) => { hovered = pressed = false; Refresh(); };
         tab.AddHandler(UIElement.PointerPressedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => { pressed = true; Refresh(); }), true);
         tab.AddHandler(UIElement.PointerReleasedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => { pressed = false; Refresh(); }), true);
         tab.PointerCaptureLost += (_, _) => { pressed = false; Refresh(); };
         KronoInputMotion.RegisterPaletteRefresh(tab, Refresh);
-        tab.Loaded += (_, _) => Refresh();
         tab.ActualThemeChanged += (_, _) => Refresh();
-        tab.RegisterPropertyChangedCallback(TabViewItem.IsSelectedProperty, (_, _) => tab.DispatcherQueue.TryEnqueue(Refresh));
+        tab.RegisterPropertyChangedCallback(TabViewItem.IsSelectedProperty, (_, _) => Refresh());
     }
 
     internal static Grid ScrollPage(FrameworkElement content, string background = "KronoBackground")
@@ -267,39 +260,92 @@ public static class KronoDesign
         };
     }
 
-    internal static void StyleTabs(TabView tabs)
+    internal static Grid CreateTabStrip(TabView tabs, Action addTab, FrameworkElement? commands = null)
     {
-        tabs.TabStripHeader = new Border { Width = 9 };
-        tabs.Padding = new Thickness(0, 6, 0, 0);
+        tabs.IsAddTabButtonVisible = false;
+        tabs.TabStripHeader = new Border { Width = 1 };
+        tabs.Padding = new Thickness(0, TabStripInset, 0, 0);
         tabs.BorderThickness = new Thickness(0);
-        tabs.TabWidthMode = TabViewWidthMode.Equal;
-        tabs.Resources["TabViewItemMinWidth"] = 150d;
-        tabs.Resources["TabViewItemMaxWidth"] = 220d;
+        tabs.TabWidthMode = TabViewWidthMode.SizeToContent;
         tabs.CloseButtonOverlayMode = TabViewCloseButtonOverlayMode.Always;
         tabs.KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
+
+        var add = new Button();
+        StyleTabButton(add, add: true);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(add, "WorkspaceAddTab");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(add, "Add new tab");
+        ToolTipService.SetToolTip(add, "Add new tab");
+        add.Click += (_, _) => addTab();
+        tabs.AddTabButtonClick += (_, _) => addTab();
+        void RevealSelection()
+        {
+            if (tabs.SelectedItem is TabViewItem selected)
+                selected.DispatcherQueue.TryEnqueue(() => selected.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false }));
+        }
+        tabs.SelectionChanged += (_, _) => RevealSelection();
+        var footer = new StackPanel {
+            Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom, Height = TabHeight,
+            Margin = new Thickness(0, 0, 0, TabStripInset),
+            Padding = new Thickness(4, 0, TabStripInset, 0), Spacing = 6
+        };
+        footer.Children.Add(add);
+        if (commands is not null) footer.Children.Add(commands);
+        var header = new Grid { Height = TabHeight + 2 * TabStripInset };
+        header.ColumnDefinitions.Add(new ColumnDefinition());
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var contentEdge = new Border { Height = TabStripInset, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false };
+        void PaintContentEdge() => contentEdge.Background = ThemeBrush("KronoSurface", header.ActualTheme);
+        header.Loaded += (_, _) => PaintContentEdge();
+        header.ActualThemeChanged += (_, _) => PaintContentEdge();
+        KronoInputMotion.RegisterPaletteRefresh(header, PaintContentEdge);
+        header.Children.Add(contentEdge);
+        Grid.SetColumnSpan(contentEdge, 2);
+        var viewport = new Grid();
+        var clip = new RectangleGeometry();
+        viewport.Clip = clip;
+        viewport.SizeChanged += (_, args) => {
+            clip.Rect = new Windows.Foundation.Rect(0, 0, args.NewSize.Width, args.NewSize.Height);
+            RevealSelection();
+        };
+        viewport.Children.Add(tabs);
+        header.Children.Add(viewport);
+        header.Children.Add(footer);
+        Grid.SetColumn(footer, 1);
+
         tabs.Loaded += (_, _) => {
             tabs.ApplyTemplate();
-            var parts = KronoInputMotion.Descendants(tabs).ToArray();
-            foreach (var line in parts.OfType<Border>().Where(part => part.Name is "LeftBottomBorderLine" or "RightBottomBorderLine"))
+            var strip = KronoInputMotion.Descendants(tabs).OfType<Grid>().FirstOrDefault(part => part.Name == "TabContainerGrid");
+            if (strip is null) return;
+            if (KronoInputMotion.Descendants(strip).OfType<Button>().FirstOrDefault(part => part.Name == "AddButton") is { } hiddenAdd)
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(hiddenAdd, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+            foreach (var line in KronoInputMotion.Descendants(strip).OfType<Border>()
+                .Where(part => part.Name is "LeftBottomBorderLine" or "RightBottomBorderLine"))
                 line.Opacity = 0;
-            foreach (var button in parts.OfType<Microsoft.UI.Xaml.Controls.Primitives.ButtonBase>()
-                .Where(part => part.Name is "AddButton" or "ScrollDecreaseButton" or "ScrollIncreaseButton")) {
-                var add = button.Name == "AddButton";
-                button.Style = (Style)Application.Current.Resources[add ? "KronoButton" : "KronoRepeatButton"];
-                button.MinWidth = button.MinHeight = 0;
+            foreach (var button in KronoInputMotion.Descendants(strip).OfType<Microsoft.UI.Xaml.Controls.Primitives.RepeatButton>()
+                .Where(part => part.Name is "ScrollDecreaseButton" or "ScrollIncreaseButton")) {
+                button.Style = (Style)Application.Current.Resources["KronoRepeatButton"];
+                KronoInputMotion.StyleButton(button);
                 button.Width = button.Height = TabButtonSize;
-                button.Padding = new Thickness(0);
-                button.CornerRadius = new CornerRadius(7);
-                if (add) button.Content = TabButtonIcon(add: true);
-                else if (button.Content is FontIcon icon) icon.FontSize = 12;
-                button.VerticalAlignment = VerticalAlignment.Center;
+                if (button.Content is FontIcon icon) icon.FontSize = 12;
                 if (button.Parent is Border container) {
                     container.VerticalAlignment = VerticalAlignment.Bottom;
                     container.Height = TabHeight;
-                    container.Padding = new Thickness(6, 0, 0, 0);
+                    container.Padding = new Thickness(0);
                 }
             }
         };
+        return header;
+    }
+
+    static void StyleTabButton(Button button, bool add)
+    {
+        KronoInputMotion.StyleButton(button);
+        button.Width = button.Height = TabButtonSize;
+        button.CornerRadius = new CornerRadius(7);
+        button.HorizontalContentAlignment = HorizontalAlignment.Center;
+        button.VerticalContentAlignment = VerticalAlignment.Center;
+        if (button.Content is not PathIcon) button.Content = TabButtonIcon(add);
     }
 
     static PathIcon TabButtonIcon(bool add)

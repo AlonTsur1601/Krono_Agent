@@ -342,15 +342,7 @@ internal static class KronoInputMotion
         button.MaxHeight = 28;
         button.Padding = new Thickness(0);
         button.VerticalAlignment = VerticalAlignment.Center;
-        button.Template = (ControlTemplate)Application.Current.Resources["KronoPressTemplate"];
-        void RefreshPalette()
-        {
-            button.Background = KronoDesign.ThemeBrush("KronoInputFace", button.ActualTheme);
-            button.BorderBrush = KronoDesign.ThemeBrush("KronoBorder", button.ActualTheme);
-        }
-        RefreshPalette();
-        button.ActualThemeChanged += (_, _) => RefreshPalette();
-        RegisterPaletteRefresh(button, RefreshPalette);
+        button.Template = (ControlTemplate)Application.Current.Resources["KronoFlatIconTemplate"];
     }
 
     static void AnimateSurface(Control field, float scale, FrameworkElement? companion)
