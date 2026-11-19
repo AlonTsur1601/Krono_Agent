@@ -31,6 +31,7 @@ public sealed partial class GamesWorkspace
         var erase = new Button { Content = "Erase", Padding = new Thickness(8) }; erase.Click += (_, _) => EnterSudoku(0); sudokuControls.Children.Add(erase);
         stackTap.Click += (_, _) => PlaceStack();
         foreach (var (box, id) in new[] { (red, "ColorRed"), (green, "ColorGreen"), (blue, "ColorBlue") }) {
+            KronoInputMotion.Attach(box);
             AutomationProperties.SetAutomationId(box, id); box.ValueChanged += (_, _) => { if (!updatingColor && game == 15) { Draw(); SaveCurrent(); } }; colorControls.Children.Add(box);
         }
         rememberColor.Click += (_, _) => AcceptColor(); colorControls.Children.Add(rememberColor);

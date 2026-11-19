@@ -84,7 +84,7 @@ public sealed partial class MainPage
         RefreshUpdateStatus();
     }
 
-    bool checkingUpdate, updateInProgress, automaticUpdateFound;
+    bool checkingUpdate, showUpdateCheckResult, updateInProgress, automaticUpdateFound;
     static Version InstalledVersion => typeof(MainPage).Assembly.GetName().Version ?? new Version(0, 0);
     bool HasRunningWork => runId is not null || scheduledRun is not null || sideChat?.IsRunning == true;
     internal bool HasBackgroundWork => HasRunningWork || updateInProgress;
@@ -113,14 +113,12 @@ public sealed partial class MainPage
 
     async Task CheckUpdates(bool manual = false)
     {
-        if (checkingUpdate || updateInProgress || downloadedInstaller is not null) {
-            if (manual) {
-                if (availableUpdate is { } update) ShowAvailableUpdate(update.Version);
-                else ShowCheckingUpdate();
-            }
+        if (updateInProgress || downloadedInstaller is not null) {
+            if (manual && availableUpdate is { } update) ShowAvailableUpdate(update.Version);
             return;
         }
-        if (manual) ShowCheckingUpdate();
+        showUpdateCheckResult |= manual;
+        if (checkingUpdate) return;
         checkingUpdate = true;
         try {
             using var request = new HttpRequestMessage(HttpMethod.Get,
@@ -137,7 +135,7 @@ public sealed partial class MainPage
             if (version <= current) {
                 availableUpdate = null;
                 automaticUpdateFound = false;
-                if (manual || updateCheckResult.HasValue)
+                if (showUpdateCheckResult || updateCheckResult.HasValue)
                     ShowUpdateCheck(Symbol.Accept, "You’re up to date", $"Krono Agent v{current.ToString(3)} is the latest version.");
                 return;
             }
@@ -151,18 +149,18 @@ public sealed partial class MainPage
                     asset.GetProperty("browser_download_url").GetString() != url.AbsoluteUri) break;
                 automaticUpdateFound = !manual || (automaticUpdateFound && availableUpdate?.Version == version);
                 availableUpdate = new(version, url, size, Convert.ToHexString(Convert.FromHexString(digest[7..])));
-                if (manual || updateCheckResult.HasValue) ShowAvailableUpdate(version);
+                if (showUpdateCheckResult || updateCheckResult.HasValue) ShowAvailableUpdate(version);
                 return;
             }
             throw new InvalidDataException("The release has no verified Windows installer.");
         } catch (Exception error) {
-            if ((manual || updateCheckResult.HasValue) && !updateLifetime.IsCancellationRequested)
+            if ((showUpdateCheckResult || updateCheckResult.HasValue) && !updateLifetime.IsCancellationRequested)
                 ShowUpdateCheck(Symbol.Important, "Couldn’t check for updates", error.Message);
-        } finally { checkingUpdate = false; RefreshUpdateButton(); }
+        } finally {
+            checkingUpdate = showUpdateCheckResult = false;
+            RefreshUpdateButton();
+        }
     }
-
-    void ShowCheckingUpdate() =>
-        ShowUpdateCheck(Symbol.Sync, "Checking for updates", "Looking for the latest Krono Agent release.");
 
     void ShowAvailableUpdate(Version version) =>
         ShowUpdateCheck(Symbol.Download, $"Version {version.ToString(3)} is available",

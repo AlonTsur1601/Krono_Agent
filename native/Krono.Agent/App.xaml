@@ -184,7 +184,7 @@
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="CornerRadius" Value="10" />
-                <Setter Property="Padding" Value="12,10,12,7" />
+                <Setter Property="Padding" Value="12,8" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
                 <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoInputRim}" />
@@ -205,7 +205,7 @@
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="CornerRadius" Value="10" />
-                <Setter Property="Padding" Value="12,10,12,7" />
+                <Setter Property="Padding" Value="12,8" />
                 <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoInputRim}" />
             </Style>
@@ -215,6 +215,7 @@
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="Padding" Value="12,8" />
                 <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoInputRim}" />
             </Style>

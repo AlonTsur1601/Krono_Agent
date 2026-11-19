@@ -99,19 +99,7 @@ public sealed partial class MainPage : Page
     {
         if (sender is not PasswordBox password) return;
         KronoInputMotion.Attach(password, "KronoPasswordInput", PasswordVisibility);
-        password.ApplyTemplate();
         KronoInputMotion.StyleButton(PasswordVisibility);
-        Center(password);
-        static bool Center(DependencyObject parent)
-        {
-            if (parent is ScrollViewer { Name: "ContentElement" } viewer) {
-                viewer.VerticalContentAlignment = VerticalAlignment.Center;
-                return true;
-            }
-            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
-                if (Center(VisualTreeHelper.GetChild(parent, i))) return true;
-            return false;
-        }
     }
     void PasswordVisibilityChanged(object sender, RoutedEventArgs args)
     {
@@ -757,6 +745,7 @@ public sealed partial class MainPage : Page
         AddFontRow(codeFont, codeSize);
         void AddFontRow(KronoTextBox family, NumberBox size)
         {
+            KronoInputMotion.Attach(size);
             var row = new Grid { ColumnSpacing = 12 };
             row.ColumnDefinitions.Add(new ColumnDefinition());
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

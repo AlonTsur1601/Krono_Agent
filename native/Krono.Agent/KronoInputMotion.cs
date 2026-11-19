@@ -157,6 +157,7 @@ public sealed class KronoComboBox : ComboBox
             editor.FontSize = FontSize;
             editor.UseSystemFocusVisuals = false;
             editor.ApplyTemplate();
+            KronoInputMotion.CenterTextContent(editor);
             foreach (var part in KronoInputMotion.Descendants(editor).OfType<Border>().Where(part => part.Name == "BorderElement"))
                 part.Opacity = 0;
         }
@@ -186,6 +187,16 @@ internal static class KronoInputMotion
     static readonly ConditionalWeakTable<ButtonBase, object> StyledButtons = new();
     static readonly ConditionalWeakTable<FrameworkElement, CompositeTransform> SurfaceTransforms = new();
 
+    internal static void CenterTextContent(Control field)
+    {
+        foreach (var part in Descendants(field)) {
+            if (part is ScrollViewer { Name: "ContentElement" } viewer)
+                viewer.VerticalAlignment = VerticalAlignment.Center;
+            else if (part is TextBlock { Name: "PlaceholderTextContentPresenter" } placeholder)
+                placeholder.VerticalAlignment = VerticalAlignment.Center;
+        }
+    }
+
     internal static void Attach(Control field, string? style = null, FrameworkElement? companion = null)
     {
         if (Attached.TryGetValue(field, out _)) return;
@@ -201,12 +212,9 @@ internal static class KronoInputMotion
         void StyleParts() {
             if (field is KronoTextBox { SurfaceFeedbackEnabled: false }) return;
             field.ApplyTemplate();
+            CenterTextContent(field);
             foreach (var child in Descendants(field).ToArray())
                 if (child is ButtonBase button) StyleButton(button);
-                else if (child is ScrollViewer { Name: "ContentElement" } viewer && field is TextBox or PasswordBox or NumberBox)
-                    viewer.VerticalContentAlignment = field is TextBox ? field.VerticalContentAlignment : VerticalAlignment.Center;
-                else if (child is TextBlock { Name: "PlaceholderTextContentPresenter" } placeholder)
-                    placeholder.VerticalAlignment = VerticalAlignment.Center;
                 else if (child is Border border) {
                     border.BackgroundTransition = new BrushTransition { Duration = TimeSpan.FromMilliseconds(180) };
                 }

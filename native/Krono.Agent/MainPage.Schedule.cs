@@ -161,6 +161,8 @@ public sealed partial class MainPage
         AutomationProperties.SetAutomationId(providerChoice, "ScheduleProvider");
         var modelField = Field("Model", "ScheduleModel", 400);
         var limit = new NumberBox { Header = "Total runs (0 means no limit)", Minimum = 0, Maximum = 10000, Value = 0 };
+        KronoInputMotion.Attach(interval);
+        KronoInputMotion.Attach(limit);
         void ShowRecurrence(string value)
         {
             interval.Visibility = value == "interval" ? Visibility.Visible : Visibility.Collapsed;
