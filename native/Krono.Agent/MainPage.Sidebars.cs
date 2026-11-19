@@ -66,7 +66,19 @@ public sealed partial class MainPage
                 AutomationProperties.SetAutomationId(item, "Nav-" + item.Tag);
             var pointerInside = false;
             var pressing = false;
-            void UpdateScale() => AnimateIcon(item.Icon, pressing && pointerInside ? .65f : pointerInside ? .86f : 1);
+            var pressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+            pressTimer.Tick += (_, _) => {
+                pressTimer.Stop();
+                AnimateIcon(item.Icon, pointerInside ? .86f : 1);
+            };
+            void UpdateScale()
+            {
+                if (pressing) {
+                    pressTimer.Stop();
+                    AnimateIcon(item.Icon, .65f);
+                    pressTimer.Start();
+                } else if (!pressTimer.IsEnabled) AnimateIcon(item.Icon, pointerInside ? .86f : 1);
+            }
             void EndPress(object _, PointerRoutedEventArgs args)
             {
                 pressing = false;
@@ -90,6 +102,7 @@ public sealed partial class MainPage
             item.PointerCaptureLost += EndPress;
             item.PointerCanceled += EndPress;
             item.Unloaded += (_, _) => {
+                pressTimer.Stop();
                 pointerInside = pressing = false;
                 UpdateScale();
             };

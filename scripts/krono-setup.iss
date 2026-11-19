@@ -35,6 +35,8 @@ WizardImageBackColor=#10151D
 WizardImageBackColorDynamicDark=#10151D
 WizardSmallImageFile=
 CloseApplications=yes
+UsePreviousAppDir=yes
+UsePreviousTasks=yes
 
 [Messages]
 WelcomeLabel1=Install Krono Agent
@@ -43,9 +45,10 @@ WelcomeLabel2=Choose where to install Krono Agent and where to place shortcuts. 
 #else
 WelcomeLabel2=Choose where to install Krono Agent and where to place shortcuts. Setup downloads the app after you click Install. An internet connection is required.
 #endif
-SelectTasksLabel2=Choose whether to create a desktop shortcut.
+SelectTasksLabel2=Choose whether to pin Krono Agent to Start or create a desktop shortcut.
 
 [Tasks]
+Name: "startpin"; Description: "Pin Krono Agent to Start"; Flags: unchecked
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
@@ -62,12 +65,27 @@ Name: "{userdesktop}\Krono Agent"; Filename: "{app}\KronoAgent.exe"; WorkingDir:
 
 [Run]
 Filename: "{app}\KronoAgent.exe"; Description: "Launch Krono Agent"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\KronoAgent.exe"; WorkingDir: "{app}"; Flags: nowait skipifnotsilent; Check: IsAppUpdate
 
 [Code]
 var
   CleanUpgrade: Boolean;
   InstalledFiles: TStringList;
   DefaultDataDirectory, DataDirectory: String;
+
+function IsAppUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:KRONOUPDATE|0}') = '1';
+end;
+
+procedure PinStartShortcut;
+var
+  ErrorCode: Integer;
+begin
+  if not ShellExec('startpin', ExpandConstant('{userprograms}\Krono Agent\Krono Agent.lnk'),
+    '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode) then
+    MsgBox('To pin Krono Agent, open Start > All apps, right-click Krono Agent, and select Pin to Start.', mbInformation, MB_OK);
+end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
@@ -130,6 +148,8 @@ var
   AppDir: String;
   Entry: TFindRec;
 begin
+  if (CurStep = ssPostInstall) and not WizardSilent and WizardIsTaskSelected('startpin') then
+    PinStartShortcut;
   if (CurStep <> ssPostInstall) or not CleanUpgrade then Exit;
   AppDir := ExpandConstant('{app}');
   if not FindFirst(AppDir, Entry) then Exit;
@@ -158,6 +178,8 @@ end;
 function ShortcutSummary: String;
 begin
   Result := 'Start menu (All apps)';
+  if WizardIsTaskSelected('startpin') then
+    Result := Result + ', Pin to Start';
   if WizardIsTaskSelected('desktopicon') then
     Result := Result + ', Desktop';
 end;

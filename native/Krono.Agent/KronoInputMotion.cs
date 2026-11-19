@@ -10,6 +10,37 @@ using Windows.UI.ViewManagement;
 
 namespace Krono_Agent;
 
+public sealed class KronoPressSurface : Grid
+{
+    public KronoPressSurface()
+    {
+        Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        Loaded += (_, _) => {
+            if (Children.OfType<Border>().FirstOrDefault(part => part.Name == "ButtonFace") is { } face)
+                AttachPulse(this, face, 4);
+        };
+    }
+
+    static readonly ConditionalWeakTable<UIElement, object> Pulses = new();
+
+    internal static void AttachPulse(UIElement source, UIElement target, float depth)
+    {
+        if (!Pulses.TryAdd(target, new object())) return;
+        ElementCompositionPreview.SetIsTranslationEnabled(target, true);
+        var visual = ElementCompositionPreview.GetElementVisual(target);
+        source.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) => {
+            if ((!args.GetCurrentPoint(source).Properties.IsLeftButtonPressed && !args.Pointer.IsInContact) ||
+                !new UISettings().AnimationsEnabled) return;
+            var motion = visual.Compositor.CreateVector3KeyFrameAnimation();
+            motion.Duration = TimeSpan.FromMilliseconds(200);
+            motion.InsertKeyFrame(0, System.Numerics.Vector3.Zero);
+            motion.InsertKeyFrame(.4f, new System.Numerics.Vector3(0, depth, 0));
+            motion.InsertKeyFrame(1, System.Numerics.Vector3.Zero);
+            visual.StartAnimation("Translation", motion);
+        }), true);
+    }
+}
+
 public sealed class KronoTextBox : TextBox
 {
     internal bool SurfaceFeedbackEnabled { get; init; } = true;
@@ -267,7 +298,7 @@ internal static class KronoInputMotion
             if (!pressed) return;
             pressed = false;
             // Keep quick clicks visible even when native focus and selection transfer pointer capture.
-            var remaining = TimeSpan.FromMilliseconds(90) - System.Diagnostics.Stopwatch.GetElapsedTime(pressStarted);
+            var remaining = TimeSpan.FromMilliseconds(180) - System.Diagnostics.Stopwatch.GetElapsedTime(pressStarted);
             if (remaining > TimeSpan.Zero) { pressFeedback.Interval = remaining; pressFeedback.Start(); }
             Refresh();
         }

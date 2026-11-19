@@ -18,10 +18,21 @@ public sealed partial class MainPage
     AvailableUpdate? availableUpdate;
     string? downloadedInstaller;
     Button? settingsUpdateButton;
-    bool checkingUpdate, downloadingUpdate, automaticUpdateFound;
+    ProgressBar? settingsUpdateProgress;
+    int? updateDownloadPercent;
+    bool installingUpdate;
+    InfoBar? updateCheckNotice;
+    void ShowUpdateCheck(InfoBarSeverity severity, string message)
+    {
+        if (updateCheckNotice is not { } notice) return;
+        notice.Severity = severity;
+        notice.Message = message;
+        notice.IsOpen = true;
+    }
+    bool checkingUpdate, updateInProgress, automaticUpdateFound;
     static Version InstalledVersion => typeof(MainPage).Assembly.GetName().Version ?? new Version(0, 0);
-    internal bool HasBackgroundWork => runId is not null || scheduledRun is not null ||
-        sideChat?.IsRunning == true || downloadingUpdate;
+    bool HasRunningWork => runId is not null || scheduledRun is not null || sideChat?.IsRunning == true;
+    internal bool HasBackgroundWork => HasRunningWork || updateInProgress;
 
     void InitializeUpdates()
     {
@@ -38,12 +49,22 @@ public sealed partial class MainPage
         settingsUpdateButton = new Button { Style = (Style)Application.Current.Resources["KronoPrimaryButton"] };
         settingsUpdateButton.Click += (_, _) => UpdateAction();
         panel.Children.Add(settingsUpdateButton);
+        settingsUpdateProgress = new ProgressBar { Maximum = 100, HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetName(settingsUpdateProgress, "Update download progress");
+        panel.Children.Add(settingsUpdateProgress);
+        updateCheckNotice = new InfoBar { IsClosable = true };
+        panel.Children.Add(updateCheckNotice);
         RefreshUpdateButton();
     }
 
     async Task CheckUpdates(bool manual = false)
     {
-        if (checkingUpdate || downloadingUpdate || downloadedInstaller is not null) return;
+        if (checkingUpdate || updateInProgress || downloadedInstaller is not null) {
+            if (manual) ShowUpdateCheck(InfoBarSeverity.Informational, availableUpdate is { } update
+                ? $"Krono Agent v{update.Version.ToString(3)} is available." : "Checking for updates...");
+            return;
+        }
+        if (manual) ShowUpdateCheck(InfoBarSeverity.Informational, "Checking for updates...");
         checkingUpdate = true;
         try {
             using var request = new HttpRequestMessage(HttpMethod.Get,
@@ -60,7 +81,7 @@ public sealed partial class MainPage
             if (version <= current) {
                 availableUpdate = null;
                 automaticUpdateFound = false;
-                if (manual) { Notice.Severity = InfoBarSeverity.Success; Notice.Message = "Krono Agent is up to date."; Notice.IsOpen = true; }
+                if (manual || updateCheckNotice?.IsOpen == true) ShowUpdateCheck(InfoBarSeverity.Success, "Krono Agent is up to date.");
                 return;
             }
             var url = new Uri($"{ReleaseRoot}/download/v{version}/{InstallerName}");
@@ -73,49 +94,68 @@ public sealed partial class MainPage
                     asset.GetProperty("browser_download_url").GetString() != url.AbsoluteUri) break;
                 automaticUpdateFound = !manual || (automaticUpdateFound && availableUpdate?.Version == version);
                 availableUpdate = new(version, url, size, Convert.ToHexString(Convert.FromHexString(digest[7..])));
-                if (manual && !automaticUpdateFound) {
-                    Notice.Severity = InfoBarSeverity.Informational;
-                    Notice.Message = "An update is available. The automatic check will enable the download.";
-                    Notice.IsOpen = true;
-                }
+                if (manual || updateCheckNotice?.IsOpen == true)
+                    ShowUpdateCheck(InfoBarSeverity.Informational, $"Krono Agent v{version.ToString(3)} is available.");
                 return;
             }
             throw new InvalidDataException("The release has no verified Windows installer.");
         } catch (Exception error) {
-            if (manual && !updateLifetime.IsCancellationRequested) Error(error);
+            if ((manual || updateCheckNotice?.IsOpen == true) && !updateLifetime.IsCancellationRequested)
+                ShowUpdateCheck(InfoBarSeverity.Error, error.Message);
         } finally { checkingUpdate = false; RefreshUpdateButton(); }
     }
 
     void RefreshUpdateButton()
     {
         UpdateButton.Visibility = automaticUpdateFound ? Visibility.Visible : Visibility.Collapsed;
-        UpdateProgress.Visibility = downloadingUpdate ? Visibility.Visible : Visibility.Collapsed;
-        UpdateButton.IsEnabled = automaticUpdateFound && !downloadingUpdate;
-        var label = downloadedInstaller is not null ? "Install update" : downloadingUpdate ? "Downloading…" : "Download update";
+        UpdateButton.IsEnabled = automaticUpdateFound && !updateInProgress;
+        var label = installingUpdate ? "Starting installer…" : updateDownloadPercent.HasValue ? "Downloading update…" : "Download and install update";
         UpdateLabel.Text = label;
         AutomationProperties.SetName(UpdateButton, label);
         ToolTipService.SetToolTip(UpdateButton, label);
         if (settingsUpdateButton is not null) {
-            settingsUpdateButton.Content = availableUpdate.HasValue ? label : "Download updates";
-            settingsUpdateButton.IsEnabled = automaticUpdateFound && !downloadingUpdate;
+            settingsUpdateButton.Content = label;
+            settingsUpdateButton.IsEnabled = UpdateButton.IsEnabled;
+        }
+        if (settingsUpdateProgress is { } progress) {
+            progress.Visibility = updateDownloadPercent.HasValue ? Visibility.Visible : Visibility.Collapsed;
+            progress.Value = updateDownloadPercent ?? 0;
         }
     }
 
     async void UpdateAction()
     {
-        if (!automaticUpdateFound || downloadingUpdate || availableUpdate is not { } update) return;
-        if (downloadedInstaller is { } installer) {
-            if (HasBackgroundWork && !await Confirm("Install update?", "Krono Agent needs to close to install. Running work will be interrupted.", "Install update")) return;
-            try {
-                Process.Start(new ProcessStartInfo(installer) { UseShellExecute = true });
-                downloadedInstaller = null; // The setup process still needs the file.
-                MainWindow.Instance?.CloseApproved();
-            } catch (Exception error) { Error(error); }
-            return;
+        if (!automaticUpdateFound || updateInProgress || availableUpdate is not { } update) return;
+        updateInProgress = true;
+        RefreshUpdateButton();
+        try {
+            downloadedInstaller ??= await DownloadInstaller(update);
+            updateDownloadPercent = null;
+            RefreshUpdateButton();
+            updateLifetime.Token.ThrowIfCancellationRequested();
+            var window = MainWindow.Instance ?? throw new InvalidOperationException("Krono Agent is closing.");
+            installingUpdate = true;
+            RefreshUpdateButton();
+            var setupInfo = new ProcessStartInfo(downloadedInstaller) { UseShellExecute = false };
+            foreach (var argument in new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/SP-", "/NORESTART",
+                "/NORESTARTAPPLICATIONS", "/CLOSEAPPLICATIONS", "/KRONOUPDATE=1" })
+                setupInfo.ArgumentList.Add(argument);
+            using var setup = Process.Start(setupInfo);
+            if (setup is null) throw new InvalidOperationException("The update installer could not be started.");
+            downloadedInstaller = null; // The setup process still needs the file.
+            window.CloseApproved();
+        } catch (Exception error) {
+            if (!updateLifetime.IsCancellationRequested) Error(error);
+        } finally {
+            updateInProgress = installingUpdate = false;
+            updateDownloadPercent = null;
+            RefreshUpdateButton();
         }
+    }
 
-        downloadingUpdate = true;
-        UpdateProgress.Value = 0;
+    async Task<string> DownloadInstaller(AvailableUpdate update)
+    {
+        updateDownloadPercent = 0;
         RefreshUpdateButton();
         var path = Path.Combine(Path.GetTempPath(), $"Krono-{Guid.NewGuid():N}-Setup.exe");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(updateLifetime.Token);
@@ -135,16 +175,20 @@ public sealed partial class MainPage
                     if (received > update.Size) throw new InvalidDataException("Unexpected update size.");
                     hash.AppendData(buffer, 0, count);
                     await file.WriteAsync(buffer.AsMemory(0, count), token);
-                    UpdateProgress.Value = 100.0 * received / update.Size;
+                    var percent = (int)(100 * received / update.Size);
+                    if (percent != updateDownloadPercent) {
+                        updateDownloadPercent = percent;
+                        if (settingsUpdateProgress is { } progress) progress.Value = percent;
+                    }
                 }
                 if (received != update.Size || Convert.ToHexString(hash.GetHashAndReset()) != update.Hash)
                     throw new InvalidDataException("The installer could not be verified.");
             }
-            downloadedInstaller = path;
-        } catch (Exception error) {
+            return path;
+        } catch {
             DeleteDownload(path);
-            if (!updateLifetime.IsCancellationRequested) Error(error);
-        } finally { downloadingUpdate = false; RefreshUpdateButton(); }
+            throw;
+        }
     }
 
     static void DeleteDownload(string? path)

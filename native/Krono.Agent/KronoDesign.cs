@@ -366,6 +366,9 @@ public static class KronoDesign
             var trackParts = KronoInputMotion.Descendants(toggle).OfType<Microsoft.UI.Xaml.Shapes.Rectangle>()
                 .Where(shape => shape.Name is "OuterBorder" or "SwitchKnobBounds").ToArray();
             foreach (var track in trackParts) track.RadiusX = track.RadiusY = 7;
+            if (KronoInputMotion.Descendants(toggle).OfType<Grid>().FirstOrDefault(grid => grid.Name == "SwitchKnob") is { } knob &&
+                !KronoInputMotion.Descendants(toggle).OfType<Border>().Any(part => part.Name == "KronoToggleBase"))
+                KronoPressSurface.AttachPulse(toggle, knob, 2);
             if (trackParts.FirstOrDefault() is { Parent: Grid host } trackFace &&
                 !host.Children.OfType<Border>().Any(part => part.Name == "KronoToggleBase")) {
                 var shadow = new Border { Name = "KronoToggleBase", CornerRadius = new CornerRadius(7), IsHitTestVisible = false,
