@@ -99,12 +99,10 @@
                                     <VisualStateGroup x:Name="CommonStates">
                                         <VisualStateGroup.Transitions>
                                             <VisualTransition GeneratedDuration="0:0:0.14"/>
-                                            <VisualTransition To="Pressed" GeneratedDuration="0:0:0.065"/>
                                         </VisualStateGroup.Transitions>
                                         <VisualState x:Name="Normal"/>
                                         <VisualState x:Name="PointerOver">
                                             <Storyboard>
-                                                <DoubleAnimation Storyboard.TargetName="FaceOffset" Storyboard.TargetProperty="Y" To="-2" Duration="0"/>
                                                 <DoubleAnimation Storyboard.TargetName="HoverTint" Storyboard.TargetProperty="Opacity" To=".16" Duration="0"/>
                                             </Storyboard>
                                         </VisualState>
@@ -114,7 +112,6 @@
                                         </VisualState>
                                         <VisualState x:Name="CheckedPointerOver">
                                             <VisualState.Setters><Setter Target="CheckedTint.Opacity" Value=".48"/></VisualState.Setters>
-                                            <Storyboard><DoubleAnimation Storyboard.TargetName="FaceOffset" Storyboard.TargetProperty="Y" To="-2" Duration="0"/></Storyboard>
                                         </VisualState>
                                         <VisualState x:Name="CheckedPressed">
                                             <VisualState.Setters><Setter Target="CheckedTint.Opacity" Value=".40"/></VisualState.Setters>
@@ -145,7 +142,6 @@
                                 <local:KronoPressSurface x:Name="ButtonLayers" Margin="0,2,0,0">
                                     <Border x:Name="ButtonBase" Margin="0,4,0,0" Background="{TemplateBinding BorderBrush}" CornerRadius="{TemplateBinding CornerRadius}"/>
                                     <Border x:Name="ButtonFace" Margin="0,0,0,4" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
-                                        <Border.RenderTransform><TranslateTransform x:Name="FaceOffset"/></Border.RenderTransform>
                                         <Grid>
                                             <Border x:Name="CheckedTint" Background="{ThemeResource KronoOutlineHover}" CornerRadius="{TemplateBinding CornerRadius}" Opacity="0" IsHitTestVisible="False"/>
                                             <Border x:Name="HoverTint" Background="{ThemeResource KronoOutlineHover}" CornerRadius="{TemplateBinding CornerRadius}" Opacity="0" IsHitTestVisible="False"/>

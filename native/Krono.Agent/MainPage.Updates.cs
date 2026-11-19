@@ -178,7 +178,7 @@ public sealed partial class MainPage
         ToolTipService.SetToolTip(UpdateButton, label);
         if (settingsUpdateButton is not null) {
             settingsUpdateButton.Content = label;
-            settingsUpdateButton.IsEnabled = UpdateButton.IsEnabled;
+            settingsUpdateButton.IsEnabled = availableUpdate.HasValue && !updateInProgress;
         }
         if (settingsUpdateProgress is { } progress) {
             progress.Visibility = updateDownloadPercent.HasValue ? Visibility.Visible : Visibility.Collapsed;
@@ -188,7 +188,7 @@ public sealed partial class MainPage
 
     async void UpdateAction()
     {
-        if (!automaticUpdateFound || updateInProgress || availableUpdate is not { } update) return;
+        if (updateInProgress || availableUpdate is not { } update) return;
         updateInProgress = true;
         RefreshUpdateButton();
         try {

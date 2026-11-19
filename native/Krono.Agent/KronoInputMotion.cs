@@ -28,15 +28,19 @@ public sealed class KronoPressSurface : Grid
         if (!Pulses.TryAdd(target, new object())) return;
         ElementCompositionPreview.SetIsTranslationEnabled(target, true);
         var visual = ElementCompositionPreview.GetElementVisual(target);
+        var compositor = visual.Compositor;
+        var ease = compositor.CreateCubicBezierEasingFunction(new(.42f, 0), new(.58f, 1));
+        var motion = compositor.CreateVector3KeyFrameAnimation();
+        motion.Duration = TimeSpan.FromMilliseconds(200);
+        motion.InsertExpressionKeyFrame(0, "this.StartingValue");
+        motion.InsertKeyFrame(.44f, new System.Numerics.Vector3(0, depth, 0), ease);
+        motion.InsertKeyFrame(1, System.Numerics.Vector3.Zero, ease);
+        var settings = new UISettings();
         source.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) => {
-            if ((!args.GetCurrentPoint(source).Properties.IsLeftButtonPressed && !args.Pointer.IsInContact) ||
-                !new UISettings().AnimationsEnabled) return;
-            var motion = visual.Compositor.CreateVector3KeyFrameAnimation();
-            motion.Duration = TimeSpan.FromMilliseconds(200);
-            motion.InsertKeyFrame(0, System.Numerics.Vector3.Zero);
-            motion.InsertKeyFrame(.4f, new System.Numerics.Vector3(0, depth, 0));
-            motion.InsertKeyFrame(1, System.Numerics.Vector3.Zero);
-            visual.StartAnimation("Translation", motion);
+            var point = args.GetCurrentPoint(source);
+            if (!point.Properties.IsLeftButtonPressed &&
+                (args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse || !args.Pointer.IsInContact)) return;
+            if (settings.AnimationsEnabled) visual.StartAnimation("Translation", motion);
         }), true);
     }
 }
