@@ -31,6 +31,7 @@ public static class KronoDesign
         dark.Accent = Parse(halloween ? "F49750" : "51BB82");
         Set(dark, "KronoBackground", halloween ? "15101D" : "10151D");
         Set(dark, "KronoSidebar", halloween ? "1D1528" : "141B24");
+        Set(dark, "KronoContextRail", halloween ? "281B34" : "1A2430");
         Set(dark, "KronoSurface", halloween ? "2B1D39" : "1B2532");
         Set(dark, "KronoInputFace", halloween ? "2B1D39" : "19232F");
         SetFace("KronoInputRim", halloween ? "160E20" : "0B1017", halloween ? "553764" : "344452");
@@ -160,26 +161,123 @@ public static class KronoDesign
 
     internal static void StyleTabHeader(TabViewItem tab)
     {
+        tab.KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
+        var hovered = false;
+        var pressed = false;
         void Refresh()
         {
-            if (new AccessibilitySettings().HighContrast) return;
-            var surface = ThemeBrush(tab.IsSelected ? "KronoSurface" : "KronoSidebar", tab.ActualTheme);
+            if (!tab.IsLoaded || new AccessibilitySettings().HighContrast) return;
+            var surface = ThemeBrush(pressed ? "ButtonBackgroundPressed" : hovered ? "ButtonBackgroundPointerOver" :
+                tab.IsSelected ? "KronoSurface" : "KronoSidebar", tab.ActualTheme);
             tab.Background = surface;
-            foreach (var part in KronoInputMotion.Descendants(tab)) {
-                if (part is Grid { Name: "TabContainer" } header) header.Background = surface;
-                if (part is Microsoft.UI.Xaml.Shapes.Path { Name: "SelectedBackgroundPath" } selected) selected.Fill = surface;
+            tab.Resources["TabViewItemHeaderBackgroundSelected"] = surface;
+            tab.Resources["TabViewItemHeaderBackgroundSelectedPointerOver"] = surface;
+            tab.Resources["TabViewItemHeaderBackgroundSelectedPressed"] = surface;
+            foreach (var part in KronoInputMotion.Descendants(tab).ToArray()) {
+                if (part is Button { Name: "CloseButton" } close) {
+                    KronoInputMotion.StyleButton(close);
+                    close.VerticalAlignment = VerticalAlignment.Center;
+                    close.HorizontalAlignment = HorizontalAlignment.Right;
+                    close.Margin = new Thickness(3, 0, 0, 0);
+                }
+                if (part is Grid { Name: "TabContainer" } header) {
+                    header.MinHeight = 36;
+                    if (header.Children.OfType<ContentPresenter>().FirstOrDefault(child => child.Name == "ContentPresenter") is { } title) {
+                        title.HorizontalAlignment = HorizontalAlignment.Center;
+                        title.VerticalAlignment = VerticalAlignment.Center;
+                    }
+                    var face = header.Children.OfType<Border>().FirstOrDefault(child => child.Name == "KronoTabFace");
+                    if (face is null) {
+                        face = new Border { Name = "KronoTabFace", CornerRadius = new CornerRadius(9, 9, 0, 0),
+                            IsHitTestVisible = false, Margin = new Thickness(-header.Padding.Left, -header.Padding.Top,
+                                -header.Padding.Right, -header.Padding.Bottom) };
+                        Grid.SetColumnSpan(face, header.ColumnDefinitions.Count);
+                        header.Children.Insert(0, face);
+                    }
+                    face.Background = surface;
+                }
+                if (part is Microsoft.UI.Xaml.Shapes.Path { Name: "SelectedBackgroundPath" or "LeftRadiusRenderArc" or "RightRadiusRenderArc" } decoration)
+                    decoration.Opacity = 0;
             }
         }
+        tab.PointerEntered += (_, _) => { hovered = true; Refresh(); };
+        tab.PointerExited += (_, _) => { hovered = pressed = false; Refresh(); };
+        tab.AddHandler(UIElement.PointerPressedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => { pressed = true; Refresh(); }), true);
+        tab.AddHandler(UIElement.PointerReleasedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => { pressed = false; Refresh(); }), true);
+        tab.PointerCaptureLost += (_, _) => { pressed = false; Refresh(); };
+        KronoInputMotion.RegisterPaletteRefresh(tab, Refresh);
         tab.Loaded += (_, _) => Refresh();
         tab.ActualThemeChanged += (_, _) => Refresh();
         tab.RegisterPropertyChangedCallback(TabViewItem.IsSelectedProperty, (_, _) => tab.DispatcherQueue.TryEnqueue(Refresh));
     }
 
-    internal static Border FrameTabContent(UIElement content)
+    internal static Grid ScrollPage(FrameworkElement content, string background = "KronoBackground")
+    {
+        var root = new Grid();
+        var scroll = content as ScrollViewer ?? new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        root.Children.Add(scroll);
+        var top = new Border { Height = 14, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
+        var bottom = new Border { Height = 14, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false };
+        root.Children.Add(top);
+        root.Children.Add(bottom);
+        void RefreshPalette()
+        {
+            var fill = ((SolidColorBrush)ThemeBrush(background, root.ActualTheme)).Color;
+            var clear = fill;
+            clear.A = 0;
+            top.Background = Fade(fill, clear);
+            bottom.Background = Fade(clear, fill);
+        }
+        void RefreshEdges()
+        {
+            top.Visibility = scroll.VerticalOffset > 1 ? Visibility.Visible : Visibility.Collapsed;
+            bottom.Visibility = scroll.VerticalOffset + 1 < scroll.ScrollableHeight ? Visibility.Visible : Visibility.Collapsed;
+        }
+        root.Loaded += (_, _) => { RefreshPalette(); RefreshEdges(); };
+        root.ActualThemeChanged += (_, _) => RefreshPalette();
+        KronoInputMotion.RegisterPaletteRefresh(root, RefreshPalette);
+        scroll.ViewChanged += (_, _) => RefreshEdges();
+        scroll.LayoutUpdated += (_, _) => RefreshEdges();
+        RefreshEdges();
+        return root;
+
+        static LinearGradientBrush Fade(Windows.UI.Color start, Windows.UI.Color end) => new() {
+            StartPoint = new(0, 0), EndPoint = new(0, 1),
+            GradientStops = { new GradientStop { Offset = 0, Color = start }, new GradientStop { Offset = 1, Color = end } }
+        };
+    }
+
+    internal static void StyleTabs(TabView tabs)
+    {
+        tabs.TabStripHeader = new Border { Width = 9 };
+        tabs.TabWidthMode = TabViewWidthMode.SizeToContent;
+        tabs.CloseButtonOverlayMode = TabViewCloseButtonOverlayMode.Always;
+        tabs.KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
+        tabs.Loaded += (_, _) => {
+            tabs.ApplyTemplate();
+            if (KronoInputMotion.Descendants(tabs).OfType<Button>().FirstOrDefault(button => button.Name == "AddButton") is not { } add) return;
+            add.Style = (Style)Application.Current.Resources["KronoButton"];
+            add.MinHeight = 0;
+            add.Width = 30;
+            add.Height = 27;
+            add.Padding = new Thickness(0);
+            add.CornerRadius = new CornerRadius(7);
+            add.Content = new SymbolIcon(Symbol.Add);
+            add.FontSize = TextSize;
+            add.VerticalAlignment = VerticalAlignment.Center;
+            if (add.Parent is Border container) {
+                container.VerticalAlignment = VerticalAlignment.Bottom;
+                container.Height = 36;
+                container.Padding = new Thickness(3, 0, 0, 0);
+            }
+        };
+    }
+
+    internal static Border FrameTabContent(UIElement content, string surface = "KronoSurface")
     {
         const float radius = 12;
         var frame = new Border { CornerRadius = new CornerRadius(radius), Child = content };
-        void ApplyPalette() => frame.Background = ThemeBrush("KronoSurface", frame.ActualTheme);
+        void ApplyPalette() => frame.Background = ThemeBrush(surface, frame.ActualTheme);
         frame.Loaded += (_, _) => ApplyPalette();
         frame.ActualThemeChanged += (_, _) => ApplyPalette();
         var visual = ElementCompositionPreview.GetElementVisual(frame);
@@ -206,9 +304,97 @@ public static class KronoDesign
         visual.StartAnimation("Opacity", fade);
     }
 
+    internal static Expander Section(string title, FrameworkElement content)
+    {
+        var chevron = new FontIcon { Glyph = "\uE70D", FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 12, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        var header = new Grid();
+        header.ColumnDefinitions.Add(new ColumnDefinition());
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.Children.Add(new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center });
+        Grid.SetColumn(chevron, 1);
+        header.Children.Add(chevron);
+        var expander = new Expander { Header = header, Content = content, HorizontalAlignment = HorizontalAlignment.Stretch };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(expander, title);
+        expander.Expanding += (_, _) => chevron.Glyph = "\uE70E";
+        expander.Collapsed += (_, _) => chevron.Glyph = "\uE70D";
+        expander.Loaded += (_, _) => {
+            if (KronoInputMotion.Descendants(expander).OfType<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>()
+                .FirstOrDefault(button => button.Name == "ExpanderHeader") is not { } toggle) return;
+            toggle.Style = (Style)Application.Current.Resources["KronoToggleButton"];
+            toggle.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            toggle.CornerRadius = new CornerRadius(10);
+            toggle.Padding = new Thickness(12, 6, 12, 6);
+            void Palette()
+            {
+                toggle.Background = ThemeBrush("KronoButtonFace", toggle.ActualTheme);
+                toggle.BorderBrush = ThemeBrush("KronoBorder", toggle.ActualTheme);
+            }
+            Palette();
+            toggle.ActualThemeChanged += (_, _) => Palette();
+            KronoInputMotion.RegisterPaletteRefresh(toggle, Palette);
+        };
+        return expander;
+    }
+
+    internal static ToggleSwitch Toggle(string header, bool isOn)
+    {
+        var toggle = new ToggleSwitch { Header = header, IsOn = isOn, OnContent = "On", OffContent = "Off" };
+        void Refresh()
+        {
+            toggle.FontFamily = TextFont;
+            toggle.FontSize = TextSize;
+            if (new AccessibilitySettings().HighContrast) return;
+            var theme = toggle.ActualTheme;
+            Brush Role(string key) => ThemeBrush(key, theme);
+            var resources = toggle.Resources;
+            resources["ToggleSwitchFillOff"] = Role("KronoInputFace");
+            resources["ToggleSwitchStrokeOff"] = Role("KronoBorder");
+            resources["ToggleSwitchFillOffPointerOver"] = ((SolidColorBrush)Role("ButtonBackgroundPointerOver")).Color;
+            resources["ToggleSwitchFillOffPressed"] = ((SolidColorBrush)Role("ButtonBackgroundPressed")).Color;
+            resources["ToggleSwitchStrokeOffPointerOver"] = ((SolidColorBrush)Role("KronoOutlineHover")).Color;
+            resources["ToggleSwitchFillOn"] = Role("KronoPrimaryFace");
+            resources["ToggleSwitchStrokeOn"] = Role("KronoPrimaryBase");
+            resources["ToggleSwitchFillOnPointerOver"] = Role("KronoAccentHover");
+            resources["ToggleSwitchFillOnPressed"] = Role("KronoAccentPressed");
+            foreach (var state in new[] { "", "PointerOver", "Pressed" })
+                resources["ToggleSwitchKnobFillOff" + state] = Role("KronoMuted");
+        }
+        Refresh();
+        toggle.ActualThemeChanged += (_, _) => Refresh();
+        toggle.Loaded += (_, _) => {
+            Refresh();
+            var trackParts = KronoInputMotion.Descendants(toggle).OfType<Microsoft.UI.Xaml.Shapes.Rectangle>()
+                .Where(shape => shape.Name is "OuterBorder" or "SwitchKnobBounds").ToArray();
+            foreach (var track in trackParts) track.RadiusX = track.RadiusY = 7;
+            if (trackParts.FirstOrDefault() is { Parent: Grid host } trackFace &&
+                !host.Children.OfType<Border>().Any(part => part.Name == "KronoToggleBase")) {
+                var shadow = new Border { Name = "KronoToggleBase", CornerRadius = new CornerRadius(7), IsHitTestVisible = false,
+                    Width = 40, Height = 20, Translation = new(0, 3, 0) };
+                void PaintBase() => shadow.Background = ThemeBrush(toggle.IsOn ? "KronoPrimaryBase" : "KronoBorder", toggle.ActualTheme);
+                PaintBase();
+                toggle.Toggled += (_, _) => PaintBase();
+                toggle.ActualThemeChanged += (_, _) => PaintBase();
+                KronoInputMotion.RegisterPaletteRefresh(toggle, PaintBase);
+                Grid.SetRow(shadow, Grid.GetRow(trackFace));
+                Grid.SetColumn(shadow, Grid.GetColumn(trackFace));
+                host.Children.Insert(host.Children.IndexOf(trackFace), shadow);
+            }
+        };
+        KronoInputMotion.RegisterPaletteRefresh(toggle, Refresh);
+        return toggle;
+    }
+
     public static void NameTemplateButton(Control control, string part, string label)
     {
         if (KronoInputMotion.Descendants(control).OfType<Button>().FirstOrDefault(button => button.Name == part) is not { } target) return;
+        if (part == "MoreButton") {
+            target.Style = (Style)Application.Current.Resources["KronoButton"];
+            target.MinHeight = 0;
+            target.Width = target.Height = 36;
+            target.Padding = new Thickness(0);
+            target.CornerRadius = new CornerRadius(8);
+            target.Content = new SymbolIcon(Symbol.More);
+        }
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(target, label);
         ToolTipService.SetToolTip(target, label);
     }

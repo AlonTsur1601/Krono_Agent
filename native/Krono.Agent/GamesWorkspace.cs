@@ -132,11 +132,10 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         var children = Children.ToArray(); Children.Clear(); RowDefinitions.Clear(); foreach (var child in children) playScreen.Children.Add(child); Children.Add(playScreen);
         library = new Grid(); var content = new StackPanel { Spacing = 12 };
         content.Children.Add(new TextBlock { Text = "Games", FontFamily = (FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 34, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        content.Children.Add(new TextBlock { Text = $"{names.Length} games · Your agent can keep working.", FontSize = 15, Opacity = .6, Margin = new Thickness(0, 0, 0, 6) });
         var search = new KronoTextBox { PlaceholderText = "Search games", MinWidth = 160 };
         var category = new KronoComboBox { ItemsSource = new[] { "All categories", "Puzzle", "Arcade", "Strategy" }, SelectedIndex = 0, MinWidth = 138 };
-        var favoritesOnly = new ToggleButton { Content = "Favorites", Style = (Style)Application.Current.Resources["KronoGameFilter"] };
-        var recentOnly = new ToggleButton { Content = "Recent", Style = (Style)Application.Current.Resources["KronoGameFilter"] };
+        var favoritesOnly = new ToggleButton { Content = "Favorites", Style = (Style)Application.Current.Resources["KronoToggleButton"] };
+        var recentOnly = new ToggleButton { Content = "Recent", Style = (Style)Application.Current.Resources["KronoToggleButton"] };
         var filters = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 8) };
         foreach (var control in new Control[] { search, category, favoritesOnly, recentOnly }) filters.Children.Add(control);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(search, "GameSearch"); Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(category, "GameCategory");
@@ -154,7 +153,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
             card.Children.Add(new TextBlock { Text = names[i], FontFamily = (FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(14, 0, 14, 0) });
             card.Children.Add(new TextBlock { Text = descriptions[i], FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.Normal, Opacity = .72, TextWrapping = TextWrapping.Wrap, MinHeight = 34, Margin = new Thickness(14, 0, 14, 6) });
             var saveLabel = new TextBlock { Text = BestCaption(i), FontFamily = KronoDesign.CodeFont, FontSize = 10, CharacterSpacing = 85, Foreground = ReadableAccent, Margin = new Thickness(14, 0, 14, 14) }; saveLabels.Add(saveLabel); card.Children.Add(saveLabel);
-            var button = new Button { Style = (Style)Application.Current.Resources["KronoFlatButton"], Content = card, Padding = new Thickness(0), CornerRadius = new CornerRadius(16), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            var button = new Button { Style = (Style)Application.Current.Resources["KronoButton"], Content = card, Padding = new Thickness(0), CornerRadius = new CornerRadius(16), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(button, "GameTile" + i);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, names[i]);
             button.Click += async (_, _) => await ChooseGame(index);
@@ -184,7 +183,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         }
         search.TextChanged += (_, _) => Arrange(); category.SelectionChanged += (_, _) => Arrange(); favoritesOnly.Checked += (_, _) => Arrange(); favoritesOnly.Unchecked += (_, _) => Arrange(); recentOnly.Checked += (_, _) => Arrange(); recentOnly.Unchecked += (_, _) => Arrange();
         SizeChanged += (_, _) => Arrange(); library.RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => { if (library.Visibility == Visibility.Visible) Arrange(); }); Arrange();
-        content.Children.Add(cards); library.Children.Add(new ScrollViewer { Content = content }); Children.Add(library);
+        content.Children.Add(cards); library.Children.Add(KronoDesign.ScrollPage(content)); Children.Add(library);
     }
     void Reset()
     {

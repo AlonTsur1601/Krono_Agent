@@ -1,11 +1,18 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Text.Json.Nodes;
+using System.Text.Json;
 
 namespace Krono_Agent;
 
 public sealed partial class MainPage
 {
+    HashSet<string> HiddenModels(string providerId)
+    {
+        var stored = workspace.Setting("native.hiddenModels." + providerId);
+        return stored.Length == 0 ? [] : JsonSerializer.Deserialize<HashSet<string>>(stored) ?? [];
+    }
+
     string ChatReasoningKey => $"native.reasoning.{provider}.{model}";
 
     void RefreshChatModelLabel()
@@ -21,6 +28,7 @@ public sealed partial class MainPage
         if (runId is not null || worker is null) return;
         var originalProvider = provider;
         var generation = sessionGeneration;
+        var hidden = HiddenModels(originalProvider);
         var panel = new StackPanel { Spacing = 12, Width = Math.Clamp(ActualWidth - 120, 300, 430) };
         panel.Children.Add(new TextBlock { Text = ProviderCatalog.Name(provider) });
         var picker = new KronoComboBox { Header = "Model", IsEditable = true, Text = model, HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -59,7 +67,7 @@ public sealed partial class MainPage
                 if (!pickerOpen || generation != sessionGeneration) return;
                 var selected = picker.Text;
                 available = response?.AsArray();
-                picker.ItemsSource = available?.Select(entry => entry!["id"]!.ToString()).ToArray();
+                picker.ItemsSource = available?.Select(entry => entry!["id"]!.ToString()).Where(id => !hidden.Contains(id)).ToArray();
                 picker.Text = selected;
                 RefreshCapabilities(selected.Trim());
                 loadModelFeedback.Visibility = Visibility.Collapsed;
@@ -79,6 +87,10 @@ public sealed partial class MainPage
         if (result != ContentDialogResult.Primary || generation != sessionGeneration || originalProvider != provider) return;
         var nextModel = picker.Text.Trim();
         if (nextModel.Length == 0) { Error(new InvalidOperationException("Enter or choose a model.")); return; }
+        if (hidden.Contains(nextModel) && nextModel != model) {
+            Error(new InvalidOperationException("Enable this model in Settings first."));
+            return;
+        }
         var selectedModelSupportsEffort = available?.FirstOrDefault(entry => entry?["id"]?.ToString() == nextModel)?["capabilities"]?["supportsReasoningEffort"]?.GetValue<bool>() == true;
         model = nextModel;
         workspace.SetSetting("native.model." + provider, model);

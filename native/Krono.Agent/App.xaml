@@ -13,6 +13,7 @@
                 <ColorPaletteResources x:Key="Default" Accent="#51BB82">
                     <SolidColorBrush x:Key="KronoBackground" Color="#10151D" />
                     <SolidColorBrush x:Key="KronoSidebar" Color="#141B24" />
+                    <SolidColorBrush x:Key="KronoContextRail" Color="#1A2430" />
                     <SolidColorBrush x:Key="KronoSurface" Color="#1B2532" />
                     <SolidColorBrush x:Key="KronoInputFace" Color="#19232F"/>
                     <StaticResource x:Key="TabViewItemHeaderBackground" ResourceKey="KronoSidebar" />
@@ -47,6 +48,7 @@
                 <ColorPaletteResources x:Key="Light" Accent="#278254">
                     <SolidColorBrush x:Key="KronoBackground" Color="#F2F5F7" />
                     <SolidColorBrush x:Key="KronoSidebar" Color="#E7EEF0" />
+                    <SolidColorBrush x:Key="KronoContextRail" Color="#DCE7E8" />
                     <SolidColorBrush x:Key="KronoSurface" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="KronoInputFace" Color="#F7FAF9"/>
                     <StaticResource x:Key="TabViewItemHeaderBackground" ResourceKey="KronoSidebar" />
@@ -88,7 +90,7 @@
             <x:Double x:Key="KronoTextSize">14</x:Double>
             <x:Double x:Key="KronoCodeSize">14</x:Double>
             <x:Double x:Key="KronoControlMinHeight">40</x:Double>
-            <ControlTemplate x:Key="KronoPressTemplate" TargetType="Button">
+            <ControlTemplate x:Key="KronoPressTemplate" TargetType="ButtonBase">
                             <Grid Background="Transparent">
                                 <VisualStateManager.VisualStateGroups>
                                     <VisualStateGroup x:Name="CommonStates">
@@ -108,7 +110,32 @@
                                                 <DoubleAnimation Storyboard.TargetName="FaceOffset" Storyboard.TargetProperty="Y" To="4" Duration="0"/>
                                             </Storyboard>
                                         </VisualState>
+                                        <VisualState x:Name="Checked">
+                                            <VisualState.Setters><Setter Target="CheckedTint.Opacity" Value=".33"/></VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="CheckedPointerOver">
+                                            <VisualState.Setters><Setter Target="CheckedTint.Opacity" Value=".48"/></VisualState.Setters>
+                                            <Storyboard><DoubleAnimation Storyboard.TargetName="FaceOffset" Storyboard.TargetProperty="Y" To="-2" Duration="0"/></Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="CheckedPressed">
+                                            <VisualState.Setters><Setter Target="CheckedTint.Opacity" Value=".40"/></VisualState.Setters>
+                                            <Storyboard><DoubleAnimation Storyboard.TargetName="FaceOffset" Storyboard.TargetProperty="Y" To="4" Duration="0"/></Storyboard>
+                                        </VisualState>
                                         <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="ButtonFace.Background" Value="{ThemeResource KronoDisabledFace}"/>
+                                                <Setter Target="ButtonBase.Background" Value="{ThemeResource KronoDisabledBase}"/>
+                                                <Setter Target="ButtonContent.Foreground" Value="{ThemeResource KronoDisabledInk}"/>
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="CheckedDisabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="ButtonFace.Background" Value="{ThemeResource KronoDisabledFace}"/>
+                                                <Setter Target="ButtonBase.Background" Value="{ThemeResource KronoDisabledBase}"/>
+                                                <Setter Target="ButtonContent.Foreground" Value="{ThemeResource KronoDisabledInk}"/>
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="IndeterminateDisabled">
                                             <VisualState.Setters>
                                                 <Setter Target="ButtonFace.Background" Value="{ThemeResource KronoDisabledFace}"/>
                                                 <Setter Target="ButtonBase.Background" Value="{ThemeResource KronoDisabledBase}"/>
@@ -122,6 +149,7 @@
                                     <Border x:Name="ButtonFace" Margin="0,0,0,4" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
                                         <Border.RenderTransform><TranslateTransform x:Name="FaceOffset"/></Border.RenderTransform>
                                         <Grid>
+                                            <Border x:Name="CheckedTint" Background="{ThemeResource KronoOutlineHover}" CornerRadius="{TemplateBinding CornerRadius}" Opacity="0" IsHitTestVisible="False"/>
                                             <Border x:Name="HoverTint" Background="{ThemeResource KronoOutlineHover}" CornerRadius="{TemplateBinding CornerRadius}" Opacity="0" IsHitTestVisible="False"/>
                                             <ContentPresenter x:Name="ButtonContent" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
                                             Padding="{TemplateBinding Padding}" Foreground="{TemplateBinding Foreground}"
@@ -132,7 +160,8 @@
                                 </Grid>
                             </Grid>
                         </ControlTemplate>
-            <Style x:Key="KronoFlatButton" TargetType="Button">
+            <Style x:Key="KronoButtonBase" TargetType="ButtonBase">
+                <Setter Property="Template" Value="{StaticResource KronoPressTemplate}" />
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="CornerRadius" Value="16" />
                 <Setter Property="Padding" Value="14,8" />
@@ -141,53 +170,33 @@
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Background" Value="{ThemeResource KronoButtonFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
-            </Style>
-            <Style TargetType="Button" BasedOn="{StaticResource KronoFlatButton}">
-                <Setter Property="Template" Value="{StaticResource KronoPressTemplate}" />
                 <Setter Property="UseSystemFocusVisuals" Value="True" />
                 <Setter Property="HorizontalContentAlignment" Value="Center" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
             </Style>
-            <Style x:Key="KronoGamePiece" TargetType="Button" BasedOn="{StaticResource KronoFlatButton}">
-                <Setter Property="Template" Value="{StaticResource KronoPressTemplate}" />
-                <Setter Property="UseSystemFocusVisuals" Value="True" />
-                <Setter Property="HorizontalContentAlignment" Value="Center" />
-                <Setter Property="VerticalContentAlignment" Value="Center" />
-            </Style>
-            <Style x:Key="KronoPrimaryButton" TargetType="Button" BasedOn="{StaticResource KronoFlatButton}">
-                <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
-                <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
-                <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
+            <Style x:Key="KronoButton" TargetType="Button" BasedOn="{StaticResource KronoButtonBase}" />
+            <Style TargetType="Button" BasedOn="{StaticResource KronoButton}" />
+            <Style x:Key="KronoPrimaryButton" TargetType="Button" BasedOn="{StaticResource KronoButton}">
                 <Setter Property="Background" Value="{ThemeResource KronoPrimaryFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoPrimaryBase}" />
-                <Setter Property="UseSystemFocusVisuals" Value="True" />
                 <Setter Property="Foreground" Value="#10231F" />
-                <Setter Property="Padding" Value="14,8" />
-                <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="HorizontalContentAlignment" Value="Center" />
-                <Setter Property="VerticalContentAlignment" Value="Center" />
-                <Setter Property="Template" Value="{StaticResource KronoPressTemplate}" />
             </Style>
-            <ControlTemplate x:Key="KronoInputButtonTemplate" TargetType="ButtonBase">
-                <Border Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
-                    <Border.BackgroundTransition><BrushTransition Duration="0:0:0.18"/></Border.BackgroundTransition>
-                    <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
-                        Foreground="{TemplateBinding Foreground}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
-                </Border>
-            </ControlTemplate>
+            <Style x:Key="KronoToggleButton" TargetType="ToggleButton" BasedOn="{StaticResource KronoButtonBase}" />
+            <Style TargetType="ToggleButton" BasedOn="{StaticResource KronoToggleButton}" />
+            <Style TargetType="RepeatButton" BasedOn="{StaticResource KronoButtonBase}" />
             <Style x:Key="KronoTextInput" TargetType="TextBox">
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
-                <Setter Property="BorderThickness" Value="1,4,1,1" />
+                <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="CornerRadius" Value="10" />
-                <Setter Property="Padding" Value="12,7,12,10" />
+                <Setter Property="Padding" Value="12,10,12,7" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
                 <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoInputRim}" />
             </Style>
             <Style TargetType="ComboBox">
-                <Setter Property="BorderThickness" Value="1,4,1,1" />
+                <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
@@ -198,16 +207,16 @@
             </Style>
             <Style x:Key="KronoPasswordInput" TargetType="PasswordBox">
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
-                <Setter Property="BorderThickness" Value="1,4,1,1" />
+                <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="CornerRadius" Value="10" />
-                <Setter Property="Padding" Value="12,10,12,6" />
+                <Setter Property="Padding" Value="12,10,12,7" />
                 <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoInputRim}" />
             </Style>
             <Style x:Key="KronoNumberInput" TargetType="NumberBox">
-                <Setter Property="BorderThickness" Value="1,4,1,1" />
+                <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
@@ -218,20 +227,9 @@
             <Style TargetType="TextBox" BasedOn="{StaticResource KronoTextInput}" />
             <Style TargetType="PasswordBox" BasedOn="{StaticResource KronoPasswordInput}" />
             <Style TargetType="NumberBox" BasedOn="{StaticResource KronoNumberInput}" />
-            <Style TargetType="AppBarButton">
-                <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
-                <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
+            <Style TargetType="AppBarButton" BasedOn="{StaticResource KronoButtonBase}">
                 <Setter Property="CornerRadius" Value="10" />
-            </Style>
-            <Style x:Key="KronoGameFilter" TargetType="ToggleButton">
-                <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
-                <Setter Property="CornerRadius" Value="16" />
-                <Setter Property="Padding" Value="14,8" />
-                <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
-                <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
-                <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Background" Value="{ThemeResource KronoButtonFace}" />
-                <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
+                <Setter Property="Padding" Value="10,5" />
             </Style>
             <Style TargetType="CheckBox">
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />

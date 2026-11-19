@@ -63,7 +63,7 @@ public sealed partial class GamesWorkspace
     }
     static void StyleGamePiece(Button button, bool keepColor = false)
     {
-        button.Style = (Style)Application.Current.Resources["KronoGamePiece"];
+        button.Style = (Style)Application.Current.Resources["KronoButton"];
         var surface = button.Background;
         if (surface is SolidColorBrush color && button.BorderThickness.Left == 0)
             button.BorderBrush = new SolidColorBrush(Shade(color.Color, -.32));
@@ -194,7 +194,7 @@ public sealed partial class GamesWorkspace
     }
     Button GameTileButton(int index, double x, double y, double width, double height, object content, string label, Brush background, double radius)
     {
-        var button = new Button { Style = (Style)Application.Current.Resources["KronoFlatButton"], Content = content, Width = width, Height = height, Padding = new Thickness(0), Background = background, BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(radius), HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
+        var button = new Button { Style = (Style)Application.Current.Resources["KronoButton"], Content = content, Width = width, Height = height, Padding = new Thickness(0), Background = background, BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(radius), HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
         if (game != 3) StyleGamePiece(button);
         AutomationProperties.SetAutomationId(button, "GameCell" + index); AutomationProperties.SetName(button, $"Cell {index + 1}: {label}");
         Canvas.SetLeft(button, x); Canvas.SetTop(button, y); canvas.Children.Add(button); return button;

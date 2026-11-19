@@ -7,6 +7,31 @@ Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public static class KronoWindowCapture {
+    [StructLayout(LayoutKind.Sequential)]
+    struct Input { public uint Type; public InputData Data; }
+    [StructLayout(LayoutKind.Explicit)]
+    struct InputData {
+        [FieldOffset(0)] public Keyboard Keyboard;
+        [FieldOffset(0)] public Mouse Mouse;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct Keyboard { public ushort Key, Scan; public uint Flags, Time; public UIntPtr Extra; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct Mouse { public int X, Y; public uint Data, Flags, Time; public UIntPtr Extra; }
+    [DllImport("user32.dll", SetLastError = true)]
+    static extern uint SendInput(uint count, Input[] entries, int size);
+    public static bool TypeText(string text) {
+        var entries = new Input[text.Length * 2];
+        for (int i = 0; i < text.Length; i++) {
+            entries[i * 2] = new Input { Type = 1, Data = new InputData { Keyboard = new Keyboard { Scan = text[i], Flags = 4 } } };
+            entries[i * 2 + 1] = new Input { Type = 1, Data = new InputData { Keyboard = new Keyboard { Scan = text[i], Flags = 6 } } };
+        }
+        return SendInput((uint)entries.Length, entries, Marshal.SizeOf(typeof(Input))) == entries.Length;
+    }
+    [DllImport("user32.dll")]
+    public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")]
+    public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
     [DllImport("user32.dll")]
     public static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
     [DllImport("user32.dll")]
@@ -147,12 +172,31 @@ function TestWorkspaceInputs {
     SelectNav 'Terminal'
     Start-Sleep -Seconds 2
     Find 'PowerShell' -ByName | Out-Null
-    SetValue 'TerminalInput' 'Write-Output (6*7)'
-    if ($env:KRONO_SMOKE_SCOPE -eq 'workspace-ui') { PressEnterOn 'TerminalInput' } else { Invoke 'Run input' -ByName }
+    $terminal = Find 'TerminalOutput'
+    $shell = New-Object -ComObject WScript.Shell
+    if (!$shell.AppActivate($script:process.Id)) { throw 'Could not activate the terminal window' }
+    $bounds = $terminal.Current.BoundingRectangle
+    [KronoWindowCapture]::SetCursorPos([int]($bounds.Left + 175), [int]($bounds.Top + 18)) | Out-Null
+    [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+    [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 180
+    if ($terminal.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.IsReadOnly) { throw 'Terminal prompt is not ready for input' }
+    if (![KronoWindowCapture]::TypeText('Write-Output (6*7)')) { throw 'Could not type the terminal command' }
+    Start-Sleep -Milliseconds 250
+    $shell.SendKeys('{ENTER}')
     $deadline = (Get-Date).AddSeconds(10)
     do { Start-Sleep -Milliseconds 200; $output = Find 'TerminalOutput'; $text = ($output.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).Current.Value } while ($text -notmatch '42' -and (Get-Date) -lt $deadline)
-    if ($text -notmatch '42') { throw 'Native PTY did not produce 42' }
     Capture 'native-terminal.png'
+    if ($text -notmatch '42') { throw ('Native PTY did not produce 42. Terminal output: ' + $text) }
+    $close = Find 'Close tab' -ByName
+    $bounds = $close.Current.BoundingRectangle
+    [KronoWindowCapture]::SetCursorPos([int]($bounds.Left + $bounds.Width / 2), [int]($bounds.Top + $bounds.Height / 2)) | Out-Null
+    Start-Sleep -Milliseconds 700
+    $toolTip = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ToolTip)
+    foreach ($tip in $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, $toolTip)) {
+        if ($tip.Current.Name -match 'Ctrl\s*\+\s*F4') { throw 'The terminal close shortcut hint is still showing' }
+    }
+    Capture 'native-terminal-close-hover.png'
     SelectNav 'Settings'
     SelectSettingsCategory 'Browser'
     $homePage = Find 'BrowserHomePage'
@@ -220,16 +264,47 @@ try {
     $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
     if ($windowPattern.Current.WindowVisualState -ne [Windows.Automation.WindowVisualState]::Maximized) { throw 'Krono did not open maximized' }
     Find 'EmailInput' | Out-Null
-    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui')) {
+    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui')) {
         SetValue 'EmailInput' 'native-fixture@example.com'
         SetValue 'PasswordInput' 'fixture-password'
         Invoke 'LoginButton'
         Find 'Sign out' -ByName | Out-Null
+        if ($env:KRONO_SMOKE_SCOPE -eq 'dropdown-ui') {
+            foreach ($theme in @('light', 'dark', 'halloween')) {
+                SelectNav 'Settings'
+                SelectSettingsCategory 'Appearance'
+                SelectChoice 'Appearance' $theme
+                SelectNav 'Chats'
+                $picker = (Find 'Mode').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
+                $picker.Expand()
+                Find 'plan' -ByName | Out-Null
+                Capture ('native-input-dropdown-' + $theme + '.png')
+                $picker.Collapse()
+            }
+            $mode = (Find 'Mode').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
+            $mode.Expand()
+            Find 'plan' -ByName | Out-Null
+            $games = Find 'Games' -ByName
+            $bounds = $games.Current.BoundingRectangle
+            if (!(New-Object -ComObject WScript.Shell).AppActivate($script:process.Id)) { throw "Could not activate the dropdown test window" }
+            [KronoWindowCapture]::SetCursorPos([int]($bounds.Left + $bounds.Width / 2), [int]($bounds.Top + $bounds.Height / 2)) | Out-Null
+            [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+            [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+            Find 'GameSearch' | Out-Null
+            Capture 'native-games-library.png'
+            SelectNav 'Browser'
+            Find 'Search Google or enter an address' -ByName | Out-Null
+            Find 'Add new tab' -ByName | Out-Null
+            Capture 'native-browser-search.png'
+            Write-Output 'NATIVE_SMOKE_PASS: a single outside click navigates and the browser opens its built-in search page'
+            return
+        }
         if ($env:KRONO_SMOKE_SCOPE -eq 'navigation-ui') {
             Find '+ New chat' -ByName | Out-Null
             PressEnterOn 'Nav-chats'
             Start-Sleep -Milliseconds 300
             if (FindOptional 'ContextRail') { throw 'Invoking Chats did not close its sidebar' }
+            Capture 'closed-chat-sidebar.png'
             PressEnterOn 'Nav-settings'
             Find 'SettingsCategories' | Out-Null
             Capture 'joined-settings-sidebar.png'
@@ -258,7 +333,8 @@ try {
             Find 'Model and context' -ByName | Out-Null
             Capture 'compact-model.png'
             Invoke 'Cancel' -ByName
-            SelectNav 'Projects & memory'
+            SelectNav 'Chats'
+            Invoke 'Projects & memory' -ByName
             Find 'ProjectName' | Out-Null
             Capture 'compact-projects.png'
             SelectNav 'Settings'
@@ -295,8 +371,10 @@ try {
             } while ((Get-Date) -lt $deadline)
             if ($font -ne 'Rubik') { throw 'Enter did not save the typography settings' }
             SelectNav 'Scheduled tasks'
+            Invoke '+ New task' -ByName
             SetValue 'ScheduleName' 'Schedule from Enter'
             SetValue 'SchedulePrompt' 'Keyboard submission fixture'
+            (Find 'ScheduleModelOptions').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
             SelectChoice 'ScheduleProvider' 'OpenAI'
             SetValue 'ScheduleModel' 'native-fixture-model'
             SetValue 'ScheduleFirstRun' ((Get-Date).AddDays(1).ToString('yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture))
@@ -310,9 +388,16 @@ try {
             if ($schedule.tasks -notcontains 'Schedule from Enter' -or @($schedule.runs).Count -ne 0) {
                 throw 'Enter did not save the future schedule without starting a run'
             }
+            Find 'Edit task' -ByName | Out-Null
+            if (FindOptional 'ScheduleName') { throw 'The schedule summary contains the editor' }
+            Capture 'native-schedule-summary.png'
+            Invoke 'Edit task' -ByName
+            if ((Find 'ScheduleName').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value -ne 'Schedule from Enter') { throw 'The task editor lost the saved task name' }
+            Capture 'native-schedule-editor.png'
             SelectNav 'Settings'
             SelectSettingsCategory 'Model provider'
             SelectChoice 'Provider' 'Ollama'
+            if (FindOptional 'ModelSelector') { throw 'Model settings are visible without a key' }
             SetValue 'ProviderEndpoint' ($Fixture + '/local/v1')
             PressEnterOn 'ProviderEndpoint'
             Find 'Endpoint saved.' -ByName | Out-Null
@@ -325,11 +410,17 @@ try {
                 Start-Sleep -Milliseconds 100
             } while ((Get-Date) -lt $deadline)
             if (!$saved) { throw 'Enter did not save the fixture credential' }
+            $modelVisibility = (Find 'local-fixture-model' -ByName).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+            $modelVisibility.Toggle()
+            SelectChoice 'Provider' 'OpenAI'
+            SelectChoice 'Provider' 'Ollama'
+            $modelVisibility = (Find 'local-fixture-model' -ByName).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+            if ($modelVisibility.Current.ToggleState -ne [Windows.Automation.ToggleState]::Off) { throw 'Model visibility did not persist per provider' }
             SetEditableChoice 'ModelSelector' 'native-keyboard-model'
             PressEnterOn 'ModelSelector'
             SelectNav 'Chats'
             Find 'native-keyboard-model' -ByName | Out-Null
-            Write-Output 'NATIVE_SMOKE_PASS: Appearance layout and keyboard submission for typography, schedules, endpoint, and model'
+            Write-Output 'NATIVE_SMOKE_PASS: Appearance layout, keyboard submission and saved per-provider model visibility'
             return
         }
         if ($env:KRONO_SMOKE_SCOPE -eq 'menus-ui') {
@@ -337,9 +428,16 @@ try {
             Find 'Model and context' -ByName | Out-Null
             Find 'Apply' -ByName | Out-Null
             Capture 'native-model-dialog.png'
-            Invoke 'Cancel' -ByName
+            if (!(New-Object -ComObject WScript.Shell).AppActivate($script:process.Id)) { throw "Could not activate the popup for pointer input" }
+            $bounds = $script:window.Current.BoundingRectangle
+            [KronoWindowCapture]::SetCursorPos([int]($bounds.Left + 35), [int]($bounds.Top + 100)) | Out-Null
+            [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+            [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+            Start-Sleep -Milliseconds 350
+            $dialogTitle = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Model and context')
+            if ($script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, $dialogTitle)) { throw 'Clicking the popup scrim did not cancel the dialog' }
             Find 'Composer' | Out-Null
-            Write-Output 'NATIVE_SMOKE_PASS: model dialog and return to composer'
+            Write-Output 'NATIVE_SMOKE_PASS: clicking outside the model dialog returns to the composer'
             return
         }
         if ($env:KRONO_SMOKE_SCOPE -eq 'arcade-ui') {
@@ -422,7 +520,8 @@ try {
     Find 'Send' -ByName | Out-Null
     if (FindOptional 'OpenSideChatButton') { throw 'Side chat was offered before a conversation existed' }
     Find 'Composer' | Out-Null
-    SelectNav 'Projects & memory'
+    SelectNav 'Chats'
+    Invoke 'Projects & memory' -ByName
     Find 'Save project' -ByName | Out-Null
     SetValue 'ProjectName' 'Native fixture project'
     SetValue 'ProjectFolders' $ReportDirectory
@@ -468,7 +567,17 @@ try {
     Find 'OpenSideChatButton' | Out-Null
     if (!$assertions.globalOnly) { throw 'Native unassigned chat memory scope is incorrect' }
     Start-Sleep -Milliseconds 500
-    Invoke 'Delete selected chat' -ByName
+    $chatList = Find 'ChatList'
+    $selectedChatRow = ($chatList.GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern)).Current.GetSelection() | Select-Object -First 1
+    if (!$selectedChatRow) {
+        $itemCondition = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
+        $selectedChatRow = $chatList.FindFirst([Windows.Automation.TreeScope]::Descendants, $itemCondition)
+    }
+    $chatBounds = $selectedChatRow.Current.BoundingRectangle
+    [KronoWindowCapture]::SetCursorPos([int]($chatBounds.Left + $chatBounds.Width / 2), [int]($chatBounds.Top + $chatBounds.Height / 2)) | Out-Null
+    [KronoWindowCapture]::mouse_event(8, 0, 0, 0, [UIntPtr]::Zero)
+    [KronoWindowCapture]::mouse_event(16, 0, 0, 0, [UIntPtr]::Zero)
+    Invoke 'Delete chat' -ByName
     Find 'Delete this chat?' -ByName | Out-Null
     Invoke 'Cancel' -ByName
     Invoke 'Project…' -ByName
@@ -547,6 +656,9 @@ try {
     $deadline = (Get-Date).AddSeconds(10)
     do { Start-Sleep -Milliseconds 200; $connected = (Find 'ProviderConnectionStatus').Current.Name } while ($connected -notmatch '^Connected' -and (Get-Date) -lt $deadline)
     if ($connected -notmatch '^Connected') { throw 'Native local endpoint connection test failed' }
+    if (FindOptional 'ModelSelector') { throw 'Model settings should be hidden for a provider without a key' }
+    SetValue 'ProviderKey' 'fixture-local-placeholder'
+    Invoke 'Save key' -ByName
     Invoke 'Load available models' -ByName
     Start-Sleep -Milliseconds 500
     SelectChoice 'ModelSelector' 'local-fixture-model'
@@ -1104,7 +1216,8 @@ try {
     $syncProof = Invoke-RestMethod ($Fixture + '/sync-proof')
     if ($syncProof.memory -ne 'Native global memory fixture' -or $syncProof.games -ne 24 -or $syncProof.sideLeaked) { throw 'Native account sync did not upload the expected data scope' }
     Invoke-RestMethod -Method Post ($Fixture + '/sync-remote-memory') | Out-Null
-    SelectNav 'Projects & memory'
+    SelectNav 'Chats'
+    Invoke 'Projects & memory' -ByName
     SetValue 'GlobalMemory' 'Local fixture memory edit'
     Invoke 'Save global memory' -ByName
     SelectNav 'Settings'
@@ -1117,14 +1230,17 @@ try {
     $deadline = (Get-Date).AddSeconds(10)
     do { Start-Sleep -Milliseconds 150; $sync = (Find 'AccountSyncStatus').Current.Name } while ($sync -notmatch '^Account data is up to date' -and (Get-Date) -lt $deadline)
     if ($sync -notmatch '^Account data is up to date') { throw ('Native conflict choice did not resolve: ' + $sync) }
-    SelectNav 'Projects & memory'
+    SelectNav 'Chats'
+    Invoke 'Projects & memory' -ByName
     if ((Find 'GlobalMemory').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value -ne 'Cloud fixture memory') { throw 'Native conflict choice did not restore the cloud memory' }
     Capture 'native-synced-memory.png'
     SelectNav 'Chats'
     SetValue 'Composer' 'Unsent draft during a scheduled run'
     SelectNav 'Scheduled tasks'
+    Invoke '+ New task' -ByName
     SetValue 'ScheduleName' 'Native scheduled fixture'
     SetValue 'SchedulePrompt' 'NATIVE_SCHEDULE_PROOF'
+    (Find 'ScheduleModelOptions').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
     SelectChoice 'ScheduleProvider' 'OpenAI'
     SetValue 'ScheduleModel' 'native-fixture-model'
     SetValue 'ScheduleFirstRun' ((Get-Date).AddDays(-1).ToString('yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture))
@@ -1134,6 +1250,7 @@ try {
     Find 'Scheduled result ready' -ByName | Out-Null
     $scheduled = Invoke-RestMethod ($Fixture + '/schedule-proof')
     if ($scheduled.runs.Count -ne 1 -or $scheduled.runs[0].state -ne 'completed' -or $scheduled.response -ne 'Native scheduled result.') { throw 'Due scheduled task did not complete exactly once' }
+    (Find 'ScheduleHistory').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
     Find 'Open run conversation' -ByName | Out-Null
     Capture 'native-scheduled-task.png'
     Invoke 'Open run conversation' -ByName

@@ -77,10 +77,6 @@ public sealed partial class MainPage
             };
             path.TextChanged += (_, _) => dialog.IsSecondaryButtonEnabled = !string.IsNullOrWhiteSpace(path.Text);
             dialog.Opened += (_, _) => path.Focus(FocusState.Programmatic);
-            content.Children.Add(Button("Paste image from clipboard", () => {
-                dialog.Hide();
-                if (!TryPasteComposerImage()) Error(new InvalidOperationException("The clipboard does not contain an image."));
-            }));
             var choice = await dialog.ShowAsync();
             if (choice == ContentDialogResult.None || generation != sessionGeneration || target != chatId) return;
             string[] paths;

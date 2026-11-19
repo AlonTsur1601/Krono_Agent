@@ -62,5 +62,11 @@ public sealed partial class MainWindow : Window
         AppWindow.TitleBar.ButtonInactiveForegroundColor = foreground;
         AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
         AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        var theme = light ? ElementTheme.Light : ElementTheme.Dark;
+        Windows.UI.Color Tint(string role) => ((Microsoft.UI.Xaml.Media.SolidColorBrush)KronoDesign.ThemeBrush(role, theme)).Color;
+        AppWindow.TitleBar.ButtonHoverForegroundColor = foreground;
+        AppWindow.TitleBar.ButtonPressedForegroundColor = foreground;
+        AppWindow.TitleBar.ButtonHoverBackgroundColor = Tint("ButtonBackgroundPointerOver");
+        AppWindow.TitleBar.ButtonPressedBackgroundColor = Tint("ButtonBackgroundPressed");
     }
 }

@@ -46,5 +46,21 @@ public sealed class TerminalBuffer
         }
         Ensure();
     }
-    public override string ToString() => string.Join(Environment.NewLine, rows.Select(line => line.ToString().TrimEnd()));
+    internal (string Text, int Caret) Render()
+    {
+        var display = new StringBuilder();
+        var caret = 0;
+        for (var index = 0; index < rows.Count; index++) {
+            if (index > 0) display.Append('\r');
+            var line = rows[index].ToString().TrimEnd();
+            if (index == row) {
+                caret = display.Length + column;
+                line = line.PadRight(column);
+            }
+            display.Append(line);
+        }
+        return (display.ToString(), caret);
+    }
+
+    public override string ToString() => Render().Text;
 }

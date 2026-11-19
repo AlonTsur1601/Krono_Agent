@@ -5,7 +5,6 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
-using System.Numerics;
 using Windows.UI.ViewManagement;
 
 namespace Krono_Agent;
@@ -32,6 +31,7 @@ public sealed partial class MainPage
     {
         var show = contextOpen && ContextBody.Content is not null;
         var target = show ? 252d : 0d;
+        WorkspaceSurface.CornerRadius = new CornerRadius(show ? 0 : 14, 0, 0, 0);
         var current = ContextRail.ActualWidth;
         contextMotion?.Stop();
         contextMotion = null;
@@ -42,7 +42,7 @@ public sealed partial class MainPage
         }
         ContextRail.Visibility = Visibility.Visible;
         var slide = new DoubleAnimation {
-            From = current, To = target, Duration = new Duration(KronoDesign.PageMotion),
+            From = current, To = target, Duration = new Duration(TimeSpan.FromMilliseconds(show ? 145 : 95)),
             EnableDependentAnimation = true, EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
         Storyboard.SetTarget(slide, ContextRail);
@@ -66,7 +66,7 @@ public sealed partial class MainPage
                 AutomationProperties.SetAutomationId(item, "Nav-" + item.Tag);
             var pointerInside = false;
             var pressing = false;
-            void UpdateScale() => AnimateIcon(item.Icon, pressing && pointerInside ? .92f : pointerInside ? 1.12f : 1);
+            void UpdateScale() => AnimateIcon(item.Icon, pressing && pointerInside ? .65f : pointerInside ? .86f : 1);
             void EndPress(object _, PointerRoutedEventArgs args)
             {
                 pressing = false;
@@ -95,20 +95,19 @@ public sealed partial class MainPage
             };
         }
 
-        static void AnimateIcon(IconElement? icon, float scale)
+        static void AnimateIcon(IconElement? icon, float opacity)
         {
             if (icon is null) return;
             var visual = ElementCompositionPreview.GetElementVisual(icon);
             if (!new UISettings().AnimationsEnabled) {
-                visual.StopAnimation("Scale");
-                visual.Scale = Vector3.One;
+                visual.StopAnimation("Opacity");
+                visual.Opacity = 1;
                 return;
             }
-            visual.CenterPoint = new Vector3(visual.Size / 2, 0);
-            var animation = visual.Compositor.CreateVector3KeyFrameAnimation();
-            animation.InsertKeyFrame(1, new Vector3(scale, scale, 1));
+            var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
+            animation.InsertKeyFrame(1, opacity);
             animation.Duration = TimeSpan.FromMilliseconds(120);
-            visual.StartAnimation("Scale", animation);
+            visual.StartAnimation("Opacity", animation);
         }
     }
 

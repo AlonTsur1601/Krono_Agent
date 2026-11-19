@@ -1,5 +1,10 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 
 namespace Krono_Agent;
 
@@ -11,10 +16,23 @@ internal sealed class KronoDialog : ContentDialog
             RequestedTheme = root.ActualTheme;
         var resources = Application.Current.Resources;
         PrimaryButtonStyle = (Style)resources["KronoPrimaryButton"];
-        SecondaryButtonStyle = CloseButtonStyle = (Style)resources["KronoGamePiece"];
+        SecondaryButtonStyle = CloseButtonStyle = (Style)resources["KronoButton"];
         CornerRadius = new CornerRadius(18);
         Loaded += (_, _) => RefreshPalette();
         Opened += (_, _) => {
+            // WinUI hosts the dimmed background in a second popup behind the dialog.
+            var overlay = VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot)
+                .Select(popup => popup.Child).OfType<Rectangle>().FirstOrDefault();
+            if (overlay is not null) {
+                PointerEventHandler dismiss = DismissFromOverlay;
+                overlay.AddHandler(UIElement.PointerReleasedEvent, dismiss, true);
+                Closed += DetachOverlay;
+                void DetachOverlay(ContentDialog sender, ContentDialogClosedEventArgs args)
+                {
+                    overlay.RemoveHandler(UIElement.PointerReleasedEvent, dismiss);
+                    Closed -= DetachOverlay;
+                }
+            }
             KronoDesign.RefreshTypography(this);
             if (GetTemplateChild("Title") is ContentControl title)
                 title.FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["KronoDisplayFont"];
@@ -47,6 +65,15 @@ internal sealed class KronoDialog : ContentDialog
             foreach (var setter in state.Setters.OfType<Setter>()) setter.Value = style;
         }
         if (activeState is not null) VisualStateManager.GoToState(this, activeState, false);
+    }
+
+    void DismissFromOverlay(object sender, PointerRoutedEventArgs args)
+    {
+        args.Handled = true;
+        if (!string.IsNullOrEmpty(CloseButtonText) && GetTemplateChild("CloseButton") is Button { IsEnabled: true } close &&
+            FrameworkElementAutomationPeer.CreatePeerForElement(close)?.GetPattern(PatternInterface.Invoke) is IInvokeProvider invoke)
+            invoke.Invoke();
+        else Hide();
     }
 
     void RefreshPalette()

@@ -20,7 +20,7 @@ public sealed partial class MainPage
     {
         panel.Children.Add(Heading("Account sync"));
         panel.Children.Add(new TextBlock { Text = "Sync chats, projects, memories, appearance and game progress with this account. Keys, tool permissions, local folders and temporary side chats stay on this device.", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
-        var enable = new ToggleSwitch { Header = "Sync account data", OnContent = "On", OffContent = "Off", IsOn = workspace.SyncEnabled };
+        var enable = KronoDesign.Toggle("Sync account data", workspace.SyncEnabled);
         AutomationProperties.SetAutomationId(enable, "AccountSyncEnabled");
         enable.Toggled += async (_, _) => {
             workspace.SetSetting("native.accountSync", enable.IsOn ? "true" : "false");

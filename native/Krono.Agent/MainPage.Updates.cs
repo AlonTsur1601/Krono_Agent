@@ -12,13 +12,13 @@ public sealed partial class MainPage
     const string ReleaseRoot = "https://github.com/AlonTsur1601/Krono_Agent/releases";
     const string InstallerName = "Krono-Agent-Setup-x64.exe";
     static readonly HttpClient UpdateHttp = new() { Timeout = TimeSpan.FromSeconds(30) };
-    readonly DispatcherTimer updateTimer = new() { Interval = TimeSpan.FromDays(1) };
+    readonly DispatcherTimer updateTimer = new() { Interval = TimeSpan.FromHours(4) };
     readonly CancellationTokenSource updateLifetime = new();
     readonly record struct AvailableUpdate(Version Version, Uri Url, long Size, string Hash);
     AvailableUpdate? availableUpdate;
     string? downloadedInstaller;
     Button? settingsUpdateButton;
-    bool checkingUpdate, downloadingUpdate;
+    bool checkingUpdate, downloadingUpdate, automaticUpdateFound;
     static Version InstalledVersion => typeof(MainPage).Assembly.GetName().Version ?? new Version(0, 0);
     internal bool HasBackgroundWork => runId is not null || scheduledRun is not null ||
         sideChat?.IsRunning == true || downloadingUpdate;
@@ -36,10 +36,7 @@ public sealed partial class MainPage
         panel.Children.Add(new TextBlock { Text = "Krono Agent " + version });
         panel.Children.Add(Button("Check for updates", async () => await CheckUpdates(true)));
         settingsUpdateButton = new Button { Style = (Style)Application.Current.Resources["KronoPrimaryButton"] };
-        settingsUpdateButton.Click += (_, _) => {
-            if (availableUpdate.HasValue) UpdateAction();
-            else Process.Start(new ProcessStartInfo(ReleaseRoot + "/latest") { UseShellExecute = true });
-        };
+        settingsUpdateButton.Click += (_, _) => UpdateAction();
         panel.Children.Add(settingsUpdateButton);
         RefreshUpdateButton();
     }
@@ -62,6 +59,7 @@ public sealed partial class MainPage
                 throw new InvalidDataException("The published release has an invalid version.");
             if (version <= current) {
                 availableUpdate = null;
+                automaticUpdateFound = false;
                 if (manual) { Notice.Severity = InfoBarSeverity.Success; Notice.Message = "Krono Agent is up to date."; Notice.IsOpen = true; }
                 return;
             }
@@ -73,7 +71,13 @@ public sealed partial class MainPage
                 if (size is <= 0 or > 512L * 1024 * 1024 || digest.Length != 71 ||
                     !digest.StartsWith("sha256:", StringComparison.Ordinal) ||
                     asset.GetProperty("browser_download_url").GetString() != url.AbsoluteUri) break;
+                automaticUpdateFound = !manual || (automaticUpdateFound && availableUpdate?.Version == version);
                 availableUpdate = new(version, url, size, Convert.ToHexString(Convert.FromHexString(digest[7..])));
+                if (manual && !automaticUpdateFound) {
+                    Notice.Severity = InfoBarSeverity.Informational;
+                    Notice.Message = "An update is available. The automatic check will enable the download.";
+                    Notice.IsOpen = true;
+                }
                 return;
             }
             throw new InvalidDataException("The release has no verified Windows installer.");
@@ -84,22 +88,22 @@ public sealed partial class MainPage
 
     void RefreshUpdateButton()
     {
-        UpdateButton.Visibility = availableUpdate.HasValue ? Visibility.Visible : Visibility.Collapsed;
+        UpdateButton.Visibility = automaticUpdateFound ? Visibility.Visible : Visibility.Collapsed;
         UpdateProgress.Visibility = downloadingUpdate ? Visibility.Visible : Visibility.Collapsed;
-        UpdateButton.IsEnabled = !downloadingUpdate;
+        UpdateButton.IsEnabled = automaticUpdateFound && !downloadingUpdate;
         var label = downloadedInstaller is not null ? "Install update" : downloadingUpdate ? "Downloading…" : "Download update";
         UpdateLabel.Text = label;
         AutomationProperties.SetName(UpdateButton, label);
         ToolTipService.SetToolTip(UpdateButton, label);
         if (settingsUpdateButton is not null) {
             settingsUpdateButton.Content = availableUpdate.HasValue ? label : "Download updates";
-            settingsUpdateButton.IsEnabled = !downloadingUpdate;
+            settingsUpdateButton.IsEnabled = automaticUpdateFound && !downloadingUpdate;
         }
     }
 
     async void UpdateAction()
     {
-        if (downloadingUpdate || availableUpdate is not { } update) return;
+        if (!automaticUpdateFound || downloadingUpdate || availableUpdate is not { } update) return;
         if (downloadedInstaller is { } installer) {
             if (HasBackgroundWork && !await Confirm("Install update?", "Krono Agent needs to close to install. Running work will be interrupted.", "Install update")) return;
             try {

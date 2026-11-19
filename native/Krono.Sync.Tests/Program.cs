@@ -126,6 +126,17 @@ var once = schedule with { Id = "fixture-once", Recurrence = "once", NextRun = n
 a.SaveTask(once); var one = a.ClaimScheduledRun(now); Check(one?.Task.Id == once.Id, "One-time task was not claimed");
 a.FinishScheduledRun(one!.Id, "completed"); Check(a.ClaimScheduledRun(now) is null, "One-time task repeated");
 a.SetTaskState(schedule.Id, "cancelled"); Check(a.ClaimScheduledRun(now + 10*60000) is null, "Cancelled task ran");
+var capped = schedule with { Id = "fixture-capped", NextRun = now, RunLimit = 2 };
+a.SaveTask(capped);
+Check(reopened.ScheduledTasks().Single(task => task.Id == capped.Id).RunLimit == 2, "Run limit did not persist");
+var firstLimitedRun = reopened.ClaimScheduledRun(now);
+Check(firstLimitedRun?.Task.Id == capped.Id, "Limited task did not start");
+reopened.FinishScheduledRun(firstLimitedRun!.Id, "completed");
+var secondLimitedRun = a.ClaimScheduledRun(now + 5 * 60000);
+Check(secondLimitedRun?.Task.Id == capped.Id, "Limited task ended early");
+a.FinishScheduledRun(secondLimitedRun!.Id, "completed");
+Check(a.ScheduledTasks().Single(task => task.Id == capped.Id).State == "completed" &&
+      reopened.ClaimScheduledRun(now + 10 * 60000) is null, "Limited task exceeded its total run count");
 var eastern = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
 var gap = Workspace.ScheduleTime(new DateTime(2026,3,8,2,30,0), eastern);
 Check(TimeZoneInfo.ConvertTime(gap, eastern).Hour == 3 && TimeZoneInfo.ConvertTime(gap, eastern).Minute == 0, "DST gap did not advance to valid time");
@@ -133,7 +144,7 @@ var daily = schedule with { Recurrence = "daily", TimeZone = eastern.Id, ClockMi
 var anchor = new DateTimeOffset(2026,11,1,15,0,0,TimeSpan.Zero).ToUnixTimeMilliseconds();
 var next = TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeMilliseconds(Workspace.NextScheduledTime(daily, anchor)), eastern);
 Check(next.Day == 2 && next.Hour == 9, "Daily schedule drifted across timezone change");
-Console.WriteLine("NATIVE_SCHEDULE_PASS: opt-in, pause/cancel, one-time, concurrent claim, single catch-up, timezone and DST");
+Console.WriteLine("NATIVE_SCHEDULE_PASS: opt-in, pause/cancel, one-time, run limits, concurrent claim, single catch-up, timezone and DST");
 var textFile = Path.Combine(localFixtureRoot, "fixture-source.txt");
 await File.WriteAllTextAsync(textFile, "\u05e9\u05dc\u05d5\u05dd\n```\nreference\n```", System.Text.Encoding.Unicode);
 var attachment = await TextAttachment.Read(textFile); var composed = TextAttachment.Compose("Read this", [attachment]);
