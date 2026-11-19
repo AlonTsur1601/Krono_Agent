@@ -1097,3 +1097,77 @@ Each game task includes:
 - R12.1 → G1
 - R12.2 → G2
 - R12.3 → G7
+
+## Native feedback follow-up
+
+- [x] Keep the main navigation rail compact and retain its existing destinations.
+- [x] Separate Settings into Account, Updates, Browser, Model provider, and Appearance screens. Local fixture checks exercised category navigation and theme switching.
+- [x] Add independent collapse and expand controls to Settings and chat history. Both were exercised locally after the compact rail change.
+- [x] Hovering over the active Chats icon reopened the collapsed history. Hovering over inactive Settings displayed its contextual preview while Chats remained open.
+- [x] Verify bitmap attachment from the clipboard through the attachment dialog. A local Windows bitmap reached the OpenAI Responses fixture as PNG image input.
+- [x] Direct Ctrl+V attached a Windows bitmap in the composer on a Hebrew keyboard layout. The local provider fixture received PNG image input.
+- [x] Verify fresh production confirmation. The delivered Gmail button opened the dedicated confirmation page, and the waiting native app signed in automatically.
+- [x] Inspect the 24 game screens in a 960×690 Windows window. Use the space beside the board when available and keep movement controls and help readable.
+- [ ] Complete the game difficulty playtest and audition licensed audio before integration.
+- [x] Verify the shared replay action. Flap was exercised through a live loss, and all 24 games left their saved ended state after Play again.
+- [x] Verify the Halloween corner web and anchor, seasonal background replacements, and terminal navigation glyph in native screenshots.
+- [x] Verify left-aligned chat and project content on the local Windows host and inspect Rotate and Soft drop in both falling-block games.
+- [ ] Publish one offline installer after the remaining feedback has been implemented and verified.
+- [x] Verify Side chat hides on navigation out of Chats and returns with its parent conversation.
+
+### Original feedback
+
+Checked entries have prior implementation or verification evidence. Unchecked entries still need implementation or focused verification.
+
+- [x] 1. Match sign-in and signup card heights. The Windows smoke test measured equal rendered form heights.
+- [x] 2. Verify the confirmation button in Gmail. A fresh production message rendered the green HTML button and the click opened the dedicated confirmation page. Gmail computed a zero-second transition. The subsequently deployed face-only animation was verified in the Supabase preview with a fixed base and a 100 ms face transition.
+- [x] 3. Match the primary button appearance in the received email
+- [x] 4. Open a dedicated confirmation page
+- [x] 5. Keep repository and site copy in English
+- [x] 6. Sign the waiting app in after confirmation
+- [x] 7. Submit eligible forms with Enter directly. Verified sign-in, signup, terminal input, browser address navigation, Find on page, browser home-page persistence, attachment path, typography, schedules, provider endpoint, credential storage, and model selection by keyboard.
+- [x] 8. Show progress inside the primary auth button
+- [ ] 9. Keep app controls in English on Hebrew Windows. App and WebView2 prefer en-US. The Windows audit found no Hebrew control names in the inspected screens. System accessibility role names can still use the host language.
+- [x] 10. Style dropdowns and confirmation dialogs. Verified the rounded Appearance popup, the Move chat to project dialog, and the Model and context dialog with Krono typography and its green default button. Browser overflow and navigation previews now share Krono surfaces and typography.
+- [x] 11. Use a matching sign-out icon
+- [x] 12. Split Settings into categories
+- [ ] 13. Keep focus and hover treatments within field bounds. Visually verified the rounded focused model selector after removing the nested editor's square border. Terminal input and the light Appearance popup were also inspected. Other fields and hover states still need review.
+- [x] 14. Remove Grok from the xAI label
+- [x] 15. Anchor the Halloween web and pumpkin
+- [x] 16. Swap background motifs in place for Halloween
+- [x] 17. Show the available update above Settings and Sign out and in Updates
+- [x] 18. Place Sign out below Settings
+- [x] 19. Restore light dropdown styling after dark and Halloween. Visually verified the reopened popup after switching from Dark through Halloween to Light. It used the light background, inset selection, and green accent.
+- [x] 20. Use a terminal icon
+- [ ] 21. Verify all icons render. Focused Windows screenshots confirmed the navigation rail, visible terminal icons, and browser toolbar icons. The password visibility and embedded clear glyphs now explicitly use Segoe Fluent Icons. Audit the remaining menus and screens.
+- [ ] 22. Style buttons consistently including game controls. Game filters now use Krono typography and button surfaces. Review remaining controls visually.
+- [ ] 23. Verify reliable tab and sidebar transitions. Page, sidebar, tab, and theme fades share a duration and reset under reduced motion. Verify repeated transitions.
+- [x] 24. Align Chats and Projects left
+- [ ] 25. Improve hierarchy on dense screens. Settings are grouped, the scheduler pairs related fields, and the composer adapts to narrow windows. Appearance now places each font beside its size, verified in a focused Windows layout check. Review the remaining final layouts.
+- [x] 26. Confirm Full access and indicate it in orange
+- [x] 27. Start a conversation with the selected project and model on Send
+- [x] 28. Keep Side chat split from its parent conversation. The account UI test verified that the entry point is hidden for a draft and appears after the first send creates a conversation.
+- [ ] 29. Animate sidebar icons. Hover and ordinary navigation were exercised. The Settings preview now waits briefly and lets navigation receive clicks. Verified that Settings opened with one click on the rebuilt app. Repeated animation and cancellation still need visual verification.
+- [x] 30. Share the Send and Stop control
+- [x] 31. Put the plus attachment control beside Send
+- [ ] 32. Remove press motion from terminal and browser controls. Browser and terminal fields, including embedded controls, disable press scaling. Verify visually.
+- [x] 33. Use Google as the configurable default browser homepage
+- [x] 34. Keep chat controls near the composer
+- [x] 35. Show the selected model on its button. The Windows fixture switched models through the composer and found the updated button by model name.
+- [x] 36. Offer model, reasoning and context selection. The Windows fixture verified the model, reasoning effort, and 20-message context on the provider request, including when older synced messages have future timestamps.
+- [x] 37. Verify image paste and move a conversation between projects. Direct bitmap paste reached the local model fixture as PNG. The Windows smoke test saved both moves, and the dialog capture showed the current project preselected.
+- [x] 38. Give contextual sidebars their own surface
+- [x] 39. Center content and controls where appropriate. Reviewed Chats, the model dialog, Projects & memory, Appearance, Snake, Flap, and Falling Blocks at 960×690 in Dark, Light, and Halloween, plus the full-size native captures. Corrected the clipped chat welcome, model field focus, game score alignment, and Light dialog palette.
+- [ ] 40. Integrate the approved game sounds. All four chosen CC0 clips are bundled and wired to game actions, pickups, and outcomes. Their encodings were checked and the Snake and Flap Windows runs exercised restart, flap, and collision. Audible playback and levels still need an output check.
+- [x] 41. Give game boards space and align controls
+- [x] 42. Show endings and Play again
+- [x] 43. Use familiar game terms including apples in Snake
+- [x] 44. Use board decoration that communicates movement and state
+- [ ] 45. Start games at an accessible speed and ramp difficulty. Focused Windows playthroughs verified that Snake and Flap wait for input, show a collision result, and return to their starting state on replay. Later-stage difficulty balance still needs verification.
+
+The native build, all 36 unit tests, TypeScript checking, and native sync, scheduling, and attachment tests passed. Reasoning effort is saved only for the model whose controls were loaded. Embedded browser and terminal input buttons honor the field motion setting. These checks did not launch the app.
+
+## Release history and browser verification
+
+- Remote tags run consecutively from v0.1.0 through v0.1.41. The historical tags v0.1.2, v0.1.3, and v0.1.25 lacked release pages. Preserve their original commit mappings and published installer version numbers.
+- Verified flat add-tab and close-tab buttons in the browser and terminal. The same flat template is used for embedded input icons. Checked twelve browser tabs in wide and compact windows.

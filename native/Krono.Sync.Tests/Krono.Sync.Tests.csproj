@@ -10,6 +10,7 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.14" />
     <Compile Include="..\Krono.Agent\Workspace.cs" Link="Workspace.cs" />
+    <Compile Include="..\Krono.Agent\Workspace.Google.cs" Link="Workspace.Google.cs" />
     <Compile Include="..\Krono.Agent\Workspace.Sync.cs" Link="Workspace.Sync.cs" />
     <Compile Include="..\Krono.Agent\Workspace.SideChats.cs" Link="Workspace.SideChats.cs" />
     <Compile Include="..\Krono.Agent\SyncMerge.cs" Link="SyncMerge.cs" />
