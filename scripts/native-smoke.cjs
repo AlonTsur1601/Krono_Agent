@@ -115,7 +115,7 @@ const server = http.createServer((request, response) => {
       const input = JSON.parse(body)
       localNoTools = !input.tools && ['local-fixture-model','basic-fixture-model'].includes(input.model) && input.messages[0].content.includes('Tool calling is disabled')
       if (input.model === 'basic-fixture-model') localModelBNoTools = localNoTools
-      localKeyIsolated = request.headers.authorization === 'Bearer local'
+      localKeyIsolated = request.headers.authorization === 'Bearer fixture-local-placeholder'
       response.setHeader('Content-Type', 'text/event-stream')
       const event = (content, finish = null) => 'data: ' + JSON.stringify({ choices: [{ delta: { content }, finish_reason: finish }] }) + '\n\n'
       response.end(event('Native local endpoint ') + event('reply.') + event('', 'stop') + 'data: [DONE]\n\n')
