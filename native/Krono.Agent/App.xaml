@@ -93,6 +93,9 @@
             <x:Double x:Key="KronoTextSize">14</x:Double>
             <x:Double x:Key="KronoCodeSize">14</x:Double>
             <x:Double x:Key="KronoControlMinHeight">40</x:Double>
+            <DataTemplate x:Key="KronoTabTitle">
+                <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+            </DataTemplate>
             <ControlTemplate x:Key="KronoPressTemplate" TargetType="ButtonBase">
                             <Grid Background="Transparent">
                                 <VisualStateManager.VisualStateGroups>
@@ -177,7 +180,8 @@
             </Style>
             <Style x:Key="KronoToggleButton" TargetType="ToggleButton" BasedOn="{StaticResource KronoButtonBase}" />
             <Style TargetType="ToggleButton" BasedOn="{StaticResource KronoToggleButton}" />
-            <Style TargetType="RepeatButton" BasedOn="{StaticResource KronoButtonBase}" />
+            <Style x:Key="KronoRepeatButton" TargetType="RepeatButton" BasedOn="{StaticResource KronoButtonBase}" />
+            <Style TargetType="RepeatButton" BasedOn="{StaticResource KronoRepeatButton}" />
             <Style x:Key="KronoTextInput" TargetType="TextBox">
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />
                 <Setter Property="BorderThickness" Value="1" />

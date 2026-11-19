@@ -139,9 +139,9 @@ public sealed partial class MainPage
             scheduleStopButton.IsEnabled = scheduledRun is not null;
             panel.Children.Add(scheduleStopButton);
             scheduleHistoryPane = new StackPanel { Spacing = 8 };
-            var history = KronoDesign.Section("Run history", scheduleHistoryPane);
-            AutomationProperties.SetAutomationId(history, "ScheduleHistory");
-            panel.Children.Add(history);
+            panel.Children.Add(Heading("Run history"));
+            AutomationProperties.SetAutomationId(scheduleHistoryPane, "ScheduleHistory");
+            panel.Children.Add(scheduleHistoryPane);
             RefreshScheduleHistory();
             KronoDesign.Present(Body, KronoDesign.ScrollPage(panel));
             UpdateActivityVisibility();

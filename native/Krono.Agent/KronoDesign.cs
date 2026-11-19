@@ -158,16 +158,25 @@ public static class KronoDesign
 
     public static void AnimateThemeChange(FrameworkElement surface) => AnimateOpacity(surface, .78f);
 
+    const double TabHeight = 34;
+    const double TabButtonSize = 26;
+
     internal static void StyleTabHeader(TabViewItem tab)
     {
         tab.KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
+        tab.MinWidth = 150;
+        tab.HeaderTemplate = (DataTemplate)Application.Current.Resources["KronoTabTitle"];
+        tab.MinHeight = TabHeight;
+        tab.Padding = new Thickness(0);
+        tab.Resources["TabViewSelectedItemHeaderMargin"] = new Thickness(0);
+        tab.Resources["TabViewSelectedItemBorderThickness"] = new Thickness(0);
         var hovered = false;
         var pressed = false;
         void Refresh()
         {
             if (!tab.IsLoaded || new AccessibilitySettings().HighContrast) return;
-            var surface = ThemeBrush(pressed ? "ButtonBackgroundPressed" : hovered ? "ButtonBackgroundPointerOver" :
-                tab.IsSelected ? "KronoSurface" : "KronoSidebar", tab.ActualTheme);
+            var surface = ThemeBrush(tab.IsSelected ? "KronoSurface" :
+                pressed ? "ButtonBackgroundPressed" : hovered ? "ButtonBackgroundPointerOver" : "KronoSidebar", tab.ActualTheme);
             tab.Background = surface;
             tab.Resources["TabViewItemHeaderBackgroundSelected"] = surface;
             tab.Resources["TabViewItemHeaderBackgroundSelectedPointerOver"] = surface;
@@ -175,14 +184,26 @@ public static class KronoDesign
             foreach (var part in KronoInputMotion.Descendants(tab).ToArray()) {
                 if (part is Button { Name: "CloseButton" } close) {
                     KronoInputMotion.StyleButton(close);
+                    close.ApplyTemplate();
+                    // TabView overrides the close button's Background with a transparent brush.
+                    if (KronoInputMotion.Descendants(close).OfType<Border>().FirstOrDefault(part => part.Name == "ButtonFace") is { } closeFace)
+                        closeFace.Background = ThemeBrush("KronoButtonFace", tab.ActualTheme);
+                    close.CornerRadius = new CornerRadius(7);
+                    close.Width = close.Height = TabButtonSize;
                     close.VerticalAlignment = VerticalAlignment.Center;
                     close.HorizontalAlignment = HorizontalAlignment.Right;
-                    close.Margin = new Thickness(3, 0, 0, 0);
+                    close.Margin = new Thickness(4, 0, 0, 0);
+                    close.HorizontalContentAlignment = HorizontalAlignment.Center;
+                    close.VerticalContentAlignment = VerticalAlignment.Center;
+                    if (close.Content is not PathIcon) close.Content = TabButtonIcon(add: false);
                 }
                 if (part is Grid { Name: "TabContainer" } header) {
-                    header.MinHeight = 36;
+                    header.MinHeight = TabHeight;
+                    header.Margin = new Thickness(0);
+                    header.BorderThickness = new Thickness(0);
+                    header.VerticalAlignment = VerticalAlignment.Stretch;
                     if (header.Children.OfType<ContentPresenter>().FirstOrDefault(child => child.Name == "ContentPresenter") is { } title) {
-                        title.HorizontalAlignment = HorizontalAlignment.Center;
+                        title.HorizontalAlignment = HorizontalAlignment.Stretch;
                         title.VerticalAlignment = VerticalAlignment.Center;
                     }
                     var face = header.Children.OfType<Border>().FirstOrDefault(child => child.Name == "KronoTabFace");
@@ -249,27 +270,48 @@ public static class KronoDesign
     internal static void StyleTabs(TabView tabs)
     {
         tabs.TabStripHeader = new Border { Width = 9 };
-        tabs.TabWidthMode = TabViewWidthMode.SizeToContent;
+        tabs.Padding = new Thickness(0, 6, 0, 0);
+        tabs.BorderThickness = new Thickness(0);
+        tabs.TabWidthMode = TabViewWidthMode.Equal;
+        tabs.Resources["TabViewItemMinWidth"] = 150d;
+        tabs.Resources["TabViewItemMaxWidth"] = 220d;
         tabs.CloseButtonOverlayMode = TabViewCloseButtonOverlayMode.Always;
         tabs.KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
         tabs.Loaded += (_, _) => {
             tabs.ApplyTemplate();
-            if (KronoInputMotion.Descendants(tabs).OfType<Button>().FirstOrDefault(button => button.Name == "AddButton") is not { } add) return;
-            add.Style = (Style)Application.Current.Resources["KronoButton"];
-            add.MinHeight = 0;
-            add.Width = 30;
-            add.Height = 27;
-            add.Padding = new Thickness(0);
-            add.CornerRadius = new CornerRadius(7);
-            add.Content = new SymbolIcon(Symbol.Add);
-            add.FontSize = TextSize;
-            add.VerticalAlignment = VerticalAlignment.Center;
-            if (add.Parent is Border container) {
-                container.VerticalAlignment = VerticalAlignment.Bottom;
-                container.Height = 36;
-                container.Padding = new Thickness(3, 0, 0, 0);
+            var parts = KronoInputMotion.Descendants(tabs).ToArray();
+            foreach (var line in parts.OfType<Border>().Where(part => part.Name is "LeftBottomBorderLine" or "RightBottomBorderLine"))
+                line.Opacity = 0;
+            foreach (var button in parts.OfType<Microsoft.UI.Xaml.Controls.Primitives.ButtonBase>()
+                .Where(part => part.Name is "AddButton" or "ScrollDecreaseButton" or "ScrollIncreaseButton")) {
+                var add = button.Name == "AddButton";
+                button.Style = (Style)Application.Current.Resources[add ? "KronoButton" : "KronoRepeatButton"];
+                button.MinWidth = button.MinHeight = 0;
+                button.Width = button.Height = TabButtonSize;
+                button.Padding = new Thickness(0);
+                button.CornerRadius = new CornerRadius(7);
+                if (add) button.Content = TabButtonIcon(add: true);
+                else if (button.Content is FontIcon icon) icon.FontSize = 12;
+                button.VerticalAlignment = VerticalAlignment.Center;
+                if (button.Parent is Border container) {
+                    container.VerticalAlignment = VerticalAlignment.Bottom;
+                    container.Height = TabHeight;
+                    container.Padding = new Thickness(6, 0, 0, 0);
+                }
             }
         };
+    }
+
+    static PathIcon TabButtonIcon(bool add)
+    {
+        // Both symbols have symmetric ink bounds in the same 12-DIP box.
+        var shape = add
+            ? "M 5.25,0 L 6.75,0 6.75,5.25 12,5.25 12,6.75 6.75,6.75 6.75,12 5.25,12 5.25,6.75 0,6.75 0,5.25 5.25,5.25 Z"
+            : "M 1,0 L 6,5 11,0 12,1 7,6 12,11 11,12 6,7 1,12 0,11 5,6 0,1 Z";
+        var icon = (PathIcon)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+            $"<PathIcon xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Data='{shape}' />");
+        icon.Width = icon.Height = 12;
+        return icon;
     }
 
     internal static Border FrameTabContent(UIElement content, string surface = "KronoSurface")

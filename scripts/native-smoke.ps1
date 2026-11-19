@@ -1250,7 +1250,7 @@ try {
     Find 'Scheduled result ready' -ByName | Out-Null
     $scheduled = Invoke-RestMethod ($Fixture + '/schedule-proof')
     if ($scheduled.runs.Count -ne 1 -or $scheduled.runs[0].state -ne 'completed' -or $scheduled.response -ne 'Native scheduled result.') { throw 'Due scheduled task did not complete exactly once' }
-    (Find 'ScheduleHistory').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+    Find 'ScheduleHistory' | Out-Null
     Find 'Open run conversation' -ByName | Out-Null
     Capture 'native-scheduled-task.png'
     Invoke 'Open run conversation' -ByName

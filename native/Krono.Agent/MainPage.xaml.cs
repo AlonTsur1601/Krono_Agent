@@ -395,7 +395,7 @@ public sealed partial class MainPage : Page
             var fadedTranscript = KronoDesign.ScrollPage(transcript);
             Grid.SetRow(fadedTranscript, 1); conversation.Children.Add(fadedTranscript);
             Grid.SetRow(progress, 2); conversation.Children.Add(progress);
-            var input = new StackPanel { Spacing = 8 };
+            var input = new StackPanel { Spacing = 4, Margin = new Thickness(0, 0, 0, 21) };
             input.Children.Add(attachmentTray);
             input.Children.Add(composer);
             send.Click += async (_, _) => {
@@ -408,27 +408,36 @@ public sealed partial class MainPage : Page
             attach.Content = new SymbolIcon(Symbol.Add);
             AutomationProperties.SetName(attach, "Attach files…");
             ToolTipService.SetToolTip(attach, "Attach files…");
+            send.Style = (Style)Application.Current.Resources["KronoPrimaryButton"];
             foreach (var action in new[] { attach, send }) {
-                action.Width = 38;
+                action.Width = 40;
                 action.Padding = new Thickness(0);
                 action.CornerRadius = new CornerRadius(10);
             }
             RefreshComposerAction();
-            var primaryActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, -10, 0, 0), HorizontalAlignment = HorizontalAlignment.Right };
-            primaryActions.Children.Add(attach);
-            primaryActions.Children.Add(send);
-            input.Children.Add(primaryActions);
             modelChoice.MaxWidth = 240;
-            modelChoice.VerticalAlignment = VerticalAlignment.Bottom;
             toolbar.Children.Add(modelChoice);
             sideChatButton = Button("Side chat", OpenSideChat);
-            sideChatButton.VerticalAlignment = VerticalAlignment.Bottom;
             AutomationProperties.SetAutomationId(sideChatButton, "OpenSideChatButton");
             toolbar.Children.Add(sideChatButton);
-            foreach (var control in toolbar.Children.OfType<Control>()) control.VerticalAlignment = VerticalAlignment.Bottom;
-            input.Children.Add(new ScrollViewer { Content = toolbar, HorizontalScrollMode = ScrollMode.Auto,
+            foreach (var selector in new[] { modeSelector, permissionSelector }) {
+                AutomationProperties.SetName(selector, selector.Header?.ToString() ?? "");
+                if (ToolTipService.GetToolTip(selector) is null) ToolTipService.SetToolTip(selector, selector.Header);
+                selector.Header = null;
+            }
+            foreach (var control in toolbar.Children.OfType<Control>()) control.VerticalAlignment = VerticalAlignment.Center;
+            var actions = new Grid { ColumnSpacing = 12 };
+            actions.ColumnDefinitions.Add(new ColumnDefinition());
+            actions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            actions.Children.Add(new ScrollViewer { Content = toolbar, HorizontalScrollMode = ScrollMode.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollMode = ScrollMode.Disabled,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled });
+                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalAlignment = VerticalAlignment.Center });
+            var primaryActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
+            primaryActions.Children.Add(attach);
+            primaryActions.Children.Add(send);
+            Grid.SetColumn(primaryActions, 1);
+            actions.Children.Add(primaryActions);
+            input.Children.Add(actions);
             Grid.SetRow(input, 3);
             conversation.Children.Add(input);
         }
