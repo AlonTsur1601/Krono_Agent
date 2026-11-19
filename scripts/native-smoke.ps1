@@ -228,7 +228,7 @@ function TestWorkspaceInputs {
     } while (!$assertions.browserIsolated -and (Get-Date) -lt $deadline)
     if (!$assertions.browserIsolated) { throw 'Browser home fixture did not finish loading' }
     SetValue 'BrowserAddress' ($Fixture + '/probe')
-    if ($env:KRONO_SMOKE_SCOPE -eq 'workspace-ui') { PressEnterOn 'BrowserAddress' } else { Invoke 'Go' -ByName }
+    PressEnterOn 'BrowserAddress'
     Find 'Native browser fixture' -ByName | Out-Null
     $deadline = (Get-Date).AddSeconds(5)
     do { Start-Sleep -Milliseconds 100; $assertions = Invoke-RestMethod ($Fixture + '/assertions') } while (!$assertions.browserIsolated -and (Get-Date) -lt $deadline)
