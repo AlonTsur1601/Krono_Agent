@@ -56,6 +56,46 @@ public sealed class KronoTextBox : TextBox
     }
 }
 
+public sealed class KronoCheckBox : CheckBox
+{
+    Border? backing;
+
+    public KronoCheckBox()
+    {
+        RegisterPropertyChangedCallback(IsCheckedProperty, (_, _) => PaintBacking());
+        IsEnabledChanged += (_, _) => PaintBacking();
+        ActualThemeChanged += (_, _) => PaintBacking();
+        KronoInputMotion.RegisterPaletteRefresh(this, PaintBacking);
+    }
+
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        if (backing?.Parent is Grid oldHost) oldHost.Children.Remove(backing);
+        backing = null;
+        if (GetTemplateChild("NormalRectangle") is not Microsoft.UI.Xaml.Shapes.Rectangle { Parent: Grid host } face)
+            return;
+
+        face.RadiusX = face.RadiusY = CornerRadius.TopLeft;
+        backing = new Border {
+            Width = face.Width, Height = face.Height, CornerRadius = CornerRadius,
+            HorizontalAlignment = face.HorizontalAlignment, VerticalAlignment = face.VerticalAlignment,
+            Margin = face.Margin, RenderTransform = new TranslateTransform { Y = 3 },
+            IsHitTestVisible = false
+        };
+        host.Children.Insert(0, backing);
+        PaintBacking();
+    }
+
+    void PaintBacking()
+    {
+        if (backing is null) return;
+        backing.Visibility = new AccessibilitySettings().HighContrast ? Visibility.Collapsed : Visibility.Visible;
+        backing.Background = KronoDesign.ThemeBrush(!IsEnabled ? "KronoDisabledBase" :
+            IsChecked != false ? "KronoPrimaryBase" : "KronoBorder", ActualTheme);
+    }
+}
+
 public sealed class KronoComboBox : ComboBox
 {
     static readonly Dictionary<string, string> ItemPalette = new() {

@@ -101,8 +101,7 @@ public static class KronoDesign
             "ListViewItemSelectionIndicatorPointerOverBrush", "ListViewItemSelectionIndicatorPressedBrush",
             "ProgressRingForegroundThemeBrush", "ProgressBarForeground", "HyperlinkForeground", "HyperlinkButtonForeground" })
             resources[key] = ink;
-        foreach (var key in new[] { "TextControlSelectionHighlightColor", "AccentButtonBackground", "CheckBoxCheckBackgroundFillChecked",
-            "CheckBoxCheckBackgroundStrokeChecked", "ToggleButtonBackgroundChecked" })
+        foreach (var key in new[] { "TextControlSelectionHighlightColor", "AccentButtonBackground", "ToggleButtonBackgroundChecked" })
             resources[key] = fill;
         foreach (var key in new[] { "AccentButtonBackgroundPointerOver", "CheckBoxCheckBackgroundFillCheckedPointerOver",
             "CheckBoxCheckBackgroundStrokeCheckedPointerOver", "ToggleButtonBackgroundCheckedPointerOver" })
@@ -113,6 +112,17 @@ public static class KronoDesign
         foreach (var key in new[] { "CheckBoxCheckGlyphForegroundChecked", "CheckBoxCheckGlyphForegroundCheckedPointerOver",
             "CheckBoxCheckGlyphForegroundCheckedPressed", "ToggleButtonForegroundChecked", "ToggleButtonForegroundCheckedPointerOver", "ToggleButtonForegroundCheckedPressed" })
             resources[key] = onAccent;
+
+        resources["CheckBoxCheckBackgroundFillUnchecked"] = ThemeBrush("KronoButtonFace", root.ActualTheme);
+        resources["CheckBoxCheckBackgroundStrokeUnchecked"] = ThemeBrush("KronoBorder", root.ActualTheme);
+        resources["CheckBoxCheckBackgroundFillUncheckedPointerOver"] = ThemeBrush("ButtonBackgroundPointerOver", root.ActualTheme);
+        resources["CheckBoxCheckBackgroundFillUncheckedPressed"] = ThemeBrush("ButtonBackgroundPressed", root.ActualTheme);
+        resources["CheckBoxCheckBackgroundStrokeUncheckedPointerOver"] = outlineHover;
+        resources["CheckBoxCheckBackgroundStrokeUncheckedPressed"] = outlineHover;
+        resources["CheckBoxCheckBackgroundFillUncheckedDisabled"] = ThemeBrush("KronoDisabledFace", root.ActualTheme);
+        resources["CheckBoxCheckBackgroundStrokeUncheckedDisabled"] = ThemeBrush("KronoDisabledBase", root.ActualTheme);
+        resources["CheckBoxCheckBackgroundFillChecked"] = ThemeBrush("KronoPrimaryFace", root.ActualTheme);
+        resources["CheckBoxCheckBackgroundStrokeChecked"] = ThemeBrush("KronoPrimaryBase", root.ActualTheme);
     }
     public static void ApplyTypography(Workspace workspace, FrameworkElement root)
     {

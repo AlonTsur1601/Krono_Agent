@@ -677,7 +677,7 @@ public sealed partial class MainPage : Page
         KronoInputMotion.Attach(secret, "KronoPasswordInput");
         var endpoint = new KronoTextBox { Header = "Server base URL · include /v1", Text = ProviderEndpoint };
         AutomationProperties.SetAutomationId(endpoint, "ProviderEndpoint");
-        var tools = new CheckBox { Content = "This model supports tool calling", IsChecked = ProviderToolsEnabled };
+        var tools = new KronoCheckBox { Content = "This model supports tool calling", IsChecked = ProviderToolsEnabled };
         AutomationProperties.SetAutomationId(tools, "ProviderTools");
         var connectionStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .7 }; AutomationProperties.SetAutomationId(connectionStatus, "ProviderConnectionStatus");
         var models = new KronoComboBox { Header = "Model", HorizontalAlignment = HorizontalAlignment.Stretch, IsEditable = true, Text = model };
@@ -750,7 +750,7 @@ public sealed partial class MainPage : Page
                 modelVisibility.Children.Clear();
                 modelStatus.Text = ids.Length == 0 ? "This provider returned no models." : "Show in the chat model picker";
                 foreach (var id in ids) {
-                    var checkbox = new CheckBox { Content = id, IsChecked = !hidden.Contains(id) };
+                    var checkbox = new KronoCheckBox { Content = id, IsChecked = !hidden.Contains(id) };
                     void SaveVisibility()
                     {
                         if (provider != selectedProvider || generation != sessionGeneration) return;

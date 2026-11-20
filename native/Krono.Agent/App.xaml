@@ -251,10 +251,11 @@
                 <Setter Property="CornerRadius" Value="10" />
                 <Setter Property="Padding" Value="10,5" />
             </Style>
-            <Style TargetType="CheckBox">
+            <Style TargetType="local:KronoCheckBox">
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
-                <Setter Property="Padding" Value="0,8,0,8" />
+                <Setter Property="Padding" Value="10,8,0,8" />
+                <Setter Property="CornerRadius" Value="5" />
             </Style>
             <Style TargetType="NavigationViewItem">
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
