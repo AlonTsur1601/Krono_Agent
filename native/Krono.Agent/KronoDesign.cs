@@ -9,6 +9,32 @@ namespace Krono_Agent;
 // Shared visual roles for every native page; gameplay animation is separate.
 public static class KronoDesign
 {
+    internal enum OutlineGlyph { Search, Folder, Pin, Unpin, Archive, Restore, Star }
+
+    internal static FrameworkElement OutlineIcon(OutlineGlyph glyph, Brush? stroke = null)
+    {
+        var data = glyph switch {
+            OutlineGlyph.Search => "M13.5,8.5 A5,5 0 1 0 3.5,8.5 A5,5 0 1 0 13.5,8.5 M12.1,12.1 L16.5,16.5",
+            OutlineGlyph.Folder => "M4.5,4.75 H8 L10,6.75 H15.5 Q17.25,6.75 17.25,8.5 V13.5 Q17.25,15.25 15.5,15.25 H4.5 Q2.75,15.25 2.75,13.5 V6.5 Q2.75,4.75 4.5,4.75 Z",
+            OutlineGlyph.Pin => "M10.55,15.85 L4.33,9.52 L8.37,7.91 Q8.76,7.76 8.93,7.39 L10.52,3.77 Q10.83,3.1 11.36,3.1 Q11.76,3.1 12.03,3.39 L16.58,7.95 Q17.17,8.55 16.78,9.2 Q16.61,9.48 16.25,9.63 L12.38,11.19 Q11.91,11.38 11.76,11.89 Z M7.45,12.67 L3.4,16.72",
+            OutlineGlyph.Unpin => "M8.93,7.39 L10.52,3.77 Q10.83,3.1 11.36,3.1 Q11.76,3.1 12.03,3.39 L16.58,7.95 Q17.17,8.55 16.78,9.2 Q16.61,9.48 16.25,9.63 L12.91,11 M7.98,8.07 L4.33,9.52 L10.55,15.85 L11.67,12.11 M7.45,12.67 L3.4,16.72 M3.1,3.1 L16.9,16.9",
+            OutlineGlyph.Archive => "M3,4.5 H17 V8 H3 Z M4.5,8 V14.25 Q4.5,15.5 5.75,15.5 H14.25 Q15.5,15.5 15.5,14.25 V8 M8,10.75 H12",
+            OutlineGlyph.Restore => "M7.75,5 L4.25,8.5 L7.75,12 M4.25,8.5 H12.5 A3.25,3.25 0 0 1 12.5,15 H9",
+            OutlineGlyph.Star => "M10,2.75 L12.2,7.2 L17.1,7.9 L13.55,11.35 L14.4,16.25 L10,13.95 L5.6,16.25 L6.45,11.35 L2.9,7.9 L7.8,7.2 Z",
+            _ => throw new ArgumentOutOfRangeException(nameof(glyph))
+        };
+        // The fixed canvas keeps a 1.5-DIP outline and centers the ink without clipping.
+        var icon = (FrameworkElement)Microsoft.UI.Xaml.Markup.XamlReader.Load($$"""
+            <Canvas xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Width="20" Height="20" IsHitTestVisible="False">
+                <Path Data="{{data}}" Stroke="{ThemeResource TextFillColorPrimaryBrush}" StrokeThickness="1.5"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+            </Canvas>
+            """);
+        if (stroke is not null && icon is Canvas canvas && canvas.Children[0] is Microsoft.UI.Xaml.Shapes.Path path)
+            path.Stroke = stroke;
+        return icon;
+    }
+
     public static readonly TimeSpan PageMotion = TimeSpan.FromMilliseconds(160);
     public static FontFamily TextFont => (FontFamily)Application.Current.Resources["KronoTextFont"];
     public static double TextSize => (double)Application.Current.Resources["KronoTextSize"];
@@ -356,6 +382,17 @@ public static class KronoDesign
         button.HorizontalContentAlignment = HorizontalAlignment.Center;
         button.VerticalContentAlignment = VerticalAlignment.Center;
         if (button.Content is not PathIcon) button.Content = TabButtonIcon(add);
+    }
+
+    internal static PathIcon NavigationIcon(Symbol symbol)
+    {
+        var data = symbol switch {
+            Symbol.World => "F0 M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 Z M10,3.5 A6.5,6.5 0 1 1 10,16.5 A6.5,6.5 0 1 1 10,3.5 Z M9.25,3.5 H10.75 V9.25 H16.5 V10.75 H10.75 V16.5 H9.25 V10.75 H3.5 V9.25 H9.25 Z",
+            Symbol.Download => "M9.25,2 H10.75 V10.2 L13.7,7.25 L14.75,8.3 L10,13.05 L5.25,8.3 L6.3,7.25 L9.25,10.2 Z M2,12 H3.5 V16.5 H16.5 V12 H18 V18 H2 Z",
+            _ => throw new ArgumentOutOfRangeException(nameof(symbol))
+        };
+        return (PathIcon)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+            $"<PathIcon xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Width='20' Height='20' Data='{data}' />");
     }
 
     static PathIcon TabButtonIcon(bool add)

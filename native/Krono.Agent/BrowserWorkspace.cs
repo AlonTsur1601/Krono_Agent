@@ -190,7 +190,7 @@ public sealed class BrowserWorkspace : Grid, IDisposable
             var view = new WebView2 { Visibility = Visibility.Collapsed };
             var tabName = isPrivate ? "Private tab" : "New tab";
             var start = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Spacing = 12 };
-            start.Children.Add(new SymbolIcon(isPrivate ? Symbol.Permissions : Symbol.World));
+            start.Children.Add(isPrivate ? new SymbolIcon(Symbol.Permissions) : KronoDesign.NavigationIcon(Symbol.World));
             start.Children.Add(new TextBlock { Text = tabName, FontSize = 28, TextAlignment = TextAlignment.Center });
             var builtInHome = isHome && url == DefaultHome;
             var search = new KronoTextBox { PlaceholderText = "Search Google or enter an address", Width = 340, MaxWidth = 340,

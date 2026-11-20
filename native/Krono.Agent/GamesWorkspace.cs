@@ -30,6 +30,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
     double ballX, ballY, ballDx, ballDy, enemy;
     Grid? playScreen;
     Grid? library;
+    ScrollViewer? libraryScroll;
     static readonly string[] names = ["Snake", "Tic-Tac-Toe", "2048", "Minesweeper", "Connect Four", "Breakout", "Memory Match", "Pong", "Lights Out", "Simon", "Odd Color", "Orbit", "Reversi", "Sudoku", "Stack", "Color Gauntlet", "Maze Chase", "Flap", "Darts", "Jigsaw", "Block Fit", "Falling Blocks", "Sand Blocks", "Solitaire"];
     static readonly string[] descriptions = ["Grow without hitting the walls", "Line up three against the computer", "Slide and merge matching tiles", "Reveal safe cells and flag mines", "Four connected discs to win", "Bounce through a field of bricks", "Turn cards and match pairs", "A rally against a reactive bot", "Toggle a cross. Darken every light.", "Watch the pattern. Play it back.", "Find the tile with a different shade", "Tap inside the arc. Aim for its core.", "Capture lines. Protect the corners.", "One solution. Nine rows of possibility.", "Place, trim, and build a taller tower", "Remember five shades. Rebuild them.", "Clear the maze while ghosts give chase", "Tap to fly between the towers", "Time two axes across nine throws", "Reassemble an illustrated night valley", "Fit a tray of shapes and clear lines", "Rotate, stack and clear falling pieces", "Build a color path from settled grains", "Build four suited foundations"];
     static readonly Color[] colors = [Color.FromArgb(255,143,215,199),Color.FromArgb(255,184,161,246),Color.FromArgb(255,242,201,130),Color.FromArgb(255,133,187,237),Color.FromArgb(255,244,146,159),Color.FromArgb(255,255,173,109),Color.FromArgb(255,177,165,244),Color.FromArgb(255,125,221,217),Color.FromArgb(255,242,210,134),Color.FromArgb(255,166,174,251),Color.FromArgb(255,224,154,209),Color.FromArgb(255,134,213,234),Color.FromArgb(255,245,157,140),Color.FromArgb(255,171,181,246),Color.FromArgb(255,147,218,181),Color.FromArgb(255,235,175,222),Color.FromArgb(255,145,218,243),Color.FromArgb(255,246,190,132),Color.FromArgb(255,244,151,170),Color.FromArgb(255,158,218,205),Color.FromArgb(255,184,169,243),Color.FromArgb(255,141,219,204),Color.FromArgb(255,247,189,130),Color.FromArgb(255,240,164,186)];
@@ -43,7 +44,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(status, "GameStatus");
         RowSpacing = 10; RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition { Height = new GridLength(42) }); RowDefinitions.Add(new RowDefinition()); RowDefinitions.Add(new RowDefinition { Height = new GridLength(112) });
         var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-        var back = new Button { Content = "‹ Game library" }; back.Click += (_, _) => { PauseAndSave(); if (library is not null && playScreen is not null) { playScreen.Visibility = Visibility.Collapsed; library.Visibility = Visibility.Visible; } }; toolbar.Children.Add(back);
+        var back = new Button { Content = "‹ Game library" }; back.Click += (_, _) => { PauseAndSave(); if (library is not null && playScreen is not null) { playScreen.Visibility = Visibility.Collapsed; library.Visibility = Visibility.Visible; ResetLibraryScroll(); } }; toolbar.Children.Add(back);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(back, "GameLibraryBack");
         void Restart() { PlayGameSound(GameSound.Click); Reset(); stateReady = true; SaveCurrent(); timer.Start(); }
         var restart = new Button { Content = "Restart" }; restart.Click += (_, _) => Restart(); toolbar.Children.Add(restart);
@@ -96,7 +97,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
             // A window can be minimized while already inactive, with no new Activated event.
             if (MainWindow.Instance?.AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized }) { PauseAndSave("Krono window minimized"); return; }
             Update(); if (!paused && !ended && tick % 60 == 0) SaveCurrent();
-        }; Loaded += (_, _) => { Focus(FocusState.Programmatic); if (!paused && playScreen?.Visibility == Visibility.Visible) timer.Start(); }; Unloaded += (_, _) => PauseAndSave();
+        }; Loaded += (_, _) => { Focus(FocusState.Programmatic); if (library?.Visibility == Visibility.Visible) ResetLibraryScroll(); if (!paused && playScreen?.Visibility == Visibility.Visible) timer.Start(); }; Unloaded += (_, _) => PauseAndSave();
         Reset();
         BuildLibrary();
         if (playScreen is { } screen) {
@@ -124,6 +125,10 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         }
         ActualThemeChanged += (_, _) => { SetStagePalette(); status.Foreground = ReadableAccent; foreach (var label in saveLabels) label.Foreground = ReadableAccent; };
     }
+    void ResetLibraryScroll() => DispatcherQueue.TryEnqueue(() => {
+        if (library?.Visibility == Visibility.Visible) libraryScroll?.ChangeView(null, 0, null, true);
+    });
+
     void BuildLibrary()
     {
         playScreen = new Grid { RowSpacing = RowSpacing, Visibility = Visibility.Collapsed };
@@ -158,10 +163,11 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, names[i]);
             button.Click += async (_, _) => await ChooseGame(index);
             var starred = favorites.Contains(names[i]);
-            var star = new ToggleButton { Content = starred ? "★" : "☆", IsChecked = starred, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(8), Padding = new Thickness(8, 4, 8, 4), FontSize = 18, CornerRadius = new CornerRadius(10), Background = Ink(0x293a51), Foreground = starred ? Ink(0xffd389) : White, BorderThickness = new Thickness(0) };
+            var star = new ToggleButton { IsChecked = starred, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(8), Padding = new Thickness(8, 4, 8, 4), FontSize = 18, CornerRadius = new CornerRadius(10), Background = Ink(0x293a51), Foreground = starred ? Ink(0xffd389) : White, BorderThickness = new Thickness(0) };
+            star.Content = KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Star, star.Foreground);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(star, "FavoriteGame" + i);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(star, "Favorite " + names[i]);
-            void SaveFavorite(object sender, RoutedEventArgs e) { if (star.IsChecked == true) favorites.Add(names[index]); else favorites.Remove(names[index]); star.Content = star.IsChecked == true ? "★" : "☆"; star.Foreground = star.IsChecked == true ? Ink(0xffd389) : White; workspace.SetSetting("native.gameFavorites", System.Text.Json.JsonSerializer.Serialize(favorites)); Arrange(); }
+            void SaveFavorite(object sender, RoutedEventArgs e) { if (star.IsChecked == true) favorites.Add(names[index]); else favorites.Remove(names[index]); star.Foreground = star.IsChecked == true ? Ink(0xffd389) : White; star.Content = KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Star, star.Foreground); workspace.SetSetting("native.gameFavorites", System.Text.Json.JsonSerializer.Serialize(favorites)); Arrange(); }
             star.Checked += SaveFavorite; star.Unchecked += SaveFavorite;
             var cardFrame = new Grid { Margin = new Thickness(6) }; cardFrame.Children.Add(button); cardFrame.Children.Add(star); buttons.Add(cardFrame); cards.Children.Add(cardFrame);
         }
@@ -183,7 +189,9 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         }
         search.TextChanged += (_, _) => Arrange(); category.SelectionChanged += (_, _) => Arrange(); favoritesOnly.Checked += (_, _) => Arrange(); favoritesOnly.Unchecked += (_, _) => Arrange(); recentOnly.Checked += (_, _) => Arrange(); recentOnly.Unchecked += (_, _) => Arrange();
         SizeChanged += (_, _) => Arrange(); library.RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => { if (library.Visibility == Visibility.Visible) Arrange(); }); Arrange();
-        content.Children.Add(cards); library.Children.Add(KronoDesign.ScrollPage(content)); Children.Add(library);
+        content.Children.Add(cards);
+        libraryScroll = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        library.Children.Add(KronoDesign.ScrollPage(libraryScroll)); Children.Add(library);
     }
     void Reset()
     {

@@ -25,7 +25,7 @@ public sealed partial class MainPage
     bool installingUpdate;
     (Symbol Icon, string Title, string Detail)? updateCheckResult;
     Border? updateStatusCard;
-    SymbolIcon? updateStatusIcon;
+    ContentControl? updateStatusIcon;
     TextBlock? updateStatusTitle, updateStatusDetail;
 
     void ShowUpdateCheck(Symbol icon, string title, string detail)
@@ -36,8 +36,15 @@ public sealed partial class MainPage
 
     void RefreshUpdateStatus()
     {
-        if (updateCheckResult is not { } result || updateStatusCard is null) return;
-        updateStatusIcon!.Symbol = result.Icon;
+        if (updateStatusCard is null) return;
+        if (updateCheckResult is not { } result) {
+            updateStatusCard.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var icon = result.Icon == Symbol.Download
+            ? (IconElement)KronoDesign.NavigationIcon(Symbol.Download) : new SymbolIcon(result.Icon);
+        icon.Foreground = updateStatusIcon!.Foreground;
+        updateStatusIcon.Content = icon;
         updateStatusTitle!.Text = result.Title;
         updateStatusDetail!.Text = result.Detail;
         updateStatusCard.Visibility = Visibility.Visible;
@@ -47,7 +54,7 @@ public sealed partial class MainPage
 
     void AddUpdateStatus(StackPanel panel)
     {
-        var icon = new SymbolIcon { VerticalAlignment = VerticalAlignment.Center };
+        var icon = new ContentControl { VerticalAlignment = VerticalAlignment.Center, HorizontalContentAlignment = HorizontalAlignment.Center };
         updateStatusIcon = icon;
         var iconTile = new Border { Child = icon, Width = 36, Height = 36,
             CornerRadius = new CornerRadius(10), VerticalAlignment = VerticalAlignment.Top };
@@ -74,6 +81,7 @@ public sealed partial class MainPage
             card.BorderBrush = Role("KronoBorder");
             iconTile.Background = Role("KronoSidebar");
             icon.Foreground = Role("KronoAccentForeground");
+            if (icon.Content is IconElement glyph) glyph.Foreground = icon.Foreground;
             detail.Foreground = Role("KronoMuted");
         }
         card.Loaded += (_, _) => ApplyPalette();
@@ -84,7 +92,7 @@ public sealed partial class MainPage
         RefreshUpdateStatus();
     }
 
-    bool checkingUpdate, showUpdateCheckResult, updateInProgress, automaticUpdateFound;
+    bool checkingUpdate, showUpdateCheckResult, updateInProgress;
     static Version InstalledVersion => typeof(MainPage).Assembly.GetName().Version ?? new Version(0, 0);
     bool HasRunningWork => runId is not null || scheduledRun is not null || sideChat?.IsRunning == true;
     internal bool HasBackgroundWork => HasRunningWork || updateInProgress;
@@ -134,9 +142,12 @@ public sealed partial class MainPage
                 throw new InvalidDataException("The published release has an invalid version.");
             if (version <= current) {
                 availableUpdate = null;
-                automaticUpdateFound = false;
-                if (showUpdateCheckResult || updateCheckResult.HasValue)
+                if (showUpdateCheckResult)
                     ShowUpdateCheck(Symbol.Accept, "You’re up to date", $"Krono Agent v{current.ToString(3)} is the latest version.");
+                else if (updateCheckResult?.Icon == Symbol.Download) {
+                    updateCheckResult = null;
+                    RefreshUpdateStatus();
+                }
                 return;
             }
             var url = new Uri($"{ReleaseRoot}/download/v{version}/{InstallerName}");
@@ -147,14 +158,13 @@ public sealed partial class MainPage
                 if (size is <= 0 or > 512L * 1024 * 1024 || digest.Length != 71 ||
                     !digest.StartsWith("sha256:", StringComparison.Ordinal) ||
                     asset.GetProperty("browser_download_url").GetString() != url.AbsoluteUri) break;
-                automaticUpdateFound = !manual || (automaticUpdateFound && availableUpdate?.Version == version);
                 availableUpdate = new(version, url, size, Convert.ToHexString(Convert.FromHexString(digest[7..])));
-                if (showUpdateCheckResult || updateCheckResult.HasValue) ShowAvailableUpdate(version);
+                ShowAvailableUpdate(version);
                 return;
             }
             throw new InvalidDataException("The release has no verified Windows installer.");
         } catch (Exception error) {
-            if ((showUpdateCheckResult || updateCheckResult.HasValue) && !updateLifetime.IsCancellationRequested)
+            if (showUpdateCheckResult && !updateLifetime.IsCancellationRequested)
                 ShowUpdateCheck(Symbol.Important, "Couldn’t check for updates", error.Message);
         } finally {
             checkingUpdate = showUpdateCheckResult = false;
@@ -168,8 +178,8 @@ public sealed partial class MainPage
 
     void RefreshUpdateButton()
     {
-        UpdateButton.Visibility = automaticUpdateFound ? Visibility.Visible : Visibility.Collapsed;
-        UpdateButton.IsEnabled = automaticUpdateFound && !updateInProgress;
+        UpdateButton.Visibility = availableUpdate.HasValue ? Visibility.Visible : Visibility.Collapsed;
+        UpdateButton.IsEnabled = availableUpdate.HasValue && !updateInProgress;
         var label = installingUpdate ? "Starting installer…" : updateDownloadPercent.HasValue ? "Downloading update…" : "Download and install update";
         UpdateLabel.Text = label;
         AutomationProperties.SetName(UpdateButton, label);

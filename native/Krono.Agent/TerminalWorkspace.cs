@@ -23,6 +23,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
         public TerminalBuffer Buffer { get; } = new();
         public bool Rendering { get; set; }
         public bool Ready { get; set; }
+        public bool ScrollQueued { get; set; }
     }
 
     public TerminalWorkspace(AgentWorker worker)
@@ -36,9 +37,14 @@ public sealed class TerminalWorkspace : Grid, IDisposable
         Grid.SetRow(selectedTerminal, 1);
         Children.Add(KronoDesign.FrameTabContent(frame, "KronoSidebar"));
         tabs.SelectionChanged += (_, _) => {
-            var screen = terminals.Values.FirstOrDefault(terminal => ReferenceEquals(terminal.Tab, tabs.SelectedItem))?.Screen;
-            selectedTerminal.Content = screen;
-            if (screen is not null) DispatcherQueue.TryEnqueue(() => screen.Focus(FocusState.Programmatic));
+            var terminal = terminals.Values.FirstOrDefault(session => ReferenceEquals(session.Tab, tabs.SelectedItem));
+            selectedTerminal.Content = terminal?.Screen;
+            if (terminal is not null) {
+                DispatcherQueue.TryEnqueue(() => {
+                    if (ReferenceEquals(selectedTerminal.Content, terminal.Screen)) terminal.Screen.Focus(FocusState.Programmatic);
+                });
+                ScrollOutputToEnd(terminal);
+            }
         };
         tabs.TabCloseRequested += async (_, args) => {
             var id = terminals.FirstOrDefault(entry => ReferenceEquals(entry.Value.Tab, args.Tab)).Key;
@@ -49,7 +55,11 @@ public sealed class TerminalWorkspace : Grid, IDisposable
                 catch (InvalidOperationException) { /* The shell may have exited while closing. */ }
             }
         };
-        Loaded += async (_, _) => { if (tabs.TabItems.Count == 0) await Create(); };
+        Loaded += async (_, _) => {
+            if (tabs.TabItems.Count == 0) await Create();
+            else if (terminals.Values.FirstOrDefault(session => ReferenceEquals(session.Tab, tabs.SelectedItem)) is { } terminal)
+                ScrollOutputToEnd(terminal);
+        };
     }
 
     async Task Create()
@@ -141,6 +151,18 @@ public sealed class TerminalWorkspace : Grid, IDisposable
             terminal.Screen.Text = text;
             terminal.Screen.Select(caret, 0);
         } finally { terminal.Rendering = false; }
+        ScrollOutputToEnd(terminal);
+    }
+
+    static void ScrollOutputToEnd(Session terminal)
+    {
+        if (terminal.ScrollQueued) return;
+        terminal.ScrollQueued = terminal.Screen.DispatcherQueue.TryEnqueue(() => {
+            terminal.ScrollQueued = false;
+            if (!terminal.Screen.IsLoaded) return;
+            var scroll = KronoInputMotion.Descendants(terminal.Screen).OfType<ScrollViewer>().FirstOrDefault();
+            if (scroll is not null) scroll.ChangeView(null, scroll.ScrollableHeight, null, true);
+        });
     }
 
     public void Receive(string id, string type, JsonNode? data)

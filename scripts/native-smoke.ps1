@@ -310,11 +310,16 @@ try {
             Capture 'joined-settings-sidebar.png'
             PressEnterOn 'Nav-settings'
             Start-Sleep -Milliseconds 300
-            if (FindOptional 'SettingsCategories') { throw 'Invoking Settings again did not close its sidebar' }
+            Find 'SettingsCategories' | Out-Null
+            SelectSettingsCategory 'Updates'
             PressEnterOn 'Nav-chats'
             Find '+ New chat' -ByName | Out-Null
             Capture 'joined-chat-sidebar.png'
-            Write-Output 'NATIVE_SMOKE_PASS: current icon toggles the shared sidebar and switching opens it'
+            PressEnterOn 'Nav-settings'
+            $categories = Find 'SettingsCategories'
+            $selection = $categories.GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
+            if ($selection.Count -ne 1 -or $selection[0].Current.Name -ne 'Account') { throw 'Settings did not reopen on Account' }
+            Write-Output 'NATIVE_SMOKE_PASS: chat sidebar toggles, Settings keeps its sidebar and reopens on Account'
             return
         }
         if ($env:KRONO_SMOKE_SCOPE -eq 'visual-ui') {
@@ -395,7 +400,7 @@ try {
             if ((Find 'ScheduleName').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value -ne 'Schedule from Enter') { throw 'The task editor lost the saved task name' }
             Capture 'native-schedule-editor.png'
             SelectNav 'Settings'
-            SelectSettingsCategory 'Model provider'
+            SelectSettingsCategory 'Models'
             SelectChoice 'Provider' 'Ollama'
             if (FindOptional 'ModelSelector') { throw 'Model settings are visible without a key' }
             SetValue 'ProviderEndpoint' ($Fixture + '/local/v1')
@@ -544,7 +549,7 @@ try {
         Capture ('native-dropdown-' + $appearance + '.png')
         $popup.Collapse()
     }
-    SelectSettingsCategory 'Model provider'
+    SelectSettingsCategory 'Models'
     SetValue 'ProviderKey' 'fixture-provider-key'
     Invoke 'Save key' -ByName
     $model = Find 'ModelSelector'
@@ -648,7 +653,7 @@ try {
     do { Start-Sleep -Milliseconds 100; $assertions = Invoke-RestMethod ($Fixture + '/assertions') } while (!$assertions.commandRan -and (Get-Date) -lt $deadline)
     if (!$assertions.commandRan) { throw 'Approved agent command did not write its marker and return 42 to the model' }
     SelectNav 'Settings'
-    SelectSettingsCategory 'Model provider'
+    SelectSettingsCategory 'Models'
     SelectChoice 'Provider' 'Ollama'
     SetValue 'ProviderEndpoint' ($Fixture + '/local/v1')
     Invoke 'Save endpoint' -ByName
@@ -680,7 +685,7 @@ try {
     do { Start-Sleep -Milliseconds 100; $storedReply = (Invoke-RestMethod ($Fixture + '/local-reply-proof')).count } while ($storedReply -ne 1 -and (Get-Date) -lt $deadline)
     if ($storedReply -ne 1) { throw 'Final streamed fragments were not persisted together' }
     SelectNav 'Settings'
-    SelectSettingsCategory 'Model provider'
+    SelectSettingsCategory 'Models'
     $toggle = (Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
     $toggle.Toggle()
     SetEditableChoice 'ModelSelector' 'basic-fixture-model'
@@ -693,7 +698,7 @@ try {
     do { Start-Sleep -Milliseconds 100; $assertions = Invoke-RestMethod ($Fixture + '/assertions') } while ((!$assertions.localModelBNoTools -or !(Find 'Send' -ByName).Current.IsEnabled) -and (Get-Date) -lt $deadline)
     if (!$assertions.localModelBNoTools) { throw 'Model B received tools despite its disabled capability' }
     SelectNav 'Settings'
-    SelectSettingsCategory 'Model provider'
+    SelectSettingsCategory 'Models'
     SetEditableChoice 'ModelSelector' 'local-fixture-model'
     Invoke 'Use model' -ByName
     $toggle = (Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
@@ -705,7 +710,7 @@ try {
     if (($edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).Current.Value -ne 'native-fixture-model') { throw 'Provider switching lost its model selection' }
     foreach ($cloudProfile in @(@{Id='azure';Name='Azure OpenAI'},@{Id='xai';Name='xAI'},@{Id='groq';Name='Groq'},@{Id='mistral';Name='Mistral'},@{Id='openrouter';Name='OpenRouter'})) {
         SelectNav 'Settings'
-        SelectSettingsCategory 'Model provider'
+        SelectSettingsCategory 'Models'
         SelectChoice 'Provider' $cloudProfile.Name
         SetValue 'ProviderEndpoint' ($Fixture + '/cloud/' + $cloudProfile.Id + '/v1')
         Invoke 'Save endpoint' -ByName
@@ -724,7 +729,7 @@ try {
         if ($cloudProof.accepted -notcontains $cloudProfile.Id) { throw ('Native cloud profile did not authenticate/stream: ' + $cloudProfile.Id) }
     }
     SelectNav 'Settings'
-    SelectSettingsCategory 'Model provider'
+    SelectSettingsCategory 'Models'
     SelectChoice 'Provider' 'OpenAI'
     SelectNav 'Chats'
     SelectChoice 'Mode' 'chat'

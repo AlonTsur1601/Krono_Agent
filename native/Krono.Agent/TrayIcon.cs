@@ -6,7 +6,7 @@ internal sealed class TrayIcon : IDisposable
 {
     const uint NotifyMessage = 0x8001;
     const uint AddIcon = 0, DeleteIcon = 2, SetVersion = 4;
-    const uint ContextMenu = 0x007B, Select = 0x0400, KeySelect = 0x0401;
+    const uint ContextMenu = 0x007B, LeftButtonUp = 0x0202, KeySelect = 0x0401;
     const uint OpenCommand = 1, QuitCommand = 2;
     readonly nint window, icon;
     readonly uint taskbarCreated = RegisterWindowMessage("TaskbarCreated");
@@ -53,7 +53,7 @@ internal sealed class TrayIcon : IDisposable
         }
         if (message == NotifyMessage) {
             switch ((uint)lParam & 0xffff) {
-                case Select:
+                case LeftButtonUp:
                 case KeySelect:
                     open();
                     return 0;
@@ -69,14 +69,22 @@ internal sealed class TrayIcon : IDisposable
     {
         var menu = CreatePopupMenu();
         if (menu == 0) return;
-        uint command;
+        uint command = 0;
+        // Keep the popup in the foreground without activating the main app window.
+        var menuWindow = CreateWindowEx(0x80, "STATIC", "", 0x80000000, -32000, -32000, 1, 1, 0, 0, 0, 0);
         try {
+            if (menuWindow == 0) return;
             AppendMenu(menu, 0, OpenCommand, "Open Krono Agent");
+            AppendMenu(menu, 0x800, 0, null);
             AppendMenu(menu, 0, QuitCommand, "Quit Krono Agent");
-            SetForegroundWindow(window);
-            command = TrackPopupMenu(menu, 0x0102, x, y, 0, window, 0);
-            PostMessage(window, 0, 0, 0);
-        } finally { DestroyMenu(menu); }
+            ShowWindow(menuWindow, 4);
+            SetForegroundWindow(menuWindow);
+            command = TrackPopupMenu(menu, 0x0102, x, y, 0, menuWindow, 0);
+            PostMessage(menuWindow, 0, 0, 0);
+        } finally {
+            if (menuWindow != 0) DestroyWindow(menuWindow);
+            DestroyMenu(menu);
+        }
         if (command == OpenCommand) open();
         else if (command == QuitCommand) quit();
     }
@@ -123,7 +131,11 @@ internal sealed class TrayIcon : IDisposable
     [DllImport("user32.dll")] static extern bool IsWindowVisible(nint window);
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(nint window);
     [DllImport("user32.dll")] static extern nint CreatePopupMenu();
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool AppendMenu(nint menu, uint flags, nuint id, string text);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool AppendMenu(nint menu, uint flags, nuint id, string? text);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern nint CreateWindowEx(uint extendedStyle, string className, string title,
+        uint style, int x, int y, int width, int height, nint parent, nint menu, nint instance, nint parameter);
+    [DllImport("user32.dll")] static extern bool ShowWindow(nint hwnd, int command);
+    [DllImport("user32.dll")] static extern bool DestroyWindow(nint hwnd);
     [DllImport("user32.dll")] static extern uint TrackPopupMenu(nint menu, uint flags, int x, int y, int reserved, nint window, nint rect);
     [DllImport("user32.dll")] static extern bool DestroyMenu(nint menu);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool PostMessage(nint hwnd, uint message, nuint wParam, nint lParam);

@@ -3,8 +3,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Composition;
 using Windows.UI.ViewManagement;
 
 namespace Krono_Agent;
@@ -15,14 +14,15 @@ public sealed partial class MainPage
     string activeSection = "chats";
     bool sectionChangedThisDispatch;
     bool contextOpen = true;
-    Storyboard? contextMotion;
-
-    void ContextRailSizeChanged(object sender, SizeChangedEventArgs args)
-        => ContextRail.Clip = new RectangleGeometry { Rect = new(0, 0, args.NewSize.Width, args.NewSize.Height) };
+    bool contextVisible;
+    int contextTransition;
+    InsetClip? contextClip;
 
     void ShowContext(FrameworkElement? content)
     {
         ContextBody.Content = content;
+        ContextScroll.VerticalScrollBarVisibility = ReferenceEquals(content, chatHistory) && content is not null
+            ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
         if (content is not null) KronoDesign.RefreshTypography(content);
         RefreshContextVisibility();
     }
@@ -30,33 +30,43 @@ public sealed partial class MainPage
     void RefreshContextVisibility()
     {
         var show = contextOpen && ContextBody.Content is not null;
-        var target = show ? 252d : 0d;
-        WorkspaceSurface.CornerRadius = new CornerRadius(show ? 0 : 14, 0, 0, 0);
-        var current = ContextRail.ActualWidth;
-        contextMotion?.Stop();
-        contextMotion = null;
-        ContextRail.Width = target;
-        if (ContextBody.Content is null || !new UISettings().AnimationsEnabled || Math.Abs(current - target) < 1) {
-            ContextRail.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (show == contextVisible && (show || ContextRail.Visibility == Visibility.Collapsed)) return;
+        if (show == contextVisible && ContextBody.Content is not null) return;
+        contextVisible = show;
+        var transition = ++contextTransition;
+        var visual = ElementCompositionPreview.GetElementVisual(ContextRail);
+        contextClip ??= visual.Compositor.CreateInsetClip();
+        visual.Clip = contextClip;
+        contextClip.StopAnimation("RightInset");
+
+        void CommitLayout(bool visible)
+        {
+            ContextRail.Width = visible ? 252 : 0;
+            ContextRail.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            WorkspaceSurface.CornerRadius = new CornerRadius(visible ? 0 : 14, 0, 0, 0);
+        }
+
+        ContextRail.IsHitTestVisible = show;
+        if (activeSection != "chats" || ContextBody.Content is null || !new UISettings().AnimationsEnabled) {
+            contextClip.RightInset = 0;
+            CommitLayout(show);
             return;
         }
-        ContextRail.Visibility = Visibility.Visible;
-        var slide = new DoubleAnimation {
-            From = current, To = target, Duration = new Duration(TimeSpan.FromMilliseconds(show ? 145 : 95)),
-            EnableDependentAnimation = true, EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+
+        if (show) CommitLayout(true);
+        var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
+        animation.Duration = TimeSpan.FromMilliseconds(135);
+        var ease = visual.Compositor.CreateCubicBezierEasingFunction(new(.2f, 0), new(0, 1));
+        animation.InsertKeyFrame(0, show ? 252 : 0);
+        animation.InsertKeyFrame(1, show ? 0 : 252, ease);
+        var batch = visual.Compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+        batch.Completed += (_, _) => {
+            if (transition != contextTransition) return;
+            if (!show) CommitLayout(false);
+            contextClip.RightInset = 0;
         };
-        Storyboard.SetTarget(slide, ContextRail);
-        Storyboard.SetTargetProperty(slide, "Width");
-        var motion = new Storyboard();
-        motion.Children.Add(slide);
-        contextMotion = motion;
-        motion.Completed += (_, _) => {
-            if (contextMotion != motion) return;
-            motion.Stop();
-            ContextRail.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-            contextMotion = null;
-        };
-        motion.Begin();
+        contextClip.StartAnimation("RightInset", animation);
+        batch.End();
     }
 
     void InitializeNavigationIconMotion()
