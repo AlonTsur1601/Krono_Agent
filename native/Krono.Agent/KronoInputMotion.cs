@@ -52,7 +52,13 @@ public sealed class KronoTextBox : TextBox
     public KronoTextBox()
     {
         KronoInputMotion.Attach(this, "KronoTextInput");
-        VerticalContentAlignment = VerticalAlignment.Center;
+        void AlignText()
+        {
+            VerticalContentAlignment = AcceptsReturn ? VerticalAlignment.Top : VerticalAlignment.Center;
+            if (IsLoaded) KronoInputMotion.AlignTextContent(this);
+        }
+        RegisterPropertyChangedCallback(AcceptsReturnProperty, (_, _) => AlignText());
+        AlignText();
     }
 }
 
@@ -113,6 +119,7 @@ public sealed class KronoComboBox : ComboBox
     };
 
     UIElement? outsideRoot;
+    TextBlock? emptyOptions;
     readonly PointerEventHandler outsidePress;
 
     void DetachOutsidePress()
@@ -134,6 +141,7 @@ public sealed class KronoComboBox : ComboBox
         ActualThemeChanged += (_, _) => RefreshPalette();
         DropDownOpened += (_, _) => {
             RefreshPalette();
+            RefreshEmptyOptions();
             if (GetTemplateChild("Popup") is not Popup dropdown) return;
             // WinUI inserts a canvas in front of the page to eat the first outside click.
             // Let the page receive that click and close the dropdown from the same event.
@@ -144,6 +152,7 @@ public sealed class KronoComboBox : ComboBox
             outsideRoot = scope as UIElement ?? XamlRoot?.Content;
             outsideRoot?.AddHandler(UIElement.PointerPressedEvent, outsidePress, true);
         };
+        Items.VectorChanged += (_, _) => RefreshEmptyOptions();
         DropDownClosed += (_, _) => DetachOutsidePress();
         Unloaded += (_, _) => DetachOutsidePress();
     }
@@ -162,9 +171,24 @@ public sealed class KronoComboBox : ComboBox
             popup.CornerRadius = new CornerRadius(16);
             popup.Padding = new Thickness(2);
             popup.BorderThickness = new Thickness(1, 1, 1, 3);
+            if (popup.Child is FrameworkElement content && !ReferenceEquals(content.Tag, this)) {
+                popup.Child = null;
+                var surface = new Grid { Tag = this };
+                surface.Children.Add(content);
+                emptyOptions = new TextBlock { Text = "No options available.", Margin = new Thickness(12, 10, 12, 10),
+                    IsHitTestVisible = false, Opacity = .72 };
+                surface.Children.Add(emptyOptions);
+                popup.Child = surface;
+                RefreshEmptyOptions();
+            }
             if (GetTemplateChild("Popup") is Popup flyout && new UISettings().AnimationsEnabled)
                 flyout.ChildTransitions = new TransitionCollection { new PopupThemeTransition() };
         }
+    }
+
+    void RefreshEmptyOptions()
+    {
+        if (emptyOptions is not null) emptyOptions.Visibility = Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     protected override void PrepareContainerForItemOverride(DependencyObject element, object item)
@@ -197,7 +221,7 @@ public sealed class KronoComboBox : ComboBox
             editor.FontSize = FontSize;
             editor.UseSystemFocusVisuals = false;
             editor.ApplyTemplate();
-            KronoInputMotion.CenterTextContent(editor);
+            KronoInputMotion.AlignTextContent(editor);
             foreach (var part in KronoInputMotion.Descendants(editor).OfType<Border>().Where(part => part.Name == "BorderElement"))
                 part.Opacity = 0;
         }
@@ -227,13 +251,15 @@ internal static class KronoInputMotion
     static readonly ConditionalWeakTable<ButtonBase, object> StyledButtons = new();
     static readonly ConditionalWeakTable<FrameworkElement, CompositeTransform> SurfaceTransforms = new();
 
-    internal static void CenterTextContent(Control field)
+    internal static void AlignTextContent(Control field)
     {
+        var multiline = field is TextBox { AcceptsReturn: true };
         foreach (var part in Descendants(field)) {
-            if (part is ScrollViewer { Name: "ContentElement" } viewer)
-                viewer.VerticalAlignment = VerticalAlignment.Center;
-            else if (part is TextBlock { Name: "PlaceholderTextContentPresenter" } placeholder)
-                placeholder.VerticalAlignment = VerticalAlignment.Center;
+            if (part is ScrollViewer { Name: "ContentElement" } viewer) {
+                viewer.VerticalAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
+                viewer.VerticalContentAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
+            } else if (part is FrameworkElement { Name: "PlaceholderTextContentPresenter" } placeholder)
+                placeholder.VerticalAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
         }
     }
 
@@ -252,7 +278,7 @@ internal static class KronoInputMotion
         void StyleParts() {
             if (field is KronoTextBox { SurfaceFeedbackEnabled: false }) return;
             field.ApplyTemplate();
-            CenterTextContent(field);
+            AlignTextContent(field);
             foreach (var child in Descendants(field).ToArray())
                 if (child is ButtonBase button) StyleButton(button);
                 else if (child is Border border) {

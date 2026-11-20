@@ -132,6 +132,10 @@ public sealed partial class Workspace : IDisposable
     public string Setting(string name) => Query("SELECT value FROM settings WHERE key=$p0", name).FirstOrDefault()?["value"]?.ToString() ?? "";
     public void SetSetting(string name, string value) => Execute("INSERT INTO settings(key,value) VALUES($p0,$p1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", name, value);
     public JsonObject ProjectPreferences(string id) { var value = Setting("project." + id); if (value.Length == 0) return new(); try { return JsonNode.Parse(value) as JsonObject ?? new(); } catch (JsonException) { return new(); } }
+    internal string Instructions(string? project) => string.Join("\n\n", new[] {
+        Setting("instructions.global").Trim(),
+        project is null ? "" : ProjectPreferences(project)["instructions"]?.ToString().Trim() ?? ""
+    }.Where(text => text.Length > 0));
     public void SaveKey(string provider, string secret) => Protect(Path.Combine(dataHome, "native-credentials", AccountId, provider + ".bin"), secret);
     public string Key(string provider) => Unprotect(Path.Combine(dataHome, "native-credentials", AccountId, provider + ".bin")) ?? "";
     public string CreateChat(string? project = null) { var id = Guid.NewGuid().ToString("N"); Execute("INSERT INTO chats(id,account_id,project_id,name,created_at,updated_at) VALUES($p0,$p1,$p2,'New chat',$p3,$p3)", id, AccountId, project, Now); return id; }

@@ -70,8 +70,8 @@
 </NavigationView.Resources>
 <NavigationView.PaneHeader><StackPanel Orientation="Horizontal" Spacing="5" Margin="18,8,0,22" AutomationProperties.Name="Krono Agent"><Image Width="34" Height="34"><Image.Source><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg"/></Image.Source></Image><StackPanel VerticalAlignment="Center"><TextBlock Text="KRONO" FontSize="19" FontWeight="Bold" CharacterSpacing="160"/><TextBlock Text="AGENT" FontSize="9" CharacterSpacing="220" Foreground="{ThemeResource KronoMuted}"/></StackPanel></StackPanel></NavigationView.PaneHeader>
 <NavigationView.MenuItems>
-<NavigationViewItem Content="Chats" Tag="chats" IsSelected="True"><NavigationViewItem.Icon><PathIcon Data="F0 M10,2 A8,7 0 1 1 7,15.5 L2,18 L3.6,13 A8,7 0 0 1 10,2 Z M10,3.5 A6.5,5.5 0 0 0 5.3,12.6 L4.5,15.1 L6.9,13.9 A6.5,5.5 0 1 0 10,3.5 Z M6,7 H14 V8.5 H6 Z M6,10 H11 V11.5 H6 Z"/></NavigationViewItem.Icon></NavigationViewItem>
-<NavigationViewItem Content="Projects &amp; memory" Tag="projects" Visibility="Collapsed"/>
+<NavigationViewItem Content="Chats" Tag="chats" IsSelected="True"><NavigationViewItem.Icon><PathIcon Data="F0 M5.5,2.5 H14.5 Q18,2.5 18,6 V12 Q18,15.5 14.5,15.5 H9 L4,18 V15.2 Q2,14.35 2,12 V6 Q2,2.5 5.5,2.5 Z M5.5,4 Q3.5,4 3.5,6 V12 Q3.5,13.6 5.5,14 V15.55 L8.65,14 H14.5 Q16.5,14 16.5,12 V6 Q16.5,4 14.5,4 Z M6,7 H14 V8.5 H6 Z M6,10 H11 V11.5 H6 Z"/></NavigationViewItem.Icon></NavigationViewItem>
+<NavigationViewItem Content="Projects" Tag="projects" Visibility="Collapsed"/>
 <NavigationViewItem x:Name="BrowserNavigation" Content="Browser" Tag="browser"/>
 <NavigationViewItem Content="Games" Tag="games"><NavigationViewItem.Icon><PathIcon Data="F0 M4,2.5 Q4,1.6 4.8,2 L17.5,9.3 Q18.7,10 17.5,10.7 L4.8,18 Q4,18.4 4,17.5 Z M5.5,4.2 V15.8 L15.6,10 Z"/></NavigationViewItem.Icon></NavigationViewItem>
 <NavigationViewItem Content="Terminal" Tag="terminal"><NavigationViewItem.Icon><PathIcon Data="M5,5.5 L6.05,6.55 L2.6,10 L6.05,13.45 L5,14.5 L0.5,10 Z M11,4 L12.4,4.5 L9,16 L7.6,15.5 Z M15,5.5 L19.5,10 L15,14.5 L13.95,13.45 L17.4,10 L13.95,6.55 Z"/></NavigationViewItem.Icon></NavigationViewItem>

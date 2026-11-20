@@ -180,10 +180,8 @@ function TestWorkspaceInputs {
     [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
     [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 180
-    if ($terminal.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.IsReadOnly) { throw 'Terminal prompt is not ready for input' }
-    if (![KronoWindowCapture]::TypeText('Write-Output (6*7)')) { throw 'Could not type the terminal command' }
-    Start-Sleep -Milliseconds 250
-    $shell.SendKeys('{ENTER}')
+    if (!$terminal.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.IsReadOnly) { throw 'Terminal output can be edited' }
+    $shell.SendKeys('6*7{ENTER}')
     $deadline = (Get-Date).AddSeconds(10)
     do { Start-Sleep -Milliseconds 200; $output = Find 'TerminalOutput'; $text = ($output.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).Current.Value } while ($text -notmatch '42' -and (Get-Date) -lt $deadline)
     Capture 'native-terminal.png'
@@ -197,36 +195,15 @@ function TestWorkspaceInputs {
         if ($tip.Current.Name -match 'Ctrl\s*\+\s*F4') { throw 'The terminal close shortcut hint is still showing' }
     }
     Capture 'native-terminal-close-hover.png'
-    SelectNav 'Settings'
-    SelectSettingsCategory 'Browser'
-    $homePage = Find 'BrowserHomePage'
-    if (($homePage.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).Current.Value -ne 'https://www.google.com/') { throw 'Browser home page did not default to Google' }
-    SetValue 'BrowserHomePage' ($Fixture + '/home')
-    Invoke 'Save browser home page' -ByName
-    $deadline = (Get-Date).AddSeconds(5)
-    do {
-        $savedHome = (Invoke-RestMethod ($Fixture + '/browser-home-proof')).homePage
-        if ($savedHome -eq ($Fixture + '/home')) { break }
-        Start-Sleep -Milliseconds 100
-    } while ((Get-Date) -lt $deadline)
-    if ($savedHome -ne ($Fixture + '/home')) { throw 'Browser home page was not saved' }
     SelectNav 'Browser'
-    Find 'New tab' -ByName | Out-Null
+    Find 'Search Google or enter an address' -ByName | Out-Null
     Capture 'native-browser-new-tab.png'
     $deadline = (Get-Date).AddSeconds(30)
     do {
         Start-Sleep -Milliseconds 200
         $browserAddress = Find 'BrowserAddress'
-        $loadedUrl = ($browserAddress.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).Current.Value
-    } while ((!$browserAddress.Current.IsEnabled -or $loadedUrl -ne ($Fixture + '/home')) -and (Get-Date) -lt $deadline)
+    } while (!$browserAddress.Current.IsEnabled -and (Get-Date) -lt $deadline)
     if (!$browserAddress.Current.IsEnabled) { throw 'Browser initialization did not finish' }
-    if ($loadedUrl -ne ($Fixture + '/home')) { throw 'Browser did not open the configured home page' }
-    $deadline = (Get-Date).AddSeconds(10)
-    do {
-        Start-Sleep -Milliseconds 100
-        $assertions = Invoke-RestMethod ($Fixture + '/assertions')
-    } while (!$assertions.browserIsolated -and (Get-Date) -lt $deadline)
-    if (!$assertions.browserIsolated) { throw 'Browser home fixture did not finish loading' }
     SetValue 'BrowserAddress' ($Fixture + '/probe')
     PressEnterOn 'BrowserAddress'
     Find 'Native browser fixture' -ByName | Out-Null
@@ -245,16 +222,16 @@ function TestWorkspaceInputs {
             Start-Sleep -Milliseconds 100
         } while ((Get-Date) -lt $deadline)
         if ($selection -ne 'WebView2') { throw 'Enter in Find on page did not select the requested text' }
-        Invoke 'Add new tab' -ByName
-        $deadline = (Get-Date).AddSeconds(15)
-        do {
-            $newAddress = Find 'BrowserAddress'
-            $newUrl = $newAddress.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
-            if ($newUrl -eq ($Fixture + '/home')) { break }
-            Start-Sleep -Milliseconds 150
-        } while ((Get-Date) -lt $deadline)
-        if ($newUrl -ne ($Fixture + '/home')) { throw 'The browser add-tab button did not open its configured home page' }
-        Find 'New tab' -ByName | Out-Null
+        Invoke 'More options' -ByName
+        Invoke 'History & bookmarks' -ByName
+        Find 'BrowserHistory' | Out-Null
+        $title = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Native browser fixture')
+        $historyEntry = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, $title) |
+            Where-Object { $_.Current.ControlType -eq [Windows.Automation.ControlType]::Button } | Select-Object -First 1
+        if (!$historyEntry) { throw 'The history entry did not display its domain title' }
+        Capture 'native-browser-history.png'
+        Invoke 'WorkspaceAddTab'
+        Find 'Search Google or enter an address' -ByName | Out-Null
         Start-Sleep -Milliseconds 600
         Capture 'native-browser-rounded-home.png'
     }
@@ -339,7 +316,7 @@ try {
             Capture 'compact-model.png'
             Invoke 'Cancel' -ByName
             SelectNav 'Chats'
-            Invoke 'Projects & memory' -ByName
+            Invoke 'Projects' -ByName
             Find 'ProjectName' | Out-Null
             Capture 'compact-projects.png'
             SelectNav 'Settings'
@@ -471,7 +448,7 @@ try {
         }
         if ($env:KRONO_SMOKE_SCOPE -eq 'workspace-ui') {
             TestWorkspaceInputs
-            Write-Output 'NATIVE_SMOKE_PASS: terminal, browser home settings, address navigation, and Enter submission'
+            Write-Output 'NATIVE_SMOKE_PASS: terminal, browser start page, history, address navigation, and Enter submission'
             return
         }
         SelectNav 'Chats'
@@ -526,17 +503,19 @@ try {
     if (FindOptional 'OpenSideChatButton') { throw 'Side chat was offered before a conversation existed' }
     Find 'Composer' | Out-Null
     SelectNav 'Chats'
-    Invoke 'Projects & memory' -ByName
-    Find 'Save project' -ByName | Out-Null
+    Invoke 'Projects' -ByName
+    Find 'No projects created.' -ByName | Out-Null
+    Invoke 'New project' -ByName
     SetValue 'ProjectName' 'Native fixture project'
-    SetValue 'ProjectFolders' $ReportDirectory
-    SetValue 'ProjectMemory' 'Native project memory fixture'
+    Invoke 'Add folder…' -ByName
+    SetValue 'ProjectFolderPath' $ReportDirectory
+    Invoke 'Add folder' -ByName
+    Find $ReportDirectory -ByName | Out-Null
     Invoke 'Save project' -ByName
     Invoke 'New project' -ByName
     SetValue 'ProjectName' 'Original fixture project'
     Invoke 'Save project' -ByName
-    SetValue 'GlobalMemory' 'Native global memory fixture'
-    Invoke 'Save global memory' -ByName
+    Invoke-RestMethod -Method Post ($Fixture + '/seed-memory') | Out-Null
     SelectNav 'Settings'
     SelectSettingsCategory 'Appearance'
     foreach ($appearance in @('dark','halloween','light','system')) {
@@ -1221,10 +1200,7 @@ try {
     $syncProof = Invoke-RestMethod ($Fixture + '/sync-proof')
     if ($syncProof.memory -ne 'Native global memory fixture' -or $syncProof.games -ne 24 -or $syncProof.sideLeaked) { throw 'Native account sync did not upload the expected data scope' }
     Invoke-RestMethod -Method Post ($Fixture + '/sync-remote-memory') | Out-Null
-    SelectNav 'Chats'
-    Invoke 'Projects & memory' -ByName
-    SetValue 'GlobalMemory' 'Local fixture memory edit'
-    Invoke 'Save global memory' -ByName
+    Invoke-RestMethod -Method Post ($Fixture + '/edit-local-memory') | Out-Null
     SelectNav 'Settings'
     SelectSettingsCategory 'Account'
     Invoke 'Sync now' -ByName
@@ -1235,11 +1211,9 @@ try {
     $deadline = (Get-Date).AddSeconds(10)
     do { Start-Sleep -Milliseconds 150; $sync = (Find 'AccountSyncStatus').Current.Name } while ($sync -notmatch '^Account data is up to date' -and (Get-Date) -lt $deadline)
     if ($sync -notmatch '^Account data is up to date') { throw ('Native conflict choice did not resolve: ' + $sync) }
-    SelectNav 'Chats'
-    Invoke 'Projects & memory' -ByName
-    if ((Find 'GlobalMemory').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value -ne 'Cloud fixture memory') { throw 'Native conflict choice did not restore the cloud memory' }
+    if ((Invoke-RestMethod ($Fixture + '/local-memory')).content -ne 'Cloud fixture memory') { throw 'Native conflict choice did not restore the cloud memory' }
     Capture 'native-synced-memory.png'
-    Invoke 'Back to chat' -ByName
+    SelectNav 'Chats'
     SetValue 'Composer' 'Unsent draft during a scheduled run'
     SelectNav 'Scheduled tasks'
     Invoke '+ New task' -ByName

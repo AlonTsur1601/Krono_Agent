@@ -65,6 +65,23 @@ const server = http.createServer((request, response) => {
   }
   else if (request.url === '/cloud-proof') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ accepted: [...cloudAccepted] })) }
   else if (request.url === '/sync-proof') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ memory: syncRows.get('memories:global')?.content, games: [...syncRows.keys()].filter(key => key.startsWith('game_saves:')).length, sideLeaked: [...syncRows.values()].some(row => row.name?.startsWith('Side · ') && row.name?.includes('expire')) })) }
+  else if (request.url === '/seed-memory') {
+    fixtureDb(db => {
+      const project = db.prepare("SELECT id FROM projects WHERE name='Native fixture project'").get().id
+      const insert = db.prepare('INSERT INTO memories(id,account_id,project_id,content,created_at,updated_at) VALUES(?,?,?,?,?,?)')
+      insert.run('global',user.id,null,'Native global memory fixture',Date.now(),Date.now())
+      insert.run('project:'+project,user.id,project,'Native project memory fixture',Date.now(),Date.now())
+    })
+    response.end('ok')
+  }
+  else if (request.url === '/edit-local-memory') {
+    fixtureDb(db => db.prepare("UPDATE memories SET content=?,updated_at=? WHERE id='global'").run('Local fixture memory edit',Date.now()))
+    response.end('ok')
+  }
+  else if (request.url === '/local-memory') {
+    response.setHeader('Content-Type','application/json')
+    response.end(JSON.stringify(fixtureDb(db => db.prepare("SELECT content FROM memories WHERE id='global'").get())))
+  }
   else if (request.url === '/sync-remote-memory') { const memory = syncRows.get('memories:global'); memory.content = 'Cloud fixture memory'; memory.version++; response.end('ok') }
   else if (request.url === '/schedule-proof') {
     const proof = fixtureDb(db => ({ tasks: db.prepare('SELECT name FROM scheduled_tasks').all().map(task => task.name), runs: db.prepare('SELECT state,chat_id FROM scheduled_runs').all(), response: db.prepare("SELECT content FROM messages WHERE role='assistant' AND content='Native scheduled result.'").get()?.content })); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(proof))
@@ -213,11 +230,6 @@ const server = http.createServer((request, response) => {
   } else if (request.url.startsWith('/browser-proof')) { const query = new URL(request.url, 'http://localhost').searchParams; browserIsolated = query.get('api') === 'undefined' && query.get('node') === 'undefined'; response.end('ok') }
   else if (request.url.startsWith('/browser-selection?')) { browserSelection = new URL(request.url, 'http://localhost').searchParams.get('text'); response.end('ok') }
   else if (request.url === '/browser-selection') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserSelection })) }
-  else if (request.url === '/browser-home-proof') {
-    const homePage = fixtureDb(db => db.prepare('SELECT value FROM settings WHERE key = ?').get('browser.homePage')?.value)
-    response.setHeader('Content-Type', 'application/json')
-    response.end(JSON.stringify({ homePage }))
-  }
   else { response.setHeader('Content-Type', 'text/html'); response.end('<title>' + (request.url === '/home' ? 'Native browser home' : 'Native browser fixture') + '</title><h1>WebView2 fixture</h1><script>fetch("/browser-proof?api="+typeof window.api+"&node="+typeof require);document.addEventListener("selectionchange",()=>fetch("/browser-selection?text="+encodeURIComponent(String(getSelection()))))</script>') }
 })
 server.listen(0, '127.0.0.1', () => {

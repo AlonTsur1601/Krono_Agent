@@ -14,10 +14,11 @@ public sealed partial class MainPage
             if (chatId is null) throw new InvalidOperationException("Start a conversation before opening a side chat.");
             if (messageId is null && sideChat?.ParentChatId == chatId) { sideChat.FocusComposer(); return; }
             var existing = messageId is null ? workspace.Query("SELECT chat_id FROM side_chats WHERE parent_chat_id=$p0 AND expires_at>$p1 ORDER BY expires_at DESC LIMIT 1", chatId, Workspace.Now).FirstOrDefault()?["chat_id"]?.ToString() : null;
+            var project = workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).FirstOrDefault()?["project_id"]?.ToString();
             var id = existing ?? workspace.CreateSideChat(chatId, messageId);
             CloseSideChat();
             sideChat = new SideChatPanel(workspace, id, () => {
-                return new JsonObject { ["providerId"] = provider, ["apiKey"] = ConnectionKey(), ["modelId"] = model, ["endpoint"] = ProviderEndpoint, ["toolsEnabled"] = false };
+                return new JsonObject { ["providerId"] = provider, ["apiKey"] = ConnectionKey(), ["modelId"] = model, ["endpoint"] = ProviderEndpoint, ["toolsEnabled"] = false, ["instructions"] = workspace.Instructions(project) };
             }, CloseSideChat, OpenNormalChat, () => { if (runId is null) { workspace.FlushSideTransfers(); ReloadChats(); LoadChat(); } });
             KronoDesign.Present(SideBody, sideChat);
             SetSideChatVisible(true);

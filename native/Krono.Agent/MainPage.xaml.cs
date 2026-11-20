@@ -375,7 +375,7 @@ public sealed partial class MainPage : Page
             });
             titleRow.Children.Add(searchButton);
             Grid.SetColumn(searchButton, 1);
-            var projectsButton = HistoryAction("Projects & memory", KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Folder), ShowProjects);
+            var projectsButton = HistoryAction("Projects", KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Folder), () => ShowProjects());
             titleRow.Children.Add(projectsButton);
             Grid.SetColumn(projectsButton, 2);
             header.Children.Add(titleRow);
@@ -551,8 +551,7 @@ public sealed partial class MainPage : Page
         var project = workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).First()["project_id"]?.ToString();
         if (loadedContext != chatId + ":" + project) {
             loadedContext = chatId + ":" + project;
-            var config = project is null ? null : workspace.ProjectPreferences(project);
-            permissions = config?["permissions"]?.ToString() ?? "ask";
+            permissions = project is null ? "ask" : workspace.ProjectPreferences(project)["permissions"]?.ToString() ?? "ask";
             if (permissionSelector is not null) permissionSelector.SelectedItem = permissions;
         }
         foreach (var message in workspace.Query("SELECT id,role,content FROM messages WHERE chat_id=$p0 AND deleted_at IS NULL ORDER BY created_at,rowid", chatId)) AddBubble(message["role"]!.ToString(), message["content"]?.ToString() ?? "", message["id"]!.ToString());
@@ -588,7 +587,6 @@ public sealed partial class MainPage : Page
             if (workspace.Query("SELECT id FROM messages WHERE chat_id=$p0", chatId).Count == 1) workspace.Execute("UPDATE chats SET name=$p0 WHERE id=$p1", title[..Math.Min(42, title.Length)], chatId);
             LoadChat(); ReloadChats(); streaming = new TextBlock { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontFamily = (FontFamily)Application.Current.Resources["KronoTextFont"], FontSize = (double)Application.Current.Resources["KronoTextSize"], LineHeight = 24 }; messages.Children.Add(streaming); fullResponse = "";
             var project = workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).First()["project_id"]?.ToString();
-            var config = project is null ? null : workspace.ProjectPreferences(project);
             var dirs = project is null ? [] : workspace.Query("SELECT path FROM project_directories WHERE project_id=$p0", project).Select(p => p["path"]!.ToString()).ToArray();
             var memories = workspace.Query("SELECT content FROM memories WHERE deleted_at IS NULL AND (project_id IS NULL OR project_id=$p0)", project).Select(p => p["content"]!.ToString()).ToArray();
             runId = Guid.NewGuid().ToString(); RefreshComposerAction(); chatList.IsEnabled = false; progress.Text = "Working…";
@@ -596,7 +594,7 @@ public sealed partial class MainPage : Page
             var history = workspace.Query("SELECT role,content FROM messages WHERE chat_id=$p0 AND deleted_at IS NULL ORDER BY id=$p1,created_at,rowid", chatId, messageId).Select(p => new { role = p["role"]!.ToString(), content = p["content"]!.ToString() }).ToArray();
             if (workspace.Setting("native.chatContext") == "Recent messages") history = history.TakeLast(20).ToArray();
             var reasoning = workspace.Setting(ChatReasoningKey);
-            var request = JsonSerializer.SerializeToNode(new { providerId = provider, apiKey, endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled, modelId = model, mode, permissions, messages = history, projectDirs = dirs, instructions = config?["instructions"]?.ToString() ?? "", memories })!.AsObject();
+            var request = JsonSerializer.SerializeToNode(new { providerId = provider, apiKey, endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled, modelId = model, mode, permissions, messages = history, projectDirs = dirs, instructions = workspace.Instructions(project), memories })!.AsObject();
             if (image is not null) request["messages"]!.AsArray()[^1]!["imagePng"] = image;
             if (reasoning is "low" or "medium" or "high") request["reasoningEffort"] = reasoning;
             await worker!.Request(runId, "run", request);
@@ -677,22 +675,6 @@ public sealed partial class MainPage : Page
         } else panel.Children.Add(googleLink);
         panel.Children.Add(Button("Sign out on all devices", async () => { if (await Confirm("Sign out on all devices?", "You’ll need to sign in again on each device.", "Sign out everywhere")) await Leave(true); }));
         AddSyncSettings(panel);
-        panel = AddCategory("Browser");
-        var homePage = new KronoTextBox { Header = "Browser new tab URL", Text = workspace.Setting("browser.homePage") is { Length: > 0 } home ? home : "https://www.google.com/" };
-        AutomationProperties.SetAutomationId(homePage, "BrowserHomePage");
-        void SaveBrowserHome()
-        {
-            var value = homePage.Text.Trim();
-            if (value.Length > 0 && (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http"))) {
-                Error(new InvalidOperationException("Enter a full HTTP or HTTPS address."));
-                return;
-            }
-            workspace.SetSetting("browser.homePage", value);
-            homePage.Text = value.Length > 0 ? value : "https://www.google.com/";
-        }
-        homePage.PreviewKeyDown += (_, args) => { if (args.Key == Windows.System.VirtualKey.Enter) { args.Handled = true; SaveBrowserHome(); } };
-        panel.Children.Add(homePage);
-        panel.Children.Add(Button("Save browser home page", SaveBrowserHome));
         panel = AddCategory("Models");
         var secret = new PasswordBox { Header = "Provider API key · optional for local servers", HorizontalAlignment = HorizontalAlignment.Stretch };
         KronoInputMotion.Attach(secret, "KronoPasswordInput");
@@ -842,6 +824,7 @@ public sealed partial class MainPage : Page
         };
         panel.Children.Add(Button("Save typography", SaveTypography));
         panel.Children.Add(new TextBlock { Text = "Bundled fonts: Rubik, Space Grotesk and JetBrains Mono. You can also enter an installed font name. Text and code sizes are independent.", TextWrapping = TextWrapping.Wrap, Opacity = .65 });
+        AddInstructionsSettings(AddCategory("Instructions"));
         AddUpdateSettings(AddCategory("Updates"));
         var categories = new ListView { ItemsSource = pages.Keys.ToArray(), SelectionMode = ListViewSelectionMode.Single };
         AutomationProperties.SetAutomationId(categories, "SettingsCategories");
@@ -858,81 +841,4 @@ public sealed partial class MainPage : Page
         categories.SelectedIndex = 0;
         KronoDesign.Present(Body, page);
     }
-    void ShowProjects()
-    {
-        if (backToChats is not null) backToChats.Visibility = Visibility.Visible;
-        SetSideChatVisible(false);
-        var panel = new StackPanel { Spacing = 12 };
-        panel.Children.Add(Heading("Project"));
-        var projects = workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name"); string? selected = null;
-        var picker = new KronoComboBox { Header = "Project", ItemsSource = projects.Select(p => p["name"]!.ToString()).ToArray(), HorizontalAlignment = HorizontalAlignment.Stretch };
-        var name = new KronoTextBox { Header = "Name" }; var folders = new KronoTextBox { Header = "Project folders · one absolute path per line", AcceptsReturn = true, MinHeight = 70 };
-        AutomationProperties.SetAutomationId(name, "ProjectName"); AutomationProperties.SetAutomationId(folders, "ProjectFolders");
-        var instructions = new KronoTextBox { Header = "Project instructions", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 100 };
-        var memory = new KronoTextBox { Header = "Project memory", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80 };
-        AutomationProperties.SetAutomationId(instructions, "ProjectInstructions"); AutomationProperties.SetAutomationId(memory, "ProjectMemory");
-        var global = new KronoTextBox { Header = "Global memory", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80, Text = workspace.Query("SELECT content FROM memories WHERE id='global'").FirstOrDefault()?["content"]?.ToString() ?? "" };
-        AutomationProperties.SetAutomationId(global, "GlobalMemory");
-        string projectPermissions = "ask";
-        var permissionBox = Choices("Default permissions", ["ask", "project", "full"], "ask", value => projectPermissions = value);
-        permissionBox.SelectionChanged += (_, _) => MarkFullAccess(permissionBox, projectPermissions);
-        picker.SelectionChanged += (_, _) => { if (picker.SelectedIndex < 0) return; selected = projects[picker.SelectedIndex]["id"]!.ToString(); name.Text = projects[picker.SelectedIndex]["name"]!.ToString(); folders.Text = string.Join(Environment.NewLine, workspace.Query("SELECT path FROM project_directories WHERE project_id=$p0", selected).Select(p => p["path"]!.ToString())); var config = workspace.ProjectPreferences(selected); instructions.Text = config?["instructions"]?.ToString() ?? ""; permissionBox.SelectedItem = config?["permissions"]?.ToString() ?? "ask"; memory.Text = workspace.Query("SELECT content FROM memories WHERE id=$p0", "project:" + selected).FirstOrDefault()?["content"]?.ToString() ?? ""; };
-        panel.Children.Add(picker); panel.Children.Add(Button("New project", () => { selected = null; picker.SelectedIndex = -1; name.Text = folders.Text = instructions.Text = memory.Text = ""; }));
-        panel.Children.Add(name); panel.Children.Add(folders); panel.Children.Add(instructions); panel.Children.Add(permissionBox); panel.Children.Add(memory);
-        panel.Children.Add(Button("Add folder…", async () => {
-            var folderPicker = new Windows.Storage.Pickers.FolderPicker(); folderPicker.FileTypeFilter.Add("*");
-            WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, WinRT.Interop.WindowNative.GetWindowHandle(MainWindow.Instance!));
-            var folder = await folderPicker.PickSingleFolderAsync();
-            if (folder is not null) folders.Text += (folders.Text.Length == 0 ? "" : Environment.NewLine) + folder.Path;
-        }));
-        panel.Children.Add(Button("Save project", async () => { try {
-            if (string.IsNullOrWhiteSpace(name.Text)) throw new InvalidOperationException("Give the project a name.");
-            var directories = folders.Text.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(Path.GetFullPath).Distinct().ToArray(); if (directories.Any(p => !Directory.Exists(p))) throw new InvalidOperationException("Every project folder must exist.");
-            if (projectPermissions == "full" && (selected is null || workspace.ProjectPreferences(selected)?["permissions"]?.ToString() != "full")) {
-                var generation = sessionGeneration;
-                if (!await Confirm("Enable full access for this project?", "Tools in this project can run commands and change files with your Windows permissions without asking.", "Enable full access") || generation != sessionGeneration) return;
-            }
-            var id = selected ?? Guid.NewGuid().ToString(); var now = Workspace.Now;
-            workspace.Execute("BEGIN"); try {
-            workspace.Execute("INSERT INTO projects(id,account_id,name,created_at,updated_at) VALUES($p0,$p1,$p2,$p3,$p3) ON CONFLICT(id) DO UPDATE SET name=excluded.name,updated_at=excluded.updated_at", id, workspace.AccountId, name.Text.Trim(), now);
-            workspace.Execute("DELETE FROM project_directories WHERE project_id=$p0", id); foreach (var directory in directories) workspace.Execute("INSERT INTO project_directories(id,project_id,device_id,path) VALUES($p0,$p1,'local',$p2)", Guid.NewGuid().ToString(), id, directory);
-            workspace.SetSetting("project." + id, new JsonObject { ["instructions"] = instructions.Text, ["permissions"] = projectPermissions }.ToJsonString()); SaveMemory("project:" + id, id, memory.Text); workspace.Execute("COMMIT"); } catch { workspace.Execute("ROLLBACK"); throw; } ShowProjects();
-        } catch (Exception error) { Error(error); } }));
-        var memoryPanel = new StackPanel { Spacing = 12 };
-        memoryPanel.Children.Add(Heading("Shared memory"));
-        memoryPanel.Children.Add(new TextBlock { Text = "This memory applies across projects.", TextWrapping = TextWrapping.Wrap });
-        memoryPanel.Children.Add(global);
-        memoryPanel.Children.Add(Button("Save global memory", () => SaveMemory("global", null, global.Text)));
-        Border Card(StackPanel content)
-        {
-            var card = new Border { Child = content, CornerRadius = new CornerRadius(14), Padding = new Thickness(18), VerticalAlignment = VerticalAlignment.Top };
-            void SetPalette() => card.Background = KronoDesign.ThemeBrush("KronoSurface", card.ActualTheme);
-            card.Loaded += (_, _) => SetPalette();
-            card.ActualThemeChanged += (_, _) => SetPalette();
-            return card;
-        }
-        var columns = new Grid { ColumnSpacing = 16, RowSpacing = 16 };
-        columns.ColumnDefinitions.Add(new ColumnDefinition());
-        columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0) });
-        columns.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        columns.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        var projectCard = Card(panel);
-        var memoryCard = Card(memoryPanel);
-        columns.Children.Add(projectCard);
-        columns.Children.Add(memoryCard);
-        Grid.SetRow(memoryCard, 1);
-        columns.SizeChanged += (_, args) => {
-            var wide = args.NewSize.Width >= 760;
-            columns.ColumnDefinitions[1].Width = wide ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-            Grid.SetRow(memoryCard, wide ? 0 : 1);
-            Grid.SetColumn(memoryCard, wide ? 1 : 0);
-        };
-        var page = new StackPanel { Spacing = 12, MaxWidth = 1020, HorizontalAlignment = HorizontalAlignment.Left };
-        page.Children.Add(Heading("Projects & memory"));
-        page.Children.Add(columns);
-        var scroller = KronoDesign.ScrollPage(page);
-        scroller.SizeChanged += (_, args) => page.Width = Math.Min(page.MaxWidth, Math.Max(0, args.NewSize.Width - 16));
-        KronoDesign.Present(Body, scroller);
-    }
-    void SaveMemory(string id, string? project, string content) => workspace.Execute("INSERT INTO memories(id,account_id,project_id,content,created_at,updated_at) VALUES($p0,$p1,$p2,$p3,$p4,$p4) ON CONFLICT(id) DO UPDATE SET content=excluded.content,updated_at=excluded.updated_at", id, workspace.AccountId, project, content, Workspace.Now);
 }

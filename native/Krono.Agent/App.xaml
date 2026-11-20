@@ -178,6 +178,26 @@
                         HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
             </ControlTemplate>
+            <ControlTemplate x:Key="KronoQuietIconTemplate" TargetType="ButtonBase">
+                <Grid Background="Transparent">
+                    <VisualStateManager.VisualStateGroups>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualStateGroup.Transitions><VisualTransition GeneratedDuration="0:0:0.12"/></VisualStateGroup.Transitions>
+                            <VisualState x:Name="Normal"/>
+                            <VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="Tint.Opacity" Value=".58"/></VisualState.Setters></VisualState>
+                            <VisualState x:Name="Pressed"><VisualState.Setters>
+                                <Setter Target="Tint.Opacity" Value=".78"/>
+                                <Setter Target="Tint.Background" Value="{ThemeResource ButtonBackgroundPressed}"/>
+                            </VisualState.Setters></VisualState>
+                            <VisualState x:Name="Disabled"><VisualState.Setters><Setter Target="Icon.Opacity" Value=".45"/></VisualState.Setters></VisualState>
+                        </VisualStateGroup>
+                    </VisualStateManager.VisualStateGroups>
+                    <Border x:Name="Tint" CornerRadius="{TemplateBinding CornerRadius}" Background="{ThemeResource ButtonBackgroundPointerOver}"
+                            Opacity="0" IsHitTestVisible="False"/>
+                    <ContentPresenter x:Name="Icon" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Grid>
+            </ControlTemplate>
             <Style x:Key="KronoButtonBase" TargetType="ButtonBase">
                 <Setter Property="Template" Value="{StaticResource KronoPressTemplate}" />
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />

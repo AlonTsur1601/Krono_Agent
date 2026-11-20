@@ -199,7 +199,7 @@ public static class KronoDesign
     const double TabStripInset = 6;
     const double TabWidth = 164;
 
-    internal static void StyleTabHeader(TabViewItem tab)
+    internal static void StyleTabHeader(TabViewItem tab, string selectedSurface = "KronoSurface")
     {
         tab.KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
         tab.MinWidth = tab.MaxWidth = TabWidth;
@@ -215,7 +215,7 @@ public static class KronoDesign
         {
             if (face is null || new AccessibilitySettings().HighContrast) return;
             face.Background = ThemeBrush(pressed ? "ButtonBackgroundPressed" :
-                hovered ? "ButtonBackgroundPointerOver" : tab.IsSelected ? "KronoSurface" : "KronoSidebar", tab.ActualTheme);
+                hovered ? "ButtonBackgroundPointerOver" : tab.IsSelected ? selectedSurface : "KronoSidebar", tab.ActualTheme);
         }
         tab.Loaded += (_, _) => {
             var highContrast = new AccessibilitySettings().HighContrast;
@@ -296,22 +296,18 @@ public static class KronoDesign
         };
     }
 
-    internal static Grid CreateTabStrip(TabView tabs, Action addTab, FrameworkElement? commands = null)
+    internal static Grid CreateTabStrip(TabView tabs, Action addTab, FrameworkElement? commands = null, string contentSurface = "KronoSurface")
     {
-        tabs.IsAddTabButtonVisible = false;
-        tabs.TabStripHeader = new Border { Width = 1 };
+        tabs.IsAddTabButtonVisible = true;
+        tabs.TabStripHeader = new Border { Width = 0 };
+        // Compensate for the native TabView's leading inset.
+        tabs.Margin = new Thickness(-2.5, 0, 0, 0);
         tabs.Padding = new Thickness(0, TabStripInset, 0, 0);
         tabs.BorderThickness = new Thickness(0);
         tabs.TabWidthMode = TabViewWidthMode.SizeToContent;
         tabs.CloseButtonOverlayMode = TabViewCloseButtonOverlayMode.Always;
         tabs.KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
 
-        var add = new Button();
-        StyleTabButton(add, add: true);
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(add, "WorkspaceAddTab");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(add, "Add new tab");
-        ToolTipService.SetToolTip(add, "Add new tab");
-        add.Click += (_, _) => addTab();
         tabs.AddTabButtonClick += (_, _) => addTab();
         void RevealSelection()
         {
@@ -325,13 +321,12 @@ public static class KronoDesign
             Margin = new Thickness(0, 0, 0, TabStripInset),
             Padding = new Thickness(4, 0, TabStripInset, 0), Spacing = 6
         };
-        footer.Children.Add(add);
         if (commands is not null) footer.Children.Add(commands);
         var header = new Grid { Height = TabHeight + 2 * TabStripInset };
         header.ColumnDefinitions.Add(new ColumnDefinition());
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var contentEdge = new Border { Height = TabStripInset, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false };
-        void PaintContentEdge() => contentEdge.Background = ThemeBrush("KronoSurface", header.ActualTheme);
+        void PaintContentEdge() => contentEdge.Background = ThemeBrush(contentSurface, header.ActualTheme);
         header.Loaded += (_, _) => PaintContentEdge();
         header.ActualThemeChanged += (_, _) => PaintContentEdge();
         KronoInputMotion.RegisterPaletteRefresh(header, PaintContentEdge);
@@ -353,8 +348,19 @@ public static class KronoDesign
             tabs.ApplyTemplate();
             var strip = KronoInputMotion.Descendants(tabs).OfType<Grid>().FirstOrDefault(part => part.Name == "TabContainerGrid");
             if (strip is null) return;
-            if (KronoInputMotion.Descendants(strip).OfType<Button>().FirstOrDefault(part => part.Name == "AddButton") is { } hiddenAdd)
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(hiddenAdd, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+            if (KronoInputMotion.Descendants(strip).OfType<Button>().FirstOrDefault(part => part.Name == "AddButton") is { } add) {
+                StyleTabButton(add, add: true);
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(add, "WorkspaceAddTab");
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(add, "Add new tab");
+                ToolTipService.SetToolTip(add, "Add new tab");
+                if (add.Parent is Border addCell) {
+                    addCell.Height = TabHeight;
+                    addCell.Padding = new Thickness(3, 0, 3, 0);
+                }
+            }
+            if (KronoInputMotion.Descendants(strip).OfType<ScrollContentPresenter>()
+                .FirstOrDefault(part => part.Name == "ScrollContentPresenter") is { } presenter)
+                presenter.Padding = new Thickness(0);
             foreach (var line in KronoInputMotion.Descendants(strip).OfType<Border>()
                 .Where(part => part.Name is "LeftBottomBorderLine" or "RightBottomBorderLine"))
                 line.Opacity = 0;
@@ -377,6 +383,7 @@ public static class KronoDesign
     static void StyleTabButton(Button button, bool add)
     {
         KronoInputMotion.StyleButton(button);
+        button.Template = (ControlTemplate)Application.Current.Resources["KronoQuietIconTemplate"];
         button.Width = button.Height = TabButtonSize;
         button.CornerRadius = new CornerRadius(7);
         button.HorizontalContentAlignment = HorizontalAlignment.Center;
@@ -387,7 +394,7 @@ public static class KronoDesign
     internal static PathIcon NavigationIcon(Symbol symbol)
     {
         var data = symbol switch {
-            Symbol.World => "F0 M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 Z M10,3.5 A6.5,6.5 0 1 1 10,16.5 A6.5,6.5 0 1 1 10,3.5 Z M9.25,3.5 H10.75 V9.25 H16.5 V10.75 H10.75 V16.5 H9.25 V10.75 H3.5 V9.25 H9.25 Z",
+            Symbol.World => "F0 M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 Z M10,3.85 A6.15,6.15 0 1 1 10,16.15 A6.15,6.15 0 1 1 10,3.85 Z M9.075,3.85 H10.925 V9.075 H16.15 V10.925 H10.925 V16.15 H9.075 V10.925 H3.85 V9.075 H9.075 Z",
             Symbol.Download => "M9.25,2 H10.75 V10.2 L13.7,7.25 L14.75,8.3 L10,13.05 L5.25,8.3 L6.3,7.25 L9.25,10.2 Z M2,12 H3.5 V16.5 H16.5 V12 H18 V18 H2 Z",
             _ => throw new ArgumentOutOfRangeException(nameof(symbol))
         };

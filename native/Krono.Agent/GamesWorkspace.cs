@@ -163,7 +163,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, names[i]);
             button.Click += async (_, _) => await ChooseGame(index);
             var starred = favorites.Contains(names[i]);
-            var star = new ToggleButton { IsChecked = starred, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(8), Padding = new Thickness(8, 4, 8, 4), FontSize = 18, CornerRadius = new CornerRadius(10), Background = Ink(0x293a51), Foreground = starred ? Ink(0xffd389) : White, BorderThickness = new Thickness(0) };
+            var star = new ToggleButton { IsChecked = starred, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(8), Padding = new Thickness(8, 4, 8, 4), FontSize = 18, CornerRadius = new CornerRadius(10), Background = Ink(0x293a51), Foreground = starred ? Ink(0xffd389) : White, BorderBrush = Ink(0x344452), BorderThickness = new Thickness(0) };
             star.Content = KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Star, star.Foreground);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(star, "FavoriteGame" + i);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(star, "Favorite " + names[i]);

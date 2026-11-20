@@ -79,30 +79,30 @@ public sealed partial class MainPage
             var pressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
             pressTimer.Tick += (_, _) => {
                 pressTimer.Stop();
-                AnimateIcon(item.Icon, pointerInside ? .86f : 1);
+                AnimateIcon(item.Icon, pointerInside ? .67f : 1);
             };
             void UpdateScale()
             {
                 if (pressing) {
                     pressTimer.Stop();
-                    AnimateIcon(item.Icon, .65f);
+                    AnimateIcon(item.Icon, .42f);
                     pressTimer.Start();
-                } else if (!pressTimer.IsEnabled) AnimateIcon(item.Icon, pointerInside ? .86f : 1);
+                } else if (!pressTimer.IsEnabled) AnimateIcon(item.Icon, pointerInside ? .67f : 1);
             }
             void EndPress(object _, PointerRoutedEventArgs args)
             {
                 pressing = false;
                 UpdateScale();
             }
-            item.PointerEntered += (_, _) => {
+            item.AddHandler(UIElement.PointerEnteredEvent, new PointerEventHandler((_, _) => {
                 pointerInside = true;
                 UpdateScale();
-            };
-            item.PointerExited += (_, _) => {
+            }), true);
+            item.AddHandler(UIElement.PointerExitedEvent, new PointerEventHandler((_, _) => {
                 pointerInside = false;
                 pressing = false;
                 UpdateScale();
-            };
+            }), true);
             item.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) => {
                 if (!args.GetCurrentPoint(item).Properties.IsLeftButtonPressed) return;
                 pressing = true;

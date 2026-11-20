@@ -11,6 +11,7 @@ namespace Krono_Agent;
 
 public sealed class TerminalWorkspace : Grid, IDisposable
 {
+    const string TerminalSurface = "KronoInputFace";
     readonly AgentWorker worker;
     readonly TabView tabs = new() { VerticalAlignment = VerticalAlignment.Stretch };
     readonly ContentControl selectedTerminal = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
@@ -32,8 +33,12 @@ public sealed class TerminalWorkspace : Grid, IDisposable
         var frame = new Grid();
         frame.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         frame.RowDefinitions.Add(new RowDefinition());
-        frame.Children.Add(KronoDesign.CreateTabStrip(tabs, () => _ = Create()));
+        frame.Children.Add(KronoDesign.CreateTabStrip(tabs, () => _ = Create(), contentSurface: TerminalSurface));
         frame.Children.Add(selectedTerminal);
+        void PaintContent() => selectedTerminal.Background = KronoDesign.ThemeBrush(TerminalSurface, selectedTerminal.ActualTheme);
+        selectedTerminal.Loaded += (_, _) => PaintContent();
+        selectedTerminal.ActualThemeChanged += (_, _) => PaintContent();
+        KronoInputMotion.RegisterPaletteRefresh(selectedTerminal, PaintContent);
         Grid.SetRow(selectedTerminal, 1);
         Children.Add(KronoDesign.FrameTabContent(frame, "KronoSidebar"));
         tabs.SelectionChanged += (_, _) => {
@@ -69,13 +74,13 @@ public sealed class TerminalWorkspace : Grid, IDisposable
             FontFamily = KronoDesign.CodeFont, FontSize = KronoDesign.CodeSize, TextWrapping = TextWrapping.NoWrap,
             SurfaceFeedbackEnabled = false, UseSystemFocusVisuals = false,
             BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(0),
-            Background = KronoDesign.ThemeBrush("KronoSurface", ActualTheme), VerticalContentAlignment = VerticalAlignment.Top };
+            Background = KronoDesign.ThemeBrush(TerminalSurface, ActualTheme), VerticalContentAlignment = VerticalAlignment.Top };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(screen, "TerminalOutput");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(screen, "PowerShell terminal");
-        screen.ActualThemeChanged += (_, _) => screen.Background = KronoDesign.ThemeBrush("KronoSurface", screen.ActualTheme);
-        KronoInputMotion.RegisterPaletteRefresh(screen, () => screen.Background = KronoDesign.ThemeBrush("KronoSurface", screen.ActualTheme));
+        screen.ActualThemeChanged += (_, _) => screen.Background = KronoDesign.ThemeBrush(TerminalSurface, screen.ActualTheme);
+        KronoInputMotion.RegisterPaletteRefresh(screen, () => screen.Background = KronoDesign.ThemeBrush(TerminalSurface, screen.ActualTheme));
         var tab = new TabViewItem { Header = "PowerShell" };
-        KronoDesign.StyleTabHeader(tab);
+        KronoDesign.StyleTabHeader(tab, TerminalSurface);
         var terminal = new Session(tab, screen);
         screen.BeforeTextChanging += (_, args) => args.Cancel = !terminal.Rendering;
         screen.AddHandler(UIElement.CharacterReceivedEvent, new TypedEventHandler<UIElement, CharacterReceivedRoutedEventArgs>(async (_, args) => {
@@ -83,17 +88,22 @@ public sealed class TerminalWorkspace : Grid, IDisposable
             args.Handled = true;
             await Write(id, terminal, args.Character.ToString());
         }), true);
-        screen.Paste += async (_, args) => {
-            args.Handled = true;
+        async Task Paste()
+        {
             try {
                 var clipboard = Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
                 if (clipboard.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text))
                     await Write(id, terminal, (await clipboard.GetTextAsync()).Replace("\r\n", "\r").Replace('\n', '\r'));
             } catch (Exception error) { ShowError(terminal, error); }
-        };
+        }
         screen.PreviewKeyDown += async (_, args) => {
             var ctrl = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control).HasFlag(CoreVirtualKeyStates.Down);
             var shift = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift).HasFlag(CoreVirtualKeyStates.Down);
+            if ((ctrl && args.Key == VirtualKey.V) || (shift && args.Key == VirtualKey.Insert)) {
+                args.Handled = true;
+                await Paste();
+                return;
+            }
             var input = (args.Key, ctrl, shift) switch {
                 (VirtualKey.C, true, _) when screen.SelectionLength == 0 => "\u0003",
                 (VirtualKey.L, true, _) => "\u000c",
@@ -125,7 +135,6 @@ public sealed class TerminalWorkspace : Grid, IDisposable
                 return;
             }
             terminal.Ready = true;
-            screen.IsReadOnly = false;
             if (ReferenceEquals(tabs.SelectedItem, tab)) screen.Focus(FocusState.Programmatic);
         } catch (Exception error) { ShowError(terminal, error); }
     }

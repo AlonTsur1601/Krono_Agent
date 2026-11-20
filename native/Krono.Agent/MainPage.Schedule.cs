@@ -53,7 +53,7 @@ public sealed partial class MainPage
             var toolsEnabled = !compatible || workspace.Setting("native.tools." + task.Provider + "." + task.Model) == "true";
             var dirs = task.Project is null ? [] : workspace.Query("SELECT path FROM project_directories WHERE project_id=$p0", task.Project).Select(row => row["path"]!.ToString()).ToArray();
             var memories = workspace.Query("SELECT content FROM memories WHERE deleted_at IS NULL AND (project_id IS NULL OR project_id=$p0)", task.Project).Select(row => row["content"]!.ToString()).ToArray();
-            var instructions = task.Project is null ? "" : workspace.ProjectPreferences(task.Project)["instructions"]?.ToString() ?? "";
+            var instructions = workspace.Instructions(task.Project);
             scheduledWorker = new AgentWorker();
             scheduledWorker.Event += (id, type, data) => {
                 if (generation != sessionGeneration || scheduledRun?.Id != id) return;
