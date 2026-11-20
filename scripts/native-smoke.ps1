@@ -143,7 +143,14 @@ function AttachFixture([string]$Path) {
     Invoke 'Attach path' -ByName
     Find ('Remove ' + [IO.Path]::GetFileName($Path)) -ByName | Out-Null
 }
-function CloseApp { if ($script:process -and !$script:process.HasExited) { $script:process.CloseMainWindow() | Out-Null; if (!$script:process.WaitForExit(5000)) { Stop-Process -Id $script:process.Id } } }
+function CloseApp {
+    if (!$script:process -or $script:process.HasExited) { return }
+    $script:process.CloseMainWindow() | Out-Null
+    if (!$script:process.WaitForExit(5000)) {
+        Stop-Process -InputObject $script:process
+        if (!$script:process.WaitForExit(5000)) { throw 'Native process did not exit' }
+    }
+}
 function Capture([string]$Name) {
     Start-Sleep -Milliseconds 200
     $deadline = (Get-Date).AddSeconds(5)
@@ -1234,7 +1241,6 @@ try {
     Find 'Scheduled result ready' -ByName | Out-Null
     $scheduled = Invoke-RestMethod ($Fixture + '/schedule-proof')
     if ($scheduled.runs.Count -ne 1 -or $scheduled.runs[0].state -ne 'completed' -or $scheduled.response -ne 'Native scheduled result.') { throw 'Due scheduled task did not complete exactly once' }
-    Find 'ScheduleHistory' | Out-Null
     Find 'Open run conversation' -ByName | Out-Null
     Capture 'native-scheduled-task.png'
     Invoke 'Open run conversation' -ByName

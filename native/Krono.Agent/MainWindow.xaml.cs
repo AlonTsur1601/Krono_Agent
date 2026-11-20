@@ -30,7 +30,7 @@ public sealed partial class MainWindow : Window
 
         RootFrame.Navigate(typeof(MainPage));
         AppWindow.Closing += (_, args) => {
-            if (closeApproved || !tray.IsAvailable) return;
+            if (closeApproved || !tray.IsAvailable || Environment.GetEnvironmentVariable("KRONO_SMOKE_CLOSE_WINDOW") == "1") return;
             args.Cancel = true;
             AppWindow.Hide();
         };
