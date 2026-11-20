@@ -510,8 +510,13 @@ try {
     Invoke 'Add folder…' -ByName
     SetValue 'ProjectFolderPath' $ReportDirectory
     Invoke 'Add folder' -ByName
-    Find $ReportDirectory -ByName | Out-Null
+    Find 'Remove folder' -ByName | Out-Null
     Invoke 'Save project' -ByName
+    Find 'Edit project' -ByName | Out-Null
+    $savedFolder = (Invoke-RestMethod ($Fixture + '/project-folder-proof')).path
+    if (!$savedFolder -or (Split-Path $savedFolder -Leaf) -ne (Split-Path $ReportDirectory -Leaf)) {
+        throw "Project folder was not saved: $savedFolder"
+    }
     Invoke 'New project' -ByName
     SetValue 'ProjectName' 'Original fixture project'
     Invoke 'Save project' -ByName

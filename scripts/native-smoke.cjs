@@ -87,6 +87,13 @@ const server = http.createServer((request, response) => {
     const proof = fixtureDb(db => ({ tasks: db.prepare('SELECT name FROM scheduled_tasks').all().map(task => task.name), runs: db.prepare('SELECT state,chat_id FROM scheduled_runs').all(), response: db.prepare("SELECT content FROM messages WHERE role='assistant' AND content='Native scheduled result.'").get()?.content })); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(proof))
   }
   else if (request.url === '/attachment-proof') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ accepted: attachmentAccepted })) }
+  else if (request.url === '/project-folder-proof') {
+    const directory = fixtureDb(db => db.prepare(
+      'SELECT project_directories.path FROM project_directories JOIN projects ON projects.id = project_directories.project_id WHERE projects.name = ?'
+    ).get('Native fixture project'))
+    response.setHeader('Content-Type', 'application/json')
+    response.end(JSON.stringify(directory ?? {}))
+  }
   else if (request.url === '/chat-project-proof') {
     const project = fixtureDb(db => db.prepare(
       'SELECT projects.name FROM chats JOIN projects ON projects.id = chats.project_id WHERE chats.name = ? AND chats.deleted_at IS NULL'
