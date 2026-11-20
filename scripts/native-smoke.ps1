@@ -1234,7 +1234,7 @@ try {
     Invoke 'Projects & memory' -ByName
     if ((Find 'GlobalMemory').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value -ne 'Cloud fixture memory') { throw 'Native conflict choice did not restore the cloud memory' }
     Capture 'native-synced-memory.png'
-    SelectNav 'Chats'
+    Invoke 'Back to chat' -ByName
     SetValue 'Composer' 'Unsent draft during a scheduled run'
     SelectNav 'Scheduled tasks'
     Invoke '+ New task' -ByName
@@ -1271,4 +1271,7 @@ try {
     Find 'LoginButton' | Out-Null
     if (Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin')) { throw 'Revoked session was retained after restart' }
     Write-Output 'NATIVE_SMOKE_PASS: native auth, account sync/conflict UI, scheduled result, scoped memory, cloud/local profiles, complete streams, command approval, side chats, 24 games, PTY, WebView2, restart and revocation'
+} catch {
+    Write-Output $_.ScriptStackTrace
+    throw
 } finally { CloseApp }
