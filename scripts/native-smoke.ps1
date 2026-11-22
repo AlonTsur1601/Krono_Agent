@@ -243,8 +243,9 @@ function Capture([string]$Name) {
 function TestWorkspaceInputs {
     SelectNav 'Terminal'
     Start-Sleep -Seconds 2
-    Find 'PowerShell' -ByName | Out-Null
-    $terminal = Find 'TerminalOutput'
+    $currentTerminal = FindOptional 'TerminalOutput'
+    if (!$currentTerminal -or $currentTerminal.Current.Name -ne 'PowerShell terminal') { Invoke 'WorkspaceAddTab' }
+    $terminal = Find 'PowerShell terminal' -ByName
     $shell = New-Object -ComObject WScript.Shell
     if (!$shell.AppActivate($script:process.Id)) { throw 'Could not activate the terminal window' }
     $bounds = $terminal.Current.BoundingRectangle
