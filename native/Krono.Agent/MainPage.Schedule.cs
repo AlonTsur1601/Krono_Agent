@@ -39,9 +39,11 @@ public sealed partial class MainPage
     async Task ExecuteSchedule(Workspace.ScheduledRun run)
     {
         var generation = sessionGeneration; var task = run.Task; scheduledRun = run; scheduleStopped = false;
+        BeginRunSummary();
         RefreshComposerAction();
         if (scheduleStopButton is not null) scheduleStopButton.IsEnabled = true;
         activityChatId = run.Chat; RunActivity.Title = "Scheduled task running"; RunActivity.Message = task.Name; RunActivity.IsClosable = false; UpdateActivityVisibility();
+        ReloadChats();
         var answer = new System.Text.StringBuilder(); var credential = "";
         try {
             if (!ProviderCatalog.Ids.Contains(task.Provider)) throw new InvalidOperationException("This task's provider is no longer available.");
@@ -57,18 +59,29 @@ public sealed partial class MainPage
             scheduledWorker = new AgentWorker();
             scheduledWorker.Event += (id, type, data) => {
                 if (generation != sessionGeneration || scheduledRun?.Id != id) return;
+                ReceiveAgentWorkspace(id, type, data);
                 if (type == "approval" && data is not null) DisplayApproval(data);
                 if (type == "chunk" && data?["type"]?.ToString() == "text") answer.Append(data["content"]?.ToString());
                 if (type == "chunk" && data?["type"]?.ToString() == "tool_call") RunActivity.Title = "Scheduled task using " + data["toolCall"]?["name"];
             };
-            await scheduledWorker.Request(run.Id, "run", new { providerId = task.Provider, apiKey = credential, endpoint, toolsEnabled, modelId = task.Model,
-                mode = task.Mode, permissions = task.Permissions, messages = new[] { new { role = "user", content = task.Prompt } }, projectDirs = dirs, instructions, memories });
+            var options = task.Chat is null ? null : workspace.GetChatOptions(run.Chat);
+            var history = workspace.Query("SELECT role,content FROM messages WHERE chat_id=$p0 AND deleted_at IS NULL ORDER BY created_at,rowid", run.Chat)
+                .Select(row => new { role = row["role"]!.ToString(), content = row["content"]?.ToString() ?? "" }).ToArray();
+            if (options?.Context == "Recent messages") history = history.TakeLast(20).ToArray();
+            var effort = IsReasoningEffort(options?.Reasoning) ? options?.Reasoning : null;
+            ConfigureWorkspaceWorker(scheduledWorker);
+            var request = System.Text.Json.JsonSerializer.SerializeToNode(new { providerId = task.Provider, apiKey = credential, endpoint, toolsEnabled, modelId = task.Model,
+                mode = task.Mode, permissions = task.Permissions, messages = history, projectDirs = dirs, instructions, memories, fastMode = options?.FastMode == true,
+                plugins = (task.Mode is "agent" or "goal") && toolsEnabled ? PluginCatalog.Enabled(workspace) : [] })!.AsObject();
+            if (effort is not null) request["reasoningEffort"] = effort;
+            await scheduledWorker.Request(run.Id, "run", request);
             if (generation != sessionGeneration) return;
             if (scheduleStopped) { workspace.FinishScheduledRun(run.Id, "cancelled"); RunActivity.Title = "Scheduled task stopped"; }
-            else { workspace.AddMessage(run.Chat, "assistant", answer.ToString()); workspace.FinishScheduledRun(run.Id, "completed"); RunActivity.Title = "Scheduled result ready"; }
+            else { SaveRunSummary(workspace.AddMessage(run.Chat, "assistant", answer.ToString())); workspace.FinishScheduledRun(run.Id, "completed"); RunActivity.Title = "Scheduled result ready"; }
         } catch (Exception error) {
             if (generation != sessionGeneration) return;
-            var message = credential.Length > 0 ? error.Message.Replace(credential, "[redacted]", StringComparison.Ordinal) : error.Message;
+            var message = FriendlyError(error);
+            if (credential.Length > 0) message = message.Replace(credential, "[redacted]", StringComparison.Ordinal);
             workspace.FinishScheduledRun(run.Id, scheduleStopped ? "cancelled" : "failed", scheduleStopped ? null : message[..Math.Min(1000, message.Length)]);
             RunActivity.Title = scheduleStopped ? "Scheduled task stopped" : "Scheduled task failed";
         } finally {
@@ -82,6 +95,9 @@ public sealed partial class MainPage
             }
         }
     }
+    const string ScheduleDateFormat = "yyyy-MM-dd, HH:mm";
+    static string ScheduleState(string state) => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(state);
+
     void ShowSchedules(string? selectedId = null, bool editing = false)
     {
         var tasks = workspace.ScheduledTasks();
@@ -111,8 +127,8 @@ public sealed partial class MainPage
                 if (task.Recurrence != "once" && task.RunLimit is { } maximum) recurrence += $" · Up to {maximum} runs";
                 var next = TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeMilliseconds(task.NextRun),
                     TimeZoneInfo.FindSystemTimeZoneById(task.TimeZone));
-                var timing = task.State is "active" or "paused" ? $"  /  Next run {next:g}" : "";
-                panel.Children.Add(new TextBlock { Text = $"{task.State}  /  {recurrence}{timing}", TextWrapping = TextWrapping.Wrap });
+                var timing = task.State is "active" or "paused" ? $"  /  Next run {next.ToString(ScheduleDateFormat, CultureInfo.InvariantCulture)}" : "";
+                panel.Children.Add(new TextBlock { Text = $"{ScheduleState(task.State)}  /  {recurrence}{timing}", TextWrapping = TextWrapping.Wrap });
                 panel.Children.Add(new TextBlock { Text = ProviderCatalog.Name(task.Provider) + " / " + task.Model, TextWrapping = TextWrapping.Wrap });
                 panel.Children.Add(new TextBlock { Text = task.Prompt, TextWrapping = TextWrapping.Wrap });
                 var taskActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -149,7 +165,7 @@ public sealed partial class MainPage
         }
 
         var title = Field("Task name", "ScheduleName", 100); var prompt = Field("Prompt", "SchedulePrompt", 32000); prompt.AcceptsReturn = true; prompt.MinHeight = 72; prompt.TextWrapping = TextWrapping.Wrap;
-        var first = Field("First run (yyyy-MM-dd HH:mm)", "ScheduleFirstRun", 16);
+        var first = Field("First run (year-month-day, hour:minute)", "ScheduleFirstRun", 17);
         var interval = new NumberBox { Header = "Repeat every (minutes)", Minimum = 1, Maximum = 10080, Value = 5, MinWidth = 180 };
         var zones = TimeZoneInfo.GetSystemTimeZones().ToArray();
         var zone = new KronoComboBox { Header = "Time zone", ItemsSource = zones.Select(t => {
@@ -159,7 +175,8 @@ public sealed partial class MainPage
         }).ToArray(), MinWidth = 260 };
         var providerIds = ProviderCatalog.Ids; var providerChoice = new KronoComboBox { Header = "Provider", ItemsSource = providerIds.Select(ProviderCatalog.Name).ToArray(), MinWidth = 180 };
         AutomationProperties.SetAutomationId(providerChoice, "ScheduleProvider");
-        var modelField = Field("Model", "ScheduleModel", 400);
+        var modelField = new KronoComboBox { Header = "Model", PlaceholderText = "Choose an available model", HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetAutomationId(modelField, "ScheduleModel");
         var limit = new NumberBox { Header = "Total runs (0 means no limit)", Minimum = 0, Maximum = 10000, Value = 0 };
         KronoInputMotion.Attach(interval);
         KronoInputMotion.Attach(limit);
@@ -169,21 +186,25 @@ public sealed partial class MainPage
             limit.Visibility = value == "once" ? Visibility.Collapsed : Visibility.Visible;
         }
         var repeat = Choices("Repeat", ["once","interval","daily"], "once", ShowRecurrence);
-        var jobMode = Choices("Task mode", ["chat","plan","agent"], "chat", _ => { });
+        var jobMode = Choices("Task mode", ["chat","plan","agent","goal"], "agent", _ => { });
         var jobPermissions = Choices("Task permissions", ["ask","project","full"], "ask", _ => { });
         jobPermissions.SelectionChanged += (_, _) => MarkFullAccess(jobPermissions, jobPermissions.SelectedItem?.ToString() ?? "ask");
         var projects = workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name");
         var projectChoice = new KronoComboBox { Header = "Project", ItemsSource = new[] { "No project" }.Concat(projects.Select(p => p["name"]!.ToString())).ToArray(), SelectedIndex = 0, MinWidth = 180 };
-        providerChoice.SelectionChanged += (_, _) => { if (providerChoice.SelectedIndex >= 0) modelField.Text = workspace.Setting("native.model." + providerIds[providerChoice.SelectedIndex]); };
+        var chats = workspace.Query("SELECT id,name,project_id FROM chats WHERE account_id=$p0 AND deleted_at IS NULL AND id NOT IN (SELECT chat_id FROM side_chats) ORDER BY updated_at DESC", workspace.AccountId);
+        var target = new KronoComboBox { Header = "Run in", ItemsSource = new[] { "New conversation", "Existing conversation" },
+            SelectedIndex = selected?.Chat is null ? 0 : 1 };
+        var conversation = new KronoComboBox { Header = "Conversation", ItemsSource = chats.Select(row => row["name"]!.ToString()).ToArray(),
+            SelectedIndex = chats.FindIndex(row => row["id"]?.ToString() == selected?.Chat), HorizontalAlignment = HorizontalAlignment.Stretch };
         void Load() {
             title.Text = selected?.Name ?? ""; prompt.Text = selected?.Prompt ?? "";
             var zoneId = selected?.TimeZone ?? TimeZoneInfo.Local.Id; zone.SelectedIndex = Math.Max(0, Array.FindIndex(zones, t => t.Id == zoneId));
-            var clock = selected is null ? DateTimeOffset.Now.AddMinutes(5) : TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeMilliseconds(selected.NextRun), zones[zone.SelectedIndex]); first.Text = clock.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+            var clock = selected is null ? DateTimeOffset.Now.AddMinutes(5) : TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeMilliseconds(selected.NextRun), zones[zone.SelectedIndex]); first.Text = clock.ToString(ScheduleDateFormat, CultureInfo.InvariantCulture);
             providerChoice.SelectedIndex = Math.Max(0, Array.IndexOf(providerIds, selected?.Provider ?? provider));
-            modelField.Text = selected?.Model ?? model; repeat.SelectedItem = selected?.Recurrence ?? "once"; interval.Value = selected?.IntervalMinutes ?? 5;
+            repeat.SelectedItem = selected?.Recurrence ?? "once"; interval.Value = selected?.IntervalMinutes ?? 5;
             limit.Value = selected?.RunLimit ?? 0;
             ShowRecurrence(repeat.SelectedItem?.ToString() ?? "once");
-            jobMode.SelectedItem = selected?.Mode ?? "chat"; jobPermissions.SelectedItem = selected?.Permissions ?? "ask";
+            jobMode.SelectedItem = selected?.Mode ?? "agent"; jobPermissions.SelectedItem = selected?.Permissions ?? "ask";
             projectChoice.SelectedIndex = selected?.Project is { } id ? projects.FindIndex(p => p["id"]?.ToString() == id) + 1 : 0;
         }
         Load();
@@ -194,64 +215,81 @@ public sealed partial class MainPage
         panel.Children.Add(repeat);
         panel.Children.Add(interval);
         panel.Children.Add(limit);
+        panel.Children.Add(target);
+        panel.Children.Add(conversation);
         var advanced = new StackPanel { Spacing = 8 };
         advanced.Children.Add(zone);
         advanced.Children.Add(projectChoice);
         advanced.Children.Add(jobMode);
         advanced.Children.Add(jobPermissions);
         var modelSettings = new StackPanel { Spacing = 8 };
-        var availableModels = new KronoComboBox { PlaceholderText = "Choose an available model", Visibility = Visibility.Collapsed,
-            HorizontalAlignment = HorizontalAlignment.Stretch };
-        availableModels.SelectionChanged += (_, _) => { if (availableModels.SelectedItem is string id) modelField.Text = id; };
         modelSettings.Children.Add(providerChoice);
-        modelSettings.Children.Add(availableModels);
         modelSettings.Children.Add(modelField);
         var modelOptions = KronoDesign.Section("Model", modelSettings);
         AutomationProperties.SetAutomationId(modelOptions, "ScheduleModelOptions");
         int modelRequest = 0;
-        async Task RefreshAvailableModels()
+        async Task RefreshAvailableModels(bool keep = false)
         {
             var request = ++modelRequest;
-            availableModels.Visibility = Visibility.Collapsed;
-            if (!modelOptions.IsExpanded || providerChoice.SelectedIndex < 0 || worker is null) return;
+            if (providerChoice.SelectedIndex < 0 || worker is null) return;
             var id = providerIds[providerChoice.SelectedIndex];
-            var endpoint = workspace.Setting("native.endpoint." + id);
-            if (endpoint.Length == 0) endpoint = ProviderCatalog.Endpoint(id);
-            var key = workspace.Key(id);
-            if (key.Length == 0 && ProviderCatalog.RequiresKey(id)) return;
+            var preferred = keep ? modelField.SelectedItem as string ?? (selected?.Provider == id ? selected.Model : null) : null;
+            preferred ??= workspace.Setting("native.model." + id);
+            modelField.ItemsSource = ModelChoices(id, [], preferred);
+            modelField.SelectedItem = preferred;
             try {
-                var response = await worker.Request(Guid.NewGuid().ToString(), "models",
-                    new { providerId = id, apiKey = key, endpoint, toolsEnabled = false });
+                var models = await DiscoverModels(id);
                 if (request != modelRequest || !modelOptions.IsExpanded || !modelOptions.IsLoaded) return;
-                var hidden = HiddenModels(id);
-                var choices = response?.AsArray().Select(entry => entry!["id"]!.ToString())
-                    .Where(name => !hidden.Contains(name)).Distinct().Order().ToArray() ?? [];
-                availableModels.ItemsSource = choices;
-                availableModels.Visibility = choices.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-            } catch (Exception) {
-                // Earlier tasks can still use a manually entered model if discovery fails.
-            }
+                modelField.ItemsSource = ModelChoices(id, models, preferred);
+                modelField.SelectedItem = preferred;
+            } catch (Exception error) { if (request == modelRequest && modelOptions.IsLoaded) Error(error); }
         }
-        modelOptions.Expanding += async (_, _) => await RefreshAvailableModels();
+        modelOptions.Expanding += async (_, _) => await RefreshAvailableModels(true);
         providerChoice.SelectionChanged += async (_, _) => await RefreshAvailableModels();
         panel.Children.Add(modelOptions);
         panel.Children.Add(KronoDesign.Section("More options", advanced));
+        void RefreshTarget() {
+            var existing = target.SelectedIndex == 1;
+            conversation.Visibility = existing ? Visibility.Visible : Visibility.Collapsed;
+            modelOptions.Visibility = projectChoice.Visibility = jobMode.Visibility = jobPermissions.Visibility = existing ? Visibility.Collapsed : Visibility.Visible;
+        }
+        target.SelectionChanged += (_, _) => RefreshTarget();
+        RefreshTarget();
+        modelOptions.IsExpanded = true;
+        bool saving = false;
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         async Task SaveSchedule() {
-            if (!DateTime.TryParseExact(first.Text.Trim(), "yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)) throw new InvalidOperationException("Enter a first run as yyyy-MM-dd HH:mm.");
+            if (saving) return;
+            saving = true;
+            try {
+            if (!DateTime.TryParseExact(first.Text.Trim(), [ScheduleDateFormat, "yyyy-MM-dd HH:mm"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)) throw new InvalidOperationException("Enter a date and time, for example 2026-12-01, 09:30.");
             if (providerChoice.SelectedIndex < 0 || zone.SelectedIndex < 0) throw new InvalidOperationException("Choose a provider and time zone.");
             var selectedMode = jobMode.SelectedItem!.ToString()!; var permission = jobPermissions.SelectedItem!.ToString()!;
+            var providerId = providerIds[providerChoice.SelectedIndex];
+            var chosenModel = modelField.SelectedItem as string;
+            var projectId = projectChoice.SelectedIndex > 0 ? projects[projectChoice.SelectedIndex - 1]["id"]!.ToString() : null;
+            string? chat = null;
+            if (target.SelectedIndex == 1) {
+                if (conversation.SelectedIndex < 0) throw new InvalidOperationException("Choose an existing conversation.");
+                var row = chats[conversation.SelectedIndex];
+                chat = row["id"]!.ToString();
+                var options = workspace.GetChatOptions(chat) ?? throw new InvalidOperationException("Send a message in this conversation first so Krono can save its run settings.");
+                providerId = options.Provider; chosenModel = options.Model; selectedMode = options.Mode; permission = options.Permissions;
+                projectId = row["project_id"]?.ToString();
+            }
+            if (chosenModel is null) throw new InvalidOperationException("Choose a model for the task.");
             if (selectedMode is "agent" or "goal" && permission == "full" && !await Confirm("Allow unattended tools?", "This scheduled task may change files and run commands with your Windows permissions.")) return;
             var taskId = selected?.Id ?? Guid.NewGuid().ToString("N"); var zoneValue = zones[zone.SelectedIndex];
-            workspace.SaveTask(new(taskId, title.Text, prompt.Text, providerIds[providerChoice.SelectedIndex], modelField.Text, selectedMode, permission,
-                projectChoice.SelectedIndex > 0 ? projects[projectChoice.SelectedIndex - 1]["id"]!.ToString() : null, repeat.SelectedItem!.ToString()!, zoneValue.Id,
+            workspace.SaveTask(new(taskId, title.Text, prompt.Text, providerId, chosenModel, selectedMode, permission,
+                projectId, repeat.SelectedItem!.ToString()!, zoneValue.Id,
                 double.IsFinite(interval.Value) ? (int)interval.Value : 5, local.Hour*60+local.Minute, Workspace.ScheduleTime(local, zoneValue).ToUnixTimeMilliseconds(), selected?.State == "paused" ? "paused" : "active",
-                repeat.SelectedItem?.ToString() != "once" && double.IsFinite(limit.Value) && limit.Value >= 1 ? (int)limit.Value : null));
+                repeat.SelectedItem?.ToString() != "once" && double.IsFinite(limit.Value) && limit.Value >= 1 ? (int)limit.Value : null, chat));
             ShowSchedules(taskId); await CheckSchedules();
+            } finally { saving = false; }
         }
         actions.Children.Add(Button("Save schedule", SaveSchedule));
         first.PreviewKeyDown += async (_, args) => {
-            if (args.Key != Windows.System.VirtualKey.Enter) return;
+            if (args.Key != Windows.System.VirtualKey.Enter || args.KeyStatus.WasKeyDown) return;
             args.Handled = true;
             try { await SaveSchedule(); } catch (Exception error) { Error(error); }
         };
@@ -269,7 +307,7 @@ public sealed partial class MainPage
         if (history.Count == 0) panel.Children.Add(new TextBlock { Text = "No scheduled runs yet.", Opacity = .65 });
         foreach (var run in history) {
             var state = run["state"]!.ToString(); var name = run["name"]!.ToString();
-            panel.Children.Add(new TextBlock { Text = $"{name} · {state} · {DateTimeOffset.FromUnixTimeMilliseconds(run["started_at"]!.GetValue<long>()).ToLocalTime():g}", TextWrapping = TextWrapping.Wrap });
+            panel.Children.Add(new TextBlock { Text = $"{name} · {ScheduleState(state)} · {DateTimeOffset.FromUnixTimeMilliseconds(run["started_at"]!.GetValue<long>()).ToLocalTime().ToString(ScheduleDateFormat, CultureInfo.InvariantCulture)}", TextWrapping = TextWrapping.Wrap });
             if (run["error"] is { } failure) panel.Children.Add(new TextBlock { Text = failure.ToString(), TextWrapping = TextWrapping.Wrap, Opacity = .7 });
             if (run["chat_id"] is { } id) panel.Children.Add(Button("Open run conversation", () => OpenNormalChat(id.ToString())));
         }

@@ -38,6 +38,18 @@ describe('OpenAI Responses transport', () => {
     expect(chunks[0].toolCall?.arguments).toEqual({ path: 'test.txt' })
     expect(create.mock.calls[0][0].input[0]).toEqual({ type: 'function_call_output', call_id: 'previous', output: 'result' })
   })
+  it('requests priority processing only for a supported model that explicitly opts in', async () => {
+    create.mockResolvedValue(events([]))
+    const provider = new OpenAIProvider(); await provider.configure({ apiKey: 'test-placeholder' })
+    const variants = [
+      { model: 'gpt-6.2-sol', fastMode: true },
+      { model: 'gpt-5-mini', fastMode: true },
+      { model: 'gpt-6.2-sol', fastMode: false },
+    ]
+    for (const variant of variants)
+      for await (const chunk of provider.createCompletion({ ...variant, messages: [] })) void chunk
+    expect(create.mock.calls.map(([request]) => request.service_tier)).toEqual(['priority', undefined, undefined])
+  })
   it('propagates cancellation and provider failure', async () => {
     create.mockResolvedValue(events([{ type: 'response.failed' }]))
     const provider = new OpenAIProvider(); await provider.configure({ apiKey: 'test-placeholder' })

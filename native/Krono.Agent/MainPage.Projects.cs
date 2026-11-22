@@ -14,7 +14,7 @@ public sealed partial class MainPage
         var page = new StackPanel { Spacing = 14, MaxWidth = 780, HorizontalAlignment = HorizontalAlignment.Stretch };
         page.Children.Add(Heading("Projects"));
         if (projects.Count == 0 && !editing) {
-            page.Children.Add(new TextBlock { Text = "No projects created." });
+            page.Children.Add(new TextBlock { Text = "No projects created.", TextWrapping = TextWrapping.Wrap });
             page.Children.Add(Button("New project", () => ShowProjects(editing: true)));
         } else if (editing) {
             AddProjectEditor(page, selectedProject);
@@ -87,7 +87,7 @@ public sealed partial class MainPage
         var permission = id is null ? "ask" : workspace.ProjectPreferences(id)["permissions"]?.ToString() ?? "ask";
         var permissions = Choices("Default permissions", ["ask", "project", "full"], permission, value => permission = value);
         permissions.SelectionChanged += (_, _) => MarkFullAccess(permissions, permission);
-        page.Children.Add(permissions);
+        if (id is not null) page.Children.Add(KronoDesign.Section("Permissions", permissions));
         async Task Save()
         {
             try {
@@ -148,21 +148,23 @@ public sealed partial class MainPage
 
     void AddInstructionsSettings(StackPanel panel)
     {
+        panel.Children.Add(Heading("Global"));
         var global = new KronoTextBox {
-            Header = "Global instructions", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 112,
+            PlaceholderText = "Instructions for every conversation", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 210,
             Text = workspace.Setting("instructions.global")
         };
         AutomationProperties.SetAutomationId(global, "GlobalInstructions");
         panel.Children.Add(global);
         panel.Children.Add(Button("Save global instructions", () => workspace.SetSetting("instructions.global", global.Text.Trim())));
 
+        panel.Children.Add(Heading("Projects"));
         var projects = workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name,id");
         if (projects.Count == 0) {
             panel.Children.Add(new TextBlock { Text = "No projects created." });
             return;
         }
         var picker = new KronoComboBox { Header = "Project", ItemsSource = projects.Select(row => row["name"]!.ToString()).ToArray() };
-        var instructions = new KronoTextBox { Header = "Project instructions", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 112 };
+        var instructions = new KronoTextBox { PlaceholderText = "Instructions for this project", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 210 };
         AutomationProperties.SetAutomationId(picker, "InstructionsProject");
         AutomationProperties.SetAutomationId(instructions, "ProjectInstructions");
         string SelectedProject() => projects[picker.SelectedIndex]["id"]!.ToString();

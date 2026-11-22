@@ -182,7 +182,6 @@
                 <Grid Background="Transparent">
                     <VisualStateManager.VisualStateGroups>
                         <VisualStateGroup x:Name="CommonStates">
-                            <VisualStateGroup.Transitions><VisualTransition GeneratedDuration="0:0:0.12"/></VisualStateGroup.Transitions>
                             <VisualState x:Name="Normal"/>
                             <VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="Tint.Opacity" Value=".58"/></VisualState.Setters></VisualState>
                             <VisualState x:Name="Pressed"><VisualState.Setters>
@@ -193,7 +192,7 @@
                         </VisualStateGroup>
                     </VisualStateManager.VisualStateGroups>
                     <Border x:Name="Tint" CornerRadius="{TemplateBinding CornerRadius}" Background="{ThemeResource ButtonBackgroundPointerOver}"
-                            Opacity="0" IsHitTestVisible="False"/>
+                            Opacity="0" IsHitTestVisible="False"><Border.OpacityTransition><ScalarTransition Duration="0:0:0.12"/></Border.OpacityTransition></Border>
                     <ContentPresenter x:Name="Icon" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"
                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Grid>

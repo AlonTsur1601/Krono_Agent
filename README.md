@@ -60,5 +60,6 @@ are included with the runtime bundle.
 - In Settings, choose a model provider, save its API key locally, test the connection, and select a model. For Ollama, LM Studio, or an OpenAI-compatible server, start the server and enter its base URL including `/v1`. Enable tool calling only for models that support it.
 - In Chat mode, the agent has no tools. Ask permissions request approval for changes and commands. Project permissions restrict file tools to the project. Full access runs tools with your Windows account permissions.
 - Use **Account sync** to synchronize regular chats, projects, memories, appearance, and game progress. Provider credentials, local folders, permissions, and temporary side chats remain on the device.
-- Scheduled tasks run while Krono is open and signed in. Create a schedule with a prompt, provider, model, permissions, and start time. The history links to each result.
+- Scheduled tasks run while Krono is open and signed in, including when the window is in the tray. Choose an existing conversation to reuse its run settings or select a project and model for a new conversation. The run history links to each result.
+- Open **Workspace** next to the chat controls to see the agent browser, terminal output, or project file changes alongside the conversation. Optional connections are available under **Settings → Plugins**.
 - You can attach up to four text or code files, with a limit of 64 KB each.

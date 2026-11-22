@@ -2,7 +2,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.UI;
 
@@ -14,6 +16,9 @@ public sealed partial class GamesWorkspace
     readonly Button arcadeAction = new() { HorizontalAlignment = HorizontalAlignment.Center };
     readonly ToggleButton jigsawPreview = new() { Content = "Show reference", HorizontalAlignment = HorizontalAlignment.Center };
     Canvas? dartboard, flapScenery;
+    Canvas? flapLayer, flapBird;
+    readonly Dictionary<double[], Canvas> pipeViews = new();
+    Rectangle? wingTop, wingShade;
     const int MazeChase = 16, Flap = 17, Darts = 18, Jigsaw = 19;
     const double FlapLift = -9.6, FlapGravity = .72;
     void BuildArcadeControls(StackPanel footer)
@@ -21,6 +26,10 @@ public sealed partial class GamesWorkspace
         AutomationProperties.SetAutomationId(arcadeAction, "ArcadeAction");
         arcadeAction.Click += (_, _) => ArcadeAction(); jigsawPreview.Click += (_, _) => Draw();
         footer.Children.Add(arcadeAction); footer.Children.Add(jigsawPreview);
+        canvas.PointerPressed += StartJigsawDrag;
+        canvas.PointerMoved += MoveJigsawDrag;
+        canvas.PointerReleased += CompleteJigsawDrag;
+        canvas.PointerCaptureLost += (_, _) => CancelJigsawDrag();
     }
     void ResetArcade()
     {
@@ -31,13 +40,20 @@ public sealed partial class GamesWorkspace
         arcadeAction.Content = game == Flap ? "Flap" : "Lock horizontal aim";
         if (game == MazeChase) arcade.Pellets = ArcadeRules.Maze.Select(c => c == '.' ? 1 : c == 'o' ? 2 : 0).ToArray();
         if (game == Flap) arcade.Pipes.Add([420, 245, 0]);
-        if (game == Jigsaw) { int[] pieces; do { pieces = Enumerable.Range(0, 16).OrderBy(_ => random.Next()).ToArray(); } while (pieces.Select((piece, i) => piece == i).All(v => v)); Array.Copy(pieces, board, 16); }
+        if (game == Jigsaw) ResetJigsaw();
     }
     void ArcadeAction()
     {
         if (ended || paused) return;
         if (game is Flap or Darts) PlayGameSound(GameSound.Click);
-        if (game == Flap) { arcade.FlapStarted = true; arcade.BirdVelocity = FlapLift; }
+        if (game == Flap) {
+            var starting = !arcade.FlapStarted;
+            arcade.FlapStarted = true;
+            arcade.BirdVelocity = FlapLift;
+            if (starting) Draw();
+            SaveCurrent();
+            return;
+        }
         if (game == Darts) {
             if (!arcade.XLocked) { arcade.DartX = AimX; arcade.DartAxisTick = tick; arcade.XLocked = true; }
             else { var y = AimY; var points = ArcadeRules.DartScore(arcade.DartX, y); arcade.Hits.Add([arcade.DartX, y]); arcade.XLocked = false; score += points; gameMessage = $"Last dart {points}"; if (arcade.Hits.Count == 9) End("Nine darts thrown", won: true); }
@@ -56,7 +72,13 @@ public sealed partial class GamesWorkspace
             if (pellet > 0) { PlayGameSound(GameSound.Pickup); score += pellet == 2 ? 30 : 10; if (pellet == 2) arcade.Power = 24; arcade.Pellets[arcade.MazePlayer] = 0; }
             if (arcade.Pellets.All(n => n == 0)) { End("Maze cleared", won: true); Draw(); return; }
             for (var i = 0; i < arcade.Ghosts.Length; i++) {
-                if (arcade.Ghosts[i] == arcade.MazePlayer || (tick / 5 + i) % 2 == 0) arcade.Ghosts[i] = ArcadeRules.GhostMove(arcade.Ghosts[i], arcade.MazePlayer, arcade.Power > 0);
+                var ghost = arcade.Ghosts[i];
+                if (ghost == arcade.MazePlayer || (tick / 5 + i) % (botDifficulty == 0 ? 3 : 2) == 0) {
+                    if (BotMakesMistake && random.NextDouble() < .45) {
+                        var exits = Enumerable.Range(1, 4).Select(direction => ArcadeRules.MazeNext(ghost, direction)).Where(cell => cell != ghost).ToArray();
+                        if (exits.Length > 0) arcade.Ghosts[i] = exits[random.Next(exits.Length)];
+                    } else arcade.Ghosts[i] = ArcadeRules.GhostMove(ghost, arcade.MazePlayer, arcade.Power > 0);
+                }
                 if (arcade.Ghosts[i] != arcade.MazePlayer) continue;
                 if (arcade.Power > 0) { score += 50; arcade.Ghosts[i] = ArcadeSave.GhostHomes[i]; }
                 else {
@@ -79,20 +101,10 @@ public sealed partial class GamesWorkspace
             arcade.Pipes.RemoveAll(p => p[0] < -56);
             if (arcade.Pipes.Count == 0 || arcade.Pipes[^1][0] < 245) arcade.Pipes.Add([480, random.Next(140, 341), 0]);
             if (arcade.BirdY < 13 || arcade.BirdY > 467) End("Flight ended");
-            Draw();
+            if (ended || flapLayer is null) Draw();
+            else { UpdateScore(); RefreshFlapFrame(); }
         }
         if (game == Darts) Draw();
-    }
-    void SwapPiece(int index)
-    {
-        if (paused || ended || jigsawPreview.IsChecked == true) return;
-        if (arcade.Piece < 0) arcade.Piece = index;
-        else if (arcade.Piece == index) arcade.Piece = -1;
-        else {
-            (board[index], board[arcade.Piece]) = (board[arcade.Piece], board[index]); arcade.Piece = -1; moves++;
-            if (board.Take(16).Select((piece, i) => piece == i).All(v => v)) { score = Math.Max(1, 1000 - moves * 15); End("Picture complete", won: true); }
-        }
-        Draw(); SaveCurrent();
     }
     void DrawArcade()
     {
@@ -111,26 +123,23 @@ public sealed partial class GamesWorkspace
             if (running && !arcade.FlapStarted) status.Text = "Press Space or Flap to start";
             flapScenery ??= MakeFlapScenery();
             canvas.Children.Add(flapScenery);
-            foreach (var pipe in arcade.Pipes) {
-                var x = pipe[0]; if (x > 480) continue;
-                var top = pipe[1] - 80;
-                var bottom = pipe[1] + 80;
-                FlapPipe(x, 0, top, top - 15);
-                FlapPipe(x, bottom, 480 - bottom, bottom);
-            }
-            var y = arcade.BirdY;
-            var wing = arcade.FlapStarted && !ended ? Math.Sin(tick * .65) * 4 : 0;
+            flapLayer = new Canvas { Width = 480, Height = 480, IsHitTestVisible = false };
+            pipeViews.Clear();
+            canvas.Children.Add(flapLayer);
             Rect(0, 468, 480, 12, Ink(0x315c58), 0);
             Rect(0, 468, 480, 2, Ink(0x8ac2a1), 0);
-            ArcadePolygon(canvas, Ink(0xc35c3f), (109, y + 1), (98, y - 4), (103, y + 6), (110, y + 8));
-            Rect(105, y - 13, 30, 26, Ink(0xcb6d38), 13);
-            Rect(106, y - 13, 28, 23, Ink(0xffb85e), 12);
-            Rect(112, y + 2, 17, 8, Ink(0xffdfa5), 4);
-            Rect(106, y - 3 + wing, 15, 10, Ink(0xe88742), 5);
-            Rect(109, y - 3 + wing, 11, 6, Ink(0xffcf78), 3);
-            Rect(122, y - 8, 9, 10, Ink(0xfff4dc), 4.5);
-            Rect(126, y - 6, 3.5, 5, Ink(0x283136), 1.75);
-            ArcadePolygon(canvas, Ink(0xef8040), (132, y - 1), (141, y + 2), (132, y + 6));
+            flapBird = new Canvas { Width = 144, Height = 30, IsHitTestVisible = false };
+            ArcadePolygon(flapBird, Ink(0xc35c3f), (109, 1), (98, -4), (103, 6), (110, 8));
+            BirdRect(flapBird, 105, -13, 30, 26, 0xcb6d38, 13);
+            BirdRect(flapBird, 106, -13, 28, 23, 0xffb85e, 12);
+            BirdRect(flapBird, 112, 2, 17, 8, 0xffdfa5, 4);
+            wingShade = BirdRect(flapBird, 106, -3, 15, 10, 0xe88742, 5);
+            wingTop = BirdRect(flapBird, 109, -3, 11, 6, 0xffcf78, 3);
+            BirdRect(flapBird, 122, -8, 9, 10, 0xfff4dc, 4.5);
+            BirdRect(flapBird, 126, -6, 3.5, 5, 0x283136, 1.75);
+            ArcadePolygon(flapBird, Ink(0xef8040), (132, -1), (141, 2), (132, 6));
+            canvas.Children.Add(flapBird);
+            RefreshFlapFrame();
         }
         if (game == Darts) {
             arcadeAction.Content = arcade.XLocked ? "Lock height & throw" : "Lock horizontal aim";
@@ -157,16 +166,8 @@ public sealed partial class GamesWorkspace
             }
         }
         if (game == Jigsaw) {
-            if (running) status.Text = $"Moves {moves} · Swap two pieces";
-            if (jigsawPreview.IsChecked == true) { canvas.Children.Add(JigsawScene()); return; }
-            for (var i = 0; i < 16; i++) {
-                var index = i; var piece = board[i];
-                var viewport = new Canvas { Width = 116, Height = 116, Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, 116, 116) } };
-                var scene = JigsawScene(); Canvas.SetLeft(scene, -(piece % 4) * 120); Canvas.SetTop(scene, -(piece / 4) * 120); viewport.Children.Add(scene);
-                var button = new Button { Style = (Style)Application.Current.Resources["KronoButton"], Content = viewport, Width = 118, Height = 118, Padding = new Thickness(0), BorderBrush = arcade.Piece == index ? Accent : Ink(0x344d54), BorderThickness = new Thickness(arcade.Piece == index ? 3 : 1), CornerRadius = new CornerRadius(5) };
-                AutomationProperties.SetAutomationId(button, "GameCell" + index); AutomationProperties.SetName(button, $"Tile {index + 1} · Piece {piece + 1}");
-                button.Click += (_, _) => SwapPiece(index); Canvas.SetLeft(button, i % 4 * 120 + 1); Canvas.SetTop(button, i / 4 * 120 + 1); canvas.Children.Add(button);
-            }
+            if (running) status.Text = $"Moves {moves} · Drag into the empty square";
+            DrawJigsaw();
         }
     }
     static void ArcadePolygon(Canvas surface, Brush fill, params (double X, double Y)[] points)
@@ -197,14 +198,51 @@ public sealed partial class GamesWorkspace
         ArcadePolygon(scenery, Ink(0x416f65), (0, 436), (92, 408), (172, 429), (254, 395), (347, 429), (432, 398), (480, 418), (480, 480), (0, 480));
         return scenery;
     }
-    void FlapPipe(double x, double y, double height, double collar)
+    static Rectangle BirdRect(Canvas scene, double x, double y, double width, double height, int color, double radius = 0)
     {
-        Rect(x, y, 56, height, Ink(0x244c50), 0);
-        Rect(x + 5, y, 45, height, Ink(0x3b7571), 0);
-        Rect(x + 9, y, 4, height, Ink(0x5d9690), 0);
-        Rect(x, collar, 56, 15, Ink(0x244c50), 4);
-        Rect(x + 2, collar + 1, 52, 11, Ink(0x78ab91), 3);
-        Rect(x + 7, collar + 3, 42, 2, Ink(0xb0ceb1), 1);
+        var shape = new Rectangle { Width = width, Height = height, Fill = Ink(color), RadiusX = radius, RadiusY = radius };
+        Canvas.SetLeft(shape, x); Canvas.SetTop(shape, y); scene.Children.Add(shape);
+        return shape;
+    }
+
+    void RefreshFlapFrame()
+    {
+        if (flapLayer is not { } layer || flapBird is not { } bird) return;
+        foreach (var entry in pipeViews.Where(entry => !arcade.Pipes.Contains(entry.Key)).ToArray()) {
+            layer.Children.Remove(entry.Value);
+            pipeViews.Remove(entry.Key);
+        }
+        void Move(FrameworkElement part, double x, double y)
+        {
+            var previousX = Canvas.GetLeft(part);
+            var previousY = Canvas.GetTop(part);
+            Canvas.SetLeft(part, x); Canvas.SetTop(part, y);
+            if (!double.IsNaN(previousX) && !double.IsNaN(previousY) && !ended)
+                SlidePiece(part, previousX - x, previousY - y, 30);
+        }
+        foreach (var pipe in arcade.Pipes) {
+            if (!pipeViews.TryGetValue(pipe, out var shape)) {
+                shape = new Canvas { Width = 56, Height = 480 };
+                void Pipe(double y, double height, double lip) {
+                    BirdRect(shape, 0, y, 56, height, 0x244c50);
+                    BirdRect(shape, 5, y, 45, height, 0x3b7571);
+                    BirdRect(shape, 9, y, 4, height, 0x5d9690);
+                    BirdRect(shape, 0, lip, 56, 15, 0x244c50, 4);
+                    BirdRect(shape, 2, lip + 1, 52, 11, 0x78ab91, 3);
+                }
+                Pipe(0, pipe[1] - 80, pipe[1] - 95);
+                Pipe(pipe[1] + 80, 400 - pipe[1], pipe[1] + 80);
+                pipeViews.Add(pipe, shape);
+                layer.Children.Add(shape);
+            }
+            Move(shape, pipe[0], 0);
+        }
+        Move(bird, 0, arcade.BirdY);
+        if (wingShade is not null && wingTop is not null) {
+            var y = arcade.FlapStarted && !ended ? Math.Sin(tick * .65) * 4 - 3 : -3;
+            Canvas.SetTop(wingShade, y);
+            Canvas.SetTop(wingTop, y);
+        }
     }
     Canvas MakeDartboard()
     {
@@ -227,23 +265,6 @@ public sealed partial class GamesWorkspace
             result.Children.Add(wedge);
         }
     }
-    static Canvas JigsawScene()
-    {
-        var scene = new Canvas { Width = 480, Height = 480, Background = new SolidColorBrush(Color.FromArgb(255, 21, 35, 65)), IsHitTestVisible = false };
-        Circle(309, 36, 104, "EAC989"); Circle(332, 54, 20, "D3A96E"); Circle(371, 91, 24, "D3A96E");
-        for (var i = 0; i < 21; i++) Circle((i * 73 + 19) % 480, (i * 41 + 11) % 180, i % 4 == 0 ? 5 : 3, "A8DAEC");
-        Shape("59699A", (0, 298), (86, 166), (138, 222), (232, 104), (353, 271), (417, 156), (480, 254), (480, 480), (0, 480));
-        Shape("ABB9E1", (193, 151), (232, 104), (277, 166), (250, 158), (233, 170), (219, 153));
-        Shape("417C82", (0, 330), (70, 243), (171, 317), (271, 214), (369, 320), (480, 247), (480, 480), (0, 480));
-        Shape("244F60", (0, 359), (90, 300), (194, 356), (310, 300), (424, 347), (480, 310), (480, 480), (0, 480));
-        Shape("65BEC1", (314, 308), (249, 357), (270, 392), (139, 425), (100, 480), (244, 480), (324, 420), (305, 379), (373, 337));
-        Shape("B2E1D6", (306, 381), (287, 390), (316, 411), (258, 439), (278, 444), (338, 415));
-        foreach (var (x,y) in new[] { (37,367),(80,388),(411,366),(445,404),(367,414),(42,435),(466,448) }) Shape("182C40", (x,y-29), (x-15,y+4), (x-4,y+4), (x-4,y+15), (x+4,y+15), (x+4,y+4), (x+15,y+4));
-        return scene;
-        static SolidColorBrush Brush(string hex) => new(Color.FromArgb(255, Convert.ToByte(hex[..2], 16), Convert.ToByte(hex[2..4], 16), Convert.ToByte(hex[4..], 16)));
-        void Circle(int x, int y, int size, string hex) { var circle = new Ellipse { Width = size, Height = size, Fill = Brush(hex) }; Canvas.SetLeft(circle, x); Canvas.SetTop(circle, y); scene.Children.Add(circle); }
-        void Shape(string hex, params (int X, int Y)[] points) { var polygon = new Polygon { Fill = Brush(hex) }; foreach (var (x, y) in points) polygon.Points.Add(new Windows.Foundation.Point(x, y)); scene.Children.Add(polygon); }
-    }
     public sealed class ArcadeSave
     {
         internal static readonly int[] GhostHomes = [112, 22];
@@ -262,7 +283,8 @@ public sealed partial class GamesWorkspace
         public int DartAxisTick { get; set; }
         public double DartX { get; set; }
         public List<double[]> Hits { get; set; } = [];
-        public int Piece { get; set; } = -1;
+        public int Picture { get; set; }
+        public bool SlidingPuzzle { get; set; }
     }
     static bool ValidArcade(int game, GameSave s)
     {
@@ -271,7 +293,7 @@ public sealed partial class GamesWorkspace
             MazeChase => a.Pellets?.Length == ArcadeRules.Maze.Length && a.Pellets.All(n => n is >= 0 and <= 2) && ArcadeRules.MazeOpen(a.MazePlayer) && a.Ghosts?.Length == 2 && a.Ghosts.All(ArcadeRules.MazeOpen) && a.Lives is >= 0 and <= 3 && a.Power is >= 0 and <= 24 && a.MazeDirection is >= 0 and <= 4 && a.WantedDirection is >= 0 and <= 4,
             Flap => double.IsFinite(a.BirdY) && a.BirdY is >= 0 and <= 490 && double.IsFinite(a.BirdVelocity) && a.BirdVelocity is >= -12 and <= 12 && a.Pipes is { Count: > 0 and <= 4 } && a.Pipes.All(p => p?.Length == 3 && p[0] is >= -60 and <= 480 && p[1] is >= 140 and <= 340 && p[2] is 0 or 1),
             Darts => a.DartAxisTick >= 0 && a.DartAxisTick <= s.Tick && a.DartX is >= -187 and <= 187 && a.Hits is { Count: <= 9 } && a.Hits.All(p => p?.Length == 2 && p.All(n => n is >= -187 and <= 187)),
-            Jigsaw => a.Piece is >= -1 and < 16 && s.Board.Take(16).Order().SequenceEqual(Enumerable.Range(0, 16)),
+            Jigsaw => a.Picture is >= 0 and < 10 && s.Board.Take(16).Order().SequenceEqual(Enumerable.Range(0, 16)),
             _ => false
         };
     }

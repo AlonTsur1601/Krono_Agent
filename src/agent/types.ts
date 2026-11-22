@@ -40,11 +40,15 @@ export interface ModelCapabilities {
   supportsTools: boolean
   supportsImages: boolean
   supportsReasoningEffort: boolean
+  reasoningEfforts?: ReasoningEffort[]
+  supportsFastMode?: boolean
   supportsStructuredOutput: boolean
   contextWindow: number
   maxOutputTokens: number
   streamingSupported: boolean
 }
+
+export type ReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export interface CompletionRequest {
   model: string
@@ -52,7 +56,8 @@ export interface CompletionRequest {
   tools?: Tool[]
   temperature?: number
   maxTokens?: number
-  reasoningEffort?: 'low' | 'medium' | 'high'
+  reasoningEffort?: ReasoningEffort
+  fastMode?: boolean
   signal?: AbortSignal
   stream?: boolean
 }
@@ -117,6 +122,7 @@ export interface ExecutionContext {
   redactValues?: readonly string[]
   requestApproval(action: ApprovalRequest): Promise<ApprovalResult>
   emitProgress(progress: Progress): void
+  emitFileChange?(change: { path: string; before: string; after: string }): void
 }
 
 export interface ApprovalRequest {
@@ -134,6 +140,7 @@ export interface ApprovalResult {
 export interface Progress {
   message: string
   percentage?: number
+  terminalPhase?: 'start' | 'finish'
 }
 
 export interface ToolResult {

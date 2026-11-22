@@ -1,9 +1,9 @@
-import { readFile, writeFile, readdir, stat, realpath } from 'fs/promises'
+import { open, readFile, writeFile, readdir, stat, realpath } from 'fs/promises'
 import { join, resolve, relative, isAbsolute, dirname, basename } from 'path'
 import type { ToolDefinition, ExecutionContext, ToolResult } from '../types'
 import { z } from 'zod'
 
-async function authorizePath(target: string, context: ExecutionContext, writing = false) {
+export async function authorizePath(target: string, context: ExecutionContext, writing = false) {
   if (context.permissions !== 'project') return
   let canonical: string
   try { canonical = await realpath(target) }
@@ -27,6 +27,18 @@ const WriteFileSchema = z.object({
   path: z.string(),
   content: z.string(),
 })
+
+const previewLimit = 24_000
+async function filePreview(path: string) {
+  try {
+    const file = await open(path, 'r')
+    try {
+      const buffer = Buffer.alloc(previewLimit)
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, 0)
+      return buffer.subarray(0, bytesRead).toString('utf8')
+    } finally { await file.close() }
+  } catch { return '' }
+}
 
 const ListFilesSchema = z.object({
   path: z.string(),
@@ -99,7 +111,10 @@ export const writeFileTool: ToolDefinition = {
         }
       }
 
+      const privateFile = /(^\.env($|\.)|^\.npmrc$|credential|secret|\.(pem|key|pfx)$)/i.test(basename(absolutePath))
+      const before = context.emitFileChange && !privateFile ? await filePreview(absolutePath) : ''
       await writeFile(absolutePath, content, 'utf-8')
+      context.emitFileChange?.({ path: absolutePath, before, after: privateFile ? '' : content.slice(0, previewLimit) })
 
       return {
         success: true,

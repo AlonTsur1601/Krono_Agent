@@ -13,9 +13,20 @@ namespace Krono_Agent;
 public static class NativeMarkdown
 {
     static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
+    static readonly Regex CodeTokens = new(
+        """(?<comment>//[^\n]*|#[^\n]*)|(?<literal>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(?<keyword>\b(?:const|let|var|function|class|return|if|else|for|while|import|from|export|public|private|async|await|def|true|false|null|None|new|using|void|int|string)\b)|(?<number>\b\d+(?:\.\d+)?\b)""",
+        RegexOptions.NonBacktracking | RegexOptions.CultureInvariant);
     public static RichTextBlock Render(string source, string textFont, double textSize, string codeFont, double codeSize, string palette = "classic")
     {
         var resolvedCodeFont = KronoDesign.ResolveFont(codeFont);
+        SolidColorBrush? comment = null, literal = null, number = null, keyword = null;
+        static SolidColorBrush Ink(byte red, byte green, byte blue) => new(Windows.UI.Color.FromArgb(255, red, green, blue));
+        Run CodeRun(string text, SolidColorBrush? color = null)
+        {
+            var run = new Run { Text = text, FontFamily = resolvedCodeFont, FontSize = codeSize };
+            if (color is not null) run.Foreground = color;
+            return run;
+        }
         var output = new RichTextBlock { IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap, FontFamily = KronoDesign.ResolveFont(textFont), FontSize = textSize, LineHeight = textSize * 1.7 };
         void AddBlocks(ContainerBlock blocks, int depth = 0)
         {
@@ -23,15 +34,22 @@ public static class NativeMarkdown
                 if (block is CodeBlock code) {
                     var paragraph = new Paragraph { Margin = new Thickness(depth * 18, 8, 0, 12) };
                     var content = code.Lines.ToString();
-                    var tokenPattern = "(?<comment>//[^\\n]*|#[^\\n]*)|(?<literal>\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*')|(?<keyword>\\b(?:const|let|var|function|class|return|if|else|for|while|import|from|export|public|private|async|await|def|true|false|null|None|new|using|void|int|string)\\b)|(?<number>\\b\\d+(?:\\.\\d+)?\\b)";
+                    if (content.Length > 40_000) {
+                        paragraph.Inlines.Add(CodeRun(content));
+                        output.Blocks.Add(paragraph);
+                        continue;
+                    }
                     var position = 0;
-                    foreach (Match token in Regex.Matches(content, tokenPattern)) {
-                        if (token.Index > position) paragraph.Inlines.Add(new Run { Text = content[position..token.Index], FontFamily = resolvedCodeFont, FontSize = codeSize });
-                        var color = token.Groups["comment"].Success ? Windows.UI.Color.FromArgb(255, 126, 148, 137) : token.Groups["literal"].Success ? Windows.UI.Color.FromArgb(255, 143, 215, 199) : token.Groups["number"].Success ? Windows.UI.Color.FromArgb(255, 225, 169, 112) : palette == "halloween" ? Windows.UI.Color.FromArgb(255, 245, 158, 80) : palette == "mint" ? Windows.UI.Color.FromArgb(255, 79, 183, 159) : Windows.UI.Color.FromArgb(255, 161, 138, 215);
-                        paragraph.Inlines.Add(new Run { Text = token.Value, FontFamily = resolvedCodeFont, FontSize = codeSize, Foreground = new SolidColorBrush(color) });
+                    foreach (Match token in CodeTokens.Matches(content)) {
+                        if (token.Index > position) paragraph.Inlines.Add(CodeRun(content[position..token.Index]));
+                        var color = token.Groups["comment"].Success ? comment ??= Ink(126, 148, 137)
+                            : token.Groups["literal"].Success ? literal ??= Ink(143, 215, 199)
+                            : token.Groups["number"].Success ? number ??= Ink(225, 169, 112)
+                            : keyword ??= palette switch { "halloween" => Ink(245, 158, 80), "mint" => Ink(79, 183, 159), _ => Ink(161, 138, 215) };
+                        paragraph.Inlines.Add(CodeRun(token.Value, color));
                         position = token.Index + token.Length;
                     }
-                    if (position < content.Length) paragraph.Inlines.Add(new Run { Text = content[position..], FontFamily = resolvedCodeFont, FontSize = codeSize });
+                    if (position < content.Length) paragraph.Inlines.Add(CodeRun(content[position..]));
                     output.Blocks.Add(paragraph);
                 } else if (block is LeafBlock leaf) {
                     var paragraph = new Paragraph { Margin = new Thickness(depth * 18, 0, 0, 8) };

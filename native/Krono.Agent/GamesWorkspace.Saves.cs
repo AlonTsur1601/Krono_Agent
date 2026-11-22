@@ -7,7 +7,7 @@ namespace Krono_Agent;
 
 public sealed partial class GamesWorkspace
 {
-    bool stateReady, disposed, openingGame;
+    bool stateReady, madeProgress, disposed, openingGame;
     string endMessage = "";
     readonly List<TextBlock> saveLabels = [];
     string SaveId(int index) => "native-v1:" + names[index];
@@ -29,7 +29,10 @@ public sealed partial class GamesWorkspace
                 try { var data = System.Text.Json.Nodes.JsonNode.Parse(saved); compatible = data?["Version"]?.ToString() == "1" && data?["Game"]?.ToString() == names[index]; }
                 catch (JsonException) { compatible = false; }
                 if (compatible) {
-                    var choice = new KronoDialog { XamlRoot = XamlRoot, Title = names[index], Content = "Continue where you left off, or replace the save with a new game.", PrimaryButtonText = "Continue saved game", SecondaryButtonText = "New game", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
+                    var choice = new KronoDialog { XamlRoot = XamlRoot,
+                        Title = new TextBlock { Text = "Load " + names[index], FontWeight = Microsoft.UI.Text.FontWeights.Bold },
+                        Content = "The previous save is kept until you make progress in a new game.",
+                        PrimaryButtonText = "Load save", SecondaryButtonText = "New game", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
                     Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(choice, "GameSaveChoice");
                     var result = await choice.ShowAsync();
                     if (disposed || result == ContentDialogResult.None) return;
@@ -38,7 +41,7 @@ public sealed partial class GamesWorkspace
             }
             if (disposed) return;
             timer.Stop(); game = index; Reset(); stateReady = true;
-            if (!resume || !RestoreCurrent()) SaveCurrent();
+            if (resume) madeProgress = RestoreCurrent();
             shownScore = -1;
             library!.Visibility = Visibility.Collapsed; playScreen!.Visibility = Visibility.Visible;
             Draw(); AnimateBoardEntry(); if (!paused && !ended) timer.Start(); Focus(FocusState.Programmatic);
@@ -52,13 +55,15 @@ public sealed partial class GamesWorkspace
     public void PauseAndSave(string reason = "Game paused")
     {
         if (disposed || !stateReady) return;
-        paused = true; timer.Stop(); SaveCurrent(); Draw();
+        paused = true; timer.Stop(); SaveCurrent(false); Draw();
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(status, reason);
     }
     public void DiscardCachedView() { disposed = true; timer.Stop(); }
-    void SaveCurrent()
+    void SaveCurrent(bool userAction = true)
     {
         if (disposed || !stateReady) return;
+        madeProgress |= userAction;
+        if (!madeProgress) return;
         try {
             var state = new GameSave {
                 Version = 1, Game = names[game], Score = score, Tick = tick, Moves = moves,
@@ -69,7 +74,7 @@ public sealed partial class GamesWorkspace
                 First = first, Second = second, HideAt = hideAt,
                 Sequence = sequence.ToArray(), SimonStart = simonStart, SimonInput = simonInput, SimonWaiting = simonWaiting,
                 OddCell = oddCell, OddRound = oddRound, OddBase = Pack(oddBase), OddShade = Pack(oddShade),
-                OrbitAngle = orbitAngle, OrbitTarget = orbitTarget, OrbitSpeed = orbitSpeed,
+                OrbitAngle = orbitAngle, OrbitTarget = orbitTarget, OrbitSpeed = orbitSpeed, OrbitCore = orbitCore, OrbitWidth = orbitWidth, BotAt = botAt,
                 Sudoku = sudoku, Clues = clues, SelectedSquare = selectedSquare, GameMessage = gameMessage,
                 StackX = stackX, StackWidth = stackWidth, StackDirection = stackDirection, StackCombo = stackCombo, StackLevel = stackLevel, Tower = tower.ToArray(),
                 TargetColors = targetColors, ChosenColors = chosenColors.ToArray(), ColorStart = colorStart, CurrentColor = CurrentColor, Arcade = arcade, Blocks = blocks, Cards = cards
@@ -101,11 +106,13 @@ public sealed partial class GamesWorkspace
         sequence.Clear(); sequence.AddRange(state.Sequence); simonStart = state.SimonStart; simonInput = state.SimonInput; simonWaiting = state.SimonWaiting; simonVisual = -3;
         oddCell = state.OddCell; oddRound = state.OddRound; oddBase = Unpack(state.OddBase); oddShade = Unpack(state.OddShade);
         orbitAngle = state.OrbitAngle; orbitTarget = state.OrbitTarget; orbitSpeed = state.OrbitSpeed;
+        orbitCore = state.OrbitCore; orbitWidth = state.OrbitWidth; botAt = state.BotAt;
         if (game == 13) { sudoku = state.Sudoku; clues = state.Clues; selectedSquare = state.SelectedSquare; }
         gameMessage = state.GameMessage ?? "";
         if (game == 14) { stackX = state.StackX; stackWidth = state.StackWidth; stackDirection = state.StackDirection; stackCombo = state.StackCombo; stackLevel = state.StackLevel; tower.Clear(); tower.AddRange(state.Tower); }
         if (game == 15) { targetColors = state.TargetColors; chosenColors.Clear(); chosenColors.AddRange(state.ChosenColors); colorStart = state.ColorStart; SetColor(state.CurrentColor); }
         if (game is >= MazeChase and < BlockFit) arcade = state.Arcade;
+        if (game == Jigsaw) UpgradeJigsaw();
         if (game is BlockFit or FallingBlocks or SandBlocks) blocks = state.Blocks;
         if (game == Solitaire) cards = state.Cards;
         // Restoration never starts a moving game or advances a pattern without consent.
@@ -128,7 +135,7 @@ public sealed partial class GamesWorkspace
             6 => s.Board.Take(16).GroupBy(value => value).All(group => group.Key is >= 1 and <= 8 && group.Count() == 2),
             8 => s.Board.Take(25).All(value => value is 0 or 1),
             9 => s.Sequence.Length > 0 && s.SimonInput >= 0 && (s.Ended ? s.SimonInput <= s.Sequence.Length : s.SimonInput < s.Sequence.Length) && s.SimonStart >= 0,
-            10 => s.OddCell is >= 0 and < 16 && s.OddRound is >= 1 and <= 21,
+            10 => s.OddCell is >= 0 and < 16 && s.OddRound >= 1,
             11 => s.OrbitSpeed is >= 2.3 and <= 12 && s.OrbitAngle is >= 0 and < 360 && s.OrbitTarget is >= 0 and < 360,
             12 => s.Board.All(value => value is >= 0 and <= 2),
             13 => s.Sudoku?.Length == 81 && s.Clues?.Length == 81 && s.SelectedSquare is >= -1 and < 81 && s.Sudoku.All(value => value is >= 0 and <= 9) && s.Sudoku.Where((value, i) => value > 0 && !NativeGameRules.SudokuLegal(s.Sudoku, i, value)).Count() == 0 && NativeGameRules.SudokuSolutions(s.Sudoku.Select((value, i) => s.Clues[i] ? value : 0).ToArray()) == 1 && s.Clues.Where((fixedCell, i) => fixedCell && s.Sudoku[i] == 0).Count() == 0,
@@ -177,6 +184,9 @@ public sealed partial class GamesWorkspace
         public uint OddBase { get; set; }
         public uint OddShade { get; set; }
         public double OrbitAngle { get; set; }
+        public double OrbitCore { get; set; }
+        public double OrbitWidth { get; set; } = 32;
+        public int BotAt { get; set; }
         public double OrbitTarget { get; set; }
         public double OrbitSpeed { get; set; }
         public int[] Sudoku { get; set; } = [];

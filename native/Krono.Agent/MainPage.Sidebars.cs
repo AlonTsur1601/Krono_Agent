@@ -3,7 +3,8 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Composition;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Windows.UI.ViewManagement;
 
 namespace Krono_Agent;
@@ -16,57 +17,62 @@ public sealed partial class MainPage
     bool contextOpen = true;
     bool contextVisible;
     int contextTransition;
-    InsetClip? contextClip;
+    Storyboard? contextMotion;
 
     void ShowContext(FrameworkElement? content)
     {
-        ContextBody.Content = content;
+        if (content is not null) ContextBody.Content = content;
         ContextScroll.VerticalScrollBarVisibility = ReferenceEquals(content, chatHistory) && content is not null
             ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
         if (content is not null) KronoDesign.RefreshTypography(content);
-        RefreshContextVisibility();
+        RefreshContextVisibility(content is not null);
     }
 
-    void RefreshContextVisibility()
+    void RefreshContextVisibility(bool? hasContent = null)
     {
-        var show = contextOpen && ContextBody.Content is not null;
-        if (show == contextVisible && (show || ContextRail.Visibility == Visibility.Collapsed)) return;
-        if (show == contextVisible && ContextBody.Content is not null) return;
+        var show = contextOpen && (hasContent ?? ContextBody.Content is not null);
+        if (show == contextVisible) {
+            if (hasContent == false && ContextRail.Visibility == Visibility.Collapsed) ContextBody.Content = null;
+            return;
+        }
         contextVisible = show;
         var transition = ++contextTransition;
-        var visual = ElementCompositionPreview.GetElementVisual(ContextRail);
-        contextClip ??= visual.Compositor.CreateInsetClip();
-        visual.Clip = contextClip;
-        contextClip.StopAnimation("RightInset");
+        var from = ContextRail.Visibility == Visibility.Visible ? ContextRail.ActualWidth : 0;
+        contextMotion?.Stop();
+        ContextRail.Width = from;
 
         void CommitLayout(bool visible)
         {
+            contextMotion?.Stop();
             ContextRail.Width = visible ? 252 : 0;
             ContextRail.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
             WorkspaceSurface.CornerRadius = new CornerRadius(visible ? 0 : 14, 0, 0, 0);
+            if (!visible && hasContent == false) ContextBody.Content = null;
         }
 
         ContextRail.IsHitTestVisible = show;
-        if (activeSection != "chats" || ContextBody.Content is null || !new UISettings().AnimationsEnabled) {
-            contextClip.RightInset = 0;
+        if (!new UISettings().AnimationsEnabled || from == (show ? 252 : 0)) {
             CommitLayout(show);
             return;
         }
 
-        if (show) CommitLayout(true);
-        var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
-        animation.Duration = TimeSpan.FromMilliseconds(135);
-        var ease = visual.Compositor.CreateCubicBezierEasingFunction(new(.2f, 0), new(0, 1));
-        animation.InsertKeyFrame(0, show ? 252 : 0);
-        animation.InsertKeyFrame(1, show ? 0 : 252, ease);
-        var batch = visual.Compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
-        batch.Completed += (_, _) => {
-            if (transition != contextTransition) return;
-            if (!show) CommitLayout(false);
-            contextClip.RightInset = 0;
-        };
-        contextClip.StartAnimation("RightInset", animation);
-        batch.End();
+        ContextRail.Visibility = Visibility.Visible;
+        WorkspaceSurface.CornerRadius = new CornerRadius(0);
+        var animation = new DoubleAnimation { From = from, To = show ? 252 : 0,
+            Duration = new Duration(TimeSpan.FromMilliseconds(165)), EnableDependentAnimation = true,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+        Storyboard.SetTarget(animation, ContextRail);
+        Storyboard.SetTargetProperty(animation, "Width");
+        contextMotion = new Storyboard { Children = { animation } };
+        contextMotion.Completed += (_, _) => { if (transition == contextTransition) CommitLayout(show); };
+        var clip = ContextRail.Clip as RectangleGeometry;
+        if (clip is null) {
+            clip = new RectangleGeometry();
+            ContextRail.Clip = clip;
+            var railClip = clip;
+            ContextRail.SizeChanged += (_, args) => railClip.Rect = new Windows.Foundation.Rect(0, 0, args.NewSize.Width, args.NewSize.Height);
+        }
+        contextMotion.Begin();
     }
 
     void InitializeNavigationIconMotion()
@@ -79,15 +85,15 @@ public sealed partial class MainPage
             var pressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
             pressTimer.Tick += (_, _) => {
                 pressTimer.Stop();
-                AnimateIcon(item.Icon, pointerInside ? .67f : 1);
+                AnimateIcon(item.Icon, pointerInside ? 1.13f : 1);
             };
             void UpdateScale()
             {
                 if (pressing) {
                     pressTimer.Stop();
-                    AnimateIcon(item.Icon, .42f);
+                    AnimateIcon(item.Icon, .86f);
                     pressTimer.Start();
-                } else if (!pressTimer.IsEnabled) AnimateIcon(item.Icon, pointerInside ? .67f : 1);
+                } else if (!pressTimer.IsEnabled) AnimateIcon(item.Icon, pointerInside ? 1.13f : 1);
             }
             void EndPress(object _, PointerRoutedEventArgs args)
             {
@@ -118,19 +124,21 @@ public sealed partial class MainPage
             };
         }
 
-        static void AnimateIcon(IconElement? icon, float opacity)
+        static void AnimateIcon(IconElement? icon, float scale)
         {
             if (icon is null) return;
             var visual = ElementCompositionPreview.GetElementVisual(icon);
             if (!new UISettings().AnimationsEnabled) {
-                visual.StopAnimation("Opacity");
-                visual.Opacity = 1;
+                visual.StopAnimation("Scale");
+                visual.Scale = System.Numerics.Vector3.One;
                 return;
             }
-            var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
-            animation.InsertKeyFrame(1, opacity);
+            visual.CenterPoint = new System.Numerics.Vector3(icon.ActualSize / 2, 0);
+            var animation = visual.Compositor.CreateVector3KeyFrameAnimation();
+            animation.InsertExpressionKeyFrame(0, "this.StartingValue");
+            animation.InsertKeyFrame(1, new(scale, scale, 1));
             animation.Duration = TimeSpan.FromMilliseconds(120);
-            visual.StartAnimation("Opacity", animation);
+            visual.StartAnimation("Scale", animation);
         }
     }
 

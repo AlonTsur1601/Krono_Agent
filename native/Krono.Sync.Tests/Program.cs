@@ -137,6 +137,23 @@ Check(secondLimitedRun?.Task.Id == capped.Id, "Limited task ended early");
 a.FinishScheduledRun(secondLimitedRun!.Id, "completed");
 Check(a.ScheduledTasks().Single(task => task.Id == capped.Id).State == "completed" &&
       reopened.ClaimScheduledRun(now + 10 * 60000) is null, "Limited task exceeded its total run count");
+var existingChat = a.CreateChat();
+a.AddMessage(existingChat, "assistant", "Earlier message");
+a.SaveChatOptions(existingChat, new("openai", "fixture-existing", "agent", "ask", "low", "Recent messages", true));
+var existingTask = once with { Id = "existing-chat", Prompt = "Follow up", Chat = existingChat };
+a.SaveTask(existingTask);
+var existingRun = reopened.ClaimScheduledRun(now);
+Check(existingRun?.Chat == existingChat && existingRun.Task.Model == "fixture-existing" && existingRun.Task.Mode == "agent",
+    "Scheduled task did not inherit the existing conversation model and mode");
+Check(a.Query("SELECT content FROM messages WHERE chat_id=$p0 ORDER BY rowid", existingChat)
+    .Select(row => row["content"]!.ToString()).SequenceEqual(["Earlier message", "Follow up"]),
+    "Scheduled task did not append its prompt to the selected chat");
+a.FinishScheduledRun(existingRun!.Id, "completed");
+a.SaveTask(existingTask with { Id = "existing-chat-approval" });
+a.SaveChatOptions(existingChat, new("openai", "fixture-existing", "agent", "full", "low", "Full conversation"));
+Check(a.ClaimScheduledRun(now) is null && a.ScheduledHistory().Any(row =>
+      row["task_id"]?.ToString() == "existing-chat-approval" && row["state"]?.ToString() == "failed"),
+    "A conversation permission change granted unattended full access");
 var eastern = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
 var gap = Workspace.ScheduleTime(new DateTime(2026,3,8,2,30,0), eastern);
 Check(TimeZoneInfo.ConvertTime(gap, eastern).Hour == 3 && TimeZoneInfo.ConvertTime(gap, eastern).Minute == 0, "DST gap did not advance to valid time");

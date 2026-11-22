@@ -25,9 +25,19 @@ public sealed class TerminalBuffer
             Ensure(); while (rows[row].Length <= column) rows[row].Append(' '); rows[row][column++] = ch;
             if (column >= 100) { column = 0; row++; Ensure(); }
         }
-        if (rows.Count > 2000) { rows.RemoveRange(0, rows.Count - 1500); row = Math.Min(row, rows.Count - 1); }
     }
-    void Ensure() { row = Math.Clamp(row, 0, 2100); column = Math.Clamp(column, 0, 499); while (rows.Count <= row) rows.Add(new StringBuilder()); }
+    void Ensure()
+    {
+        row = Math.Clamp(row, 0, 2000);
+        column = Math.Clamp(column, 0, 499);
+        if (row == 2000 && rows.Count == 2000) {
+            const int discarded = 500;
+            rows.RemoveRange(0, discarded);
+            row -= discarded;
+            savedRow = Math.Max(0, savedRow - discarded);
+        }
+        while (rows.Count <= row) rows.Add(new StringBuilder());
+    }
     void Command(char command, string args)
     {
         var values = args.TrimStart('?', '>').Split(';').Select(value => int.TryParse(value, out var number) ? number : 0).ToArray();
@@ -52,12 +62,14 @@ public sealed class TerminalBuffer
         var caret = 0;
         for (var index = 0; index < rows.Count; index++) {
             if (index > 0) display.Append('\r');
-            var line = rows[index].ToString().TrimEnd();
+            var line = rows[index];
+            var length = line.Length;
+            while (length > 0 && char.IsWhiteSpace(line[length - 1])) length--;
             if (index == row) {
                 caret = display.Length + column;
-                line = line.PadRight(column);
             }
-            display.Append(line);
+            display.Append(line, 0, length);
+            if (index == row && column > length) display.Append(' ', column - length);
         }
         return (display.ToString(), caret);
     }

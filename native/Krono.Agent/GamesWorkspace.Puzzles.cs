@@ -14,7 +14,7 @@ public sealed partial class GamesWorkspace
     int simonStart, simonInput, simonVisual, oddCell, oddRound;
     bool simonWaiting;
     Color oddBase, oddShade;
-    double orbitAngle, orbitTarget, orbitSpeed;
+    double orbitAngle, orbitTarget, orbitSpeed, orbitCore, orbitWidth;
 
     void ResetPuzzles()
     {
@@ -25,7 +25,7 @@ public sealed partial class GamesWorkspace
         }
         if (game == 9) { sequence.Clear(); sequence.Add(random.Next(4)); simonInput = simonStart = 0; simonVisual = -3; simonWaiting = false; }
         if (game == 10) { oddRound = 1; NextOddColor(); }
-        if (game == 11) { orbitAngle = 270; orbitTarget = 90; orbitSpeed = 2.3; }
+        if (game == 11) { orbitAngle = 270; orbitTarget = 90; orbitSpeed = 2.3; orbitWidth = 29; RandomizeOrbitCore(); }
     }
     void ToggleLights(int index)
     {
@@ -38,7 +38,7 @@ public sealed partial class GamesWorkspace
     {
         oddCell = random.Next(16);
         oddBase = Color.FromArgb(255, (byte)random.Next(50, 180), (byte)random.Next(50, 180), (byte)random.Next(50, 180));
-        var difference = Math.Max(8, 55 - oddRound * 2);
+        var difference = Math.Max(1, (int)Math.Ceiling(55 * Math.Pow(.94, oddRound - 1)));
         oddShade = Color.FromArgb(255, (byte)(oddBase.R + difference), (byte)(oddBase.G + difference), (byte)(oddBase.B + difference));
     }
     int SimonCue => tick < simonStart ? -1 : (tick - simonStart) / 30 >= sequence.Count ? -2 : (tick - simonStart) % 30 < 20 ? sequence[(tick - simonStart) / 30] : -1;
@@ -68,7 +68,7 @@ public sealed partial class GamesWorkspace
         }
         if (game == 10 && index is >= 0 and < 16) {
             if (index != oddCell) End("Different shade missed");
-            else { score += 100; if (oddRound++ == 20) End("20 shades found", won: true); else NextOddColor(); }
+            else { PlayGameSound(GameSound.Click); score += 100; oddRound++; NextOddColor(); }
         }
         Draw();
         SaveCurrent();
@@ -77,17 +77,26 @@ public sealed partial class GamesWorkspace
     {
         if (game != 11 || paused || ended) return;
         var difference = Math.Abs((orbitAngle - orbitTarget + 540) % 360 - 180);
-        if (difference > 32) End("Outside the arc");
-        else { score += difference <= 7 ? 25 : 10; orbitTarget = (orbitTarget + random.Next(80, 281)) % 360; orbitSpeed = Math.Min(12, orbitSpeed + .35); }
+        if (difference > orbitWidth) End("Outside the arc");
+        else {
+            var coreDistance = Math.Abs((orbitAngle - orbitTarget - orbitCore + 540) % 360 - 180);
+            score += coreDistance <= 5 ? 25 : 10;
+            orbitTarget = (orbitTarget + random.Next(80, 281)) % 360;
+            orbitSpeed = Math.Min(12, orbitSpeed + .35);
+            orbitWidth = Math.Max(10, orbitWidth - 2.5);
+            RandomizeOrbitCore();
+            PlayGameSound(GameSound.Click);
+        }
         Draw();
         SaveCurrent();
     }
+    void RandomizeOrbitCore() => orbitCore = (random.NextDouble() * 2 - 1) * (orbitWidth - 5);
     void DrawPuzzles()
     {
         if (game == 11) { DrawOrbit(); return; }
         var columns = game == 8 ? 5 : game == 9 ? 2 : 4;
         var width = 480.0 / columns;
-        if (!ended && !paused) status.Text = game switch { 8 => $"Moves {moves} · Turn every light off", 9 => simonWaiting ? $"Your turn · {simonInput}/{sequence.Count} · Score {score}" : $"Watch pattern {sequence.Count} · Score {score}", _ => $"Shade {oddRound}/20 · Score {score}" };
+        if (!ended && !paused) status.Text = game switch { 8 => $"Moves {moves} · Turn every light off", 9 => simonWaiting ? $"Your turn · {simonInput}/{sequence.Count} · Score {score}" : $"Watch pattern {sequence.Count} · Score {score}", _ => $"Shade {oddRound} · Score {score}" };
         for (var index = 0; index < columns * columns; index++) {
             var cellIndex = index;
             var lit = game == 8 ? board[index] == 1 : game == 9 && !simonWaiting && !ended && SimonCue == index;
@@ -110,13 +119,11 @@ public sealed partial class GamesWorkspace
         Canvas.SetLeft(rim, 68); Canvas.SetTop(rim, 72); canvas.Children.Add(rim);
         var ring = new Ellipse { Width = 344, Height = 344, Stroke = RaisedFace(Ink(0x3c5168)), StrokeThickness = 22 };
         Canvas.SetLeft(ring, 68); Canvas.SetTop(ring, 68); canvas.Children.Add(ring);
-        Arc(orbitTarget - 32, orbitTarget + 32, Accent, 24);
-        Arc(orbitTarget - 7, orbitTarget + 7, White, 24);
+        Arc(orbitTarget - orbitWidth, orbitTarget + orbitWidth, Accent, 24);
+        Arc(orbitTarget + orbitCore - 5, orbitTarget + orbitCore + 5, White, 24);
         var radians = orbitAngle * Math.PI / 180;
         var dot = new Ellipse { Width = 20, Height = 20, Fill = RaisedFace(White), Stroke = Ink(0x8ab8bc), StrokeThickness = 2 };
         Canvas.SetLeft(dot, 230 + Math.Cos(radians) * 172); Canvas.SetTop(dot, 230 + Math.Sin(radians) * 172); canvas.Children.Add(dot);
-        Label(score.ToString(), 200, 192, 48); Label("10 · arc     25 · core", 111, 264, 21);
-        Label("SPACE / TAP", 160, 310, 18);
         void Arc(double start, double finish, Brush brush, double thickness) {
             var line = new Polyline { Stroke = brush, StrokeThickness = thickness, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
             for (var degrees = start; degrees <= finish; degrees += 1) { var angle = degrees * Math.PI / 180; line.Points.Add(new Windows.Foundation.Point(240 + Math.Cos(angle) * 172, 240 + Math.Sin(angle) * 172)); }

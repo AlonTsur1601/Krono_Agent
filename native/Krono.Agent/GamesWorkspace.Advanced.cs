@@ -57,15 +57,9 @@ public sealed partial class GamesWorkspace
     {
         if (paused || ended) return;
         if (game == 13) { selectedSquare = index; gameMessage = clues[index] ? "This clue is fixed" : "Choose a digit, or press 1–9"; }
-        if (game == 12 && NativeGameRules.ReversiPlace(board, index, 1)) {
-            do {
-                var choice = NativeGameRules.ReversiBot(board);
-                if (choice < 0) break;
-                NativeGameRules.ReversiPlace(board, choice, 2);
-            } while (NativeGameRules.ReversiMoves(board, 1).Length == 0);
-            var yours = board.Count(value => value == 1); var theirs = board.Count(value => value == 2); score = yours;
-            if (NativeGameRules.ReversiMoves(board, 1).Length == 0 && NativeGameRules.ReversiMoves(board, 2).Length == 0) End(yours == theirs ? "Draw" : yours > theirs ? "You won" : "Bot won", won: yours > theirs);
-            else gameMessage = NativeGameRules.ReversiMoves(board, 2).Length == 0 ? "Bot passes · your turn" : "Your turn";
+        if (game == 12) {
+            if (botAt > 0 || !NativeGameRules.ReversiPlace(board, index, 1)) return;
+            QueueBot();
         }
         Draw(); SaveCurrent();
     }
@@ -79,7 +73,16 @@ public sealed partial class GamesWorkspace
     }
     void UpdateAdvanced()
     {
-        if (game == 14) { stackX += stackDirection * Math.Min(12, 5 + stackLevel * .28); if (stackX < 0 || stackX + stackWidth > 480) { stackX = Math.Clamp(stackX, 0, 480 - stackWidth); stackDirection *= -1; } Draw(); }
+        if (game == 14) {
+            var previous = stackX;
+            stackX += stackDirection * Math.Min(12, 5 + stackLevel * .28);
+            if (stackX < 0 || stackX + stackWidth > 480) { stackX = Math.Clamp(stackX, 0, 480 - stackWidth); stackDirection *= -1; }
+            if (movingStack is not { } brick) Draw();
+            else {
+                Canvas.SetLeft(brick, stackX);
+                SlidePiece(brick, previous - stackX, 0, 30);
+            }
+        }
         if (game == 15 && tick <= colorStart) Draw();
     }
     void PlaceStack()
@@ -88,6 +91,7 @@ public sealed partial class GamesWorkspace
         var last = tower[^1]; var placed = NativeGameRules.StackPlace(stackX, stackWidth, last[0], last[1], stackCombo);
         if (placed.Width <= 0) End("No overlap");
         else {
+            if (placed.Perfect) PlayGameSound(GameSound.Click);
             stackWidth = placed.Width; stackCombo = placed.Combo; stackLevel++; score += placed.Perfect ? 15 : 10;
             tower.Add([placed.X, placed.Width]); if (tower.Count > 10) tower.RemoveAt(0);
             gameMessage = placed.Perfect ? stackCombo % 3 == 0 ? "Perfect ×3 · width restored" : $"Perfect ×{stackCombo}" : "Keep stacking";
@@ -130,8 +134,16 @@ public sealed partial class GamesWorkspace
                     cell.Content = new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 33, Height = 33, Fill = RaisedFace(disc), StrokeThickness = 2,
                         Stroke = new SolidColorBrush(Shade(disc.Color, -.35)) };
                 }
-                AutomationProperties.SetAutomationId(cell, "GameCell" + i);
-                AutomationProperties.SetName(cell, game == 12 ? $"Square {i + 1}: {(value == 1 ? "coral" : value == 2 ? "ivory" : enabled ? "playable" : "empty")}" : $"Square {i + 1}: {(value == 0 ? "empty" : value.ToString())}{(clues[i] ? " fixed" : "")}");
+                var cellId = "GameCell" + i;
+                var cellName = game == 12 ? $"Square {i + 1}: {(value == 1 ? "coral" : value == 2 ? "ivory" : enabled ? "playable" : "empty")}" : $"Square {i + 1}: {(value == 0 ? "empty" : value.ToString())}{(clues[i] ? " fixed" : "")}";
+                if (!enabled || ended) {
+                    var tile = PassiveTile(cell.Content, i % columns * width + 2, i / columns * width + 2, width - 4, width - 4, cell.Background);
+                    AutomationProperties.SetAutomationId(tile, cellId);
+                    AutomationProperties.SetName(tile, cellName);
+                    continue;
+                }
+                AutomationProperties.SetAutomationId(cell, cellId);
+                AutomationProperties.SetName(cell, cellName);
                 cell.Click += (_, _) => AdvancedClick(index);
                 Canvas.SetLeft(cell, i % columns * width + 2); Canvas.SetTop(cell, i / columns * width + 2); canvas.Children.Add(cell);
             }
@@ -146,7 +158,13 @@ public sealed partial class GamesWorkspace
                 var level = Math.Max(0, stackLevel - tower.Count + i + 1);
                 StackBrick(tower[i][0], 430 - i * 28, tower[i][1], BlockColors[level % BlockColors.Length]);
             }
-            StackBrick(stackX, slotY, stackWidth, Ink(0xabf1d2));
+            movingStack = new Canvas { Width = stackWidth, Height = 34, IsHitTestVisible = false };
+            Canvas.SetLeft(movingStack, stackX);
+            Canvas.SetTop(movingStack, slotY);
+            ArcadePolygon(movingStack, Ink(0xc9fae5), (-7, -7), (stackWidth - 7, -7), (stackWidth, 0), (0, 0));
+            ArcadePolygon(movingStack, Ink(0x557e70), (-7, -7), (0, 0), (0, 24), (-7, 17));
+            movingStack.Children.Add(new Microsoft.UI.Xaml.Shapes.Rectangle { Width = stackWidth, Height = 24, Fill = RaisedFace(Ink(0xabf1d2)), RadiusX = 2, RadiusY = 2 });
+            canvas.Children.Add(movingStack);
             Bevel(20, 456, 440, 14, Ink(0x43646d), 5);
             Label("STACK TOWER", 22, 22, 22);
         }

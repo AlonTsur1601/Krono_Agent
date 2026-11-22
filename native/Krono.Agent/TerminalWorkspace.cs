@@ -16,6 +16,9 @@ public sealed class TerminalWorkspace : Grid, IDisposable
     readonly TabView tabs = new() { VerticalAlignment = VerticalAlignment.Stretch };
     readonly ContentControl selectedTerminal = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
     readonly Dictionary<string, Session> terminals = new();
+    readonly DispatcherTimer renderTimer = new() { Interval = TimeSpan.FromMilliseconds(25) };
+    bool hasOpened;
+    bool disposed;
 
     sealed class Session(TabViewItem tab, TextBox screen)
     {
@@ -24,7 +27,10 @@ public sealed class TerminalWorkspace : Grid, IDisposable
         public TerminalBuffer Buffer { get; } = new();
         public bool Rendering { get; set; }
         public bool Ready { get; set; }
+        public System.Text.StringBuilder? StartupInput { get; set; }
         public bool ScrollQueued { get; set; }
+        public bool NeedsRender { get; set; }
+        public bool AgentTranscript { get; init; }
     }
 
     public TerminalWorkspace(AgentWorker worker)
@@ -46,43 +52,66 @@ public sealed class TerminalWorkspace : Grid, IDisposable
             selectedTerminal.Content = terminal?.Screen;
             if (terminal is not null) {
                 DispatcherQueue.TryEnqueue(() => {
-                    if (ReferenceEquals(selectedTerminal.Content, terminal.Screen)) terminal.Screen.Focus(FocusState.Programmatic);
+                    if (IsLoaded && !terminal.AgentTranscript && ReferenceEquals(selectedTerminal.Content, terminal.Screen))
+                        terminal.Screen.Focus(FocusState.Programmatic);
                 });
-                ScrollOutputToEnd(terminal);
+                if (terminal.NeedsRender) Render(terminal);
+                else ScrollOutputToEnd(terminal);
             }
         };
+        renderTimer.Tick += (_, _) => {
+            renderTimer.Stop();
+            if (tabs.SelectedItem is TabViewItem { Tag: string id } && terminals.TryGetValue(id, out var terminal) && terminal.NeedsRender)
+                Render(terminal);
+        };
         tabs.TabCloseRequested += async (_, args) => {
-            var id = terminals.FirstOrDefault(entry => ReferenceEquals(entry.Value.Tab, args.Tab)).Key;
-            if (id is null || !terminals.Remove(id, out var terminal)) return;
+            if (args.Tab is not TabViewItem { Tag: string id } || !terminals.Remove(id, out var terminal)) return;
             tabs.TabItems.Remove(args.Tab);
             if (terminal.Ready) {
                 try { await worker.Request(Guid.NewGuid().ToString(), "terminal:close", new { id }); }
-                catch (InvalidOperationException) { /* The shell may have exited while closing. */ }
+                catch (Exception error) when (error is InvalidOperationException or IOException) { /* The shell may have exited while closing. */ }
             }
         };
         Loaded += async (_, _) => {
-            if (tabs.TabItems.Count == 0) await Create();
-            else if (terminals.Values.FirstOrDefault(session => ReferenceEquals(session.Tab, tabs.SelectedItem)) is { } terminal)
-                ScrollOutputToEnd(terminal);
+            if (disposed) return;
+            var firstOpen = !hasOpened;
+            hasOpened = true;
+            if (firstOpen && tabs.TabItems.Count == 0) await Create();
+            if (tabs.SelectedItem is TabViewItem { Tag: string id } && terminals.TryGetValue(id, out var terminal)) {
+                if (terminal.NeedsRender) Render(terminal);
+                else ScrollOutputToEnd(terminal);
+            }
         };
+        Unloaded += (_, _) => renderTimer.Stop();
     }
 
-    async Task Create()
+    Session NewSession(string id, string name, bool agent = false)
     {
-        var id = Guid.NewGuid().ToString();
         var screen = new KronoTextBox { IsReadOnly = true, AcceptsReturn = true, PressMotionEnabled = false,
             FontFamily = KronoDesign.CodeFont, FontSize = KronoDesign.CodeSize, TextWrapping = TextWrapping.NoWrap,
             SurfaceFeedbackEnabled = false, UseSystemFocusVisuals = false,
             BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(0),
             Background = KronoDesign.ThemeBrush(TerminalSurface, ActualTheme), VerticalContentAlignment = VerticalAlignment.Top };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(screen, "TerminalOutput");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(screen, "PowerShell terminal");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(screen, agent ? "Agent terminal" : "PowerShell terminal");
         screen.ActualThemeChanged += (_, _) => screen.Background = KronoDesign.ThemeBrush(TerminalSurface, screen.ActualTheme);
         KronoInputMotion.RegisterPaletteRefresh(screen, () => screen.Background = KronoDesign.ThemeBrush(TerminalSurface, screen.ActualTheme));
-        var tab = new TabViewItem { Header = "PowerShell" };
+        var tab = new TabViewItem { Header = name, Tag = id };
         KronoDesign.StyleTabHeader(tab, TerminalSurface);
-        var terminal = new Session(tab, screen);
+        var terminal = new Session(tab, screen) { AgentTranscript = agent };
         screen.BeforeTextChanging += (_, args) => args.Cancel = !terminal.Rendering;
+        terminals[id] = terminal;
+        tabs.TabItems.Add(tab);
+        tabs.SelectedItem = tab;
+        return terminal;
+    }
+
+    async Task Create()
+    {
+        var id = Guid.NewGuid().ToString();
+        var terminal = NewSession(id, "PowerShell");
+        terminal.StartupInput = new();
+        var screen = terminal.Screen;
         screen.AddHandler(UIElement.CharacterReceivedEvent, new TypedEventHandler<UIElement, CharacterReceivedRoutedEventArgs>(async (_, args) => {
             if (char.IsControl(args.Character)) return;
             args.Handled = true;
@@ -125,23 +154,31 @@ public sealed class TerminalWorkspace : Grid, IDisposable
             args.Handled = true;
             await Write(id, terminal, input);
         };
-        terminals[id] = terminal;
-        tabs.TabItems.Add(tab);
-        tabs.SelectedItem = tab;
         try {
             await worker.Request(id, "terminal:create", new { });
             if (!terminals.ContainsKey(id)) {
                 await worker.Request(Guid.NewGuid().ToString(), "terminal:close", new { id });
                 return;
             }
+            if (terminal.StartupInput is null) return;
+            var waiting = terminal.StartupInput.ToString();
+            terminal.StartupInput = null;
             terminal.Ready = true;
-            if (ReferenceEquals(tabs.SelectedItem, tab)) screen.Focus(FocusState.Programmatic);
-        } catch (Exception error) { ShowError(terminal, error); }
+            if (ReferenceEquals(tabs.SelectedItem, terminal.Tab)) screen.Focus(FocusState.Programmatic);
+            if (waiting.Length > 0) await Write(id, terminal, waiting);
+        } catch (Exception error) {
+            terminal.StartupInput = null;
+            if (terminals.ContainsKey(id)) ShowError(terminal, error);
+        }
     }
 
     async Task Write(string id, Session terminal, string input)
     {
-        if (!terminal.Ready || !terminals.ContainsKey(id)) return;
+        if (!terminals.ContainsKey(id)) return;
+        if (!terminal.Ready) {
+            if (terminal.StartupInput is { } waiting && input.Length <= 8192 - waiting.Length) waiting.Append(input);
+            return;
+        }
         try { await worker.Request(Guid.NewGuid().ToString(), "terminal:write", new { id, content = input }); }
         catch (Exception error) { if (terminals.ContainsKey(id)) ShowError(terminal, error); }
     }
@@ -154,6 +191,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
 
     static void Render(Session terminal)
     {
+        terminal.NeedsRender = false;
         var (text, caret) = terminal.Buffer.Render();
         terminal.Rendering = true;
         try {
@@ -176,16 +214,44 @@ public sealed class TerminalWorkspace : Grid, IDisposable
 
     public void Receive(string id, string type, JsonNode? data)
     {
+        if (disposed) return;
+        if (type == "terminal-agent") {
+            var terminalId = "agent:" + id;
+            if (!terminals.TryGetValue(terminalId, out var agent)) {
+                if (data?["phase"]?.ToString() != "start") return;
+                var old = terminals.FirstOrDefault(item => item.Value.AgentTranscript);
+                if (terminals.Values.Count(item => item.AgentTranscript) >= 12) {
+                    terminals.Remove(old.Key);
+                    tabs.TabItems.Remove(old.Value.Tab);
+                }
+                agent = NewSession(terminalId, "Agent · PowerShell", true);
+            }
+            var text = data?["message"]?.ToString() ?? "";
+            WriteOutput(agent, "\r\n" + text.Replace("\r\n", "\n").Replace("\n", "\r\n") + "\r\n");
+            return;
+        }
         if (!terminals.TryGetValue(id, out var terminal)) return;
         if (type == "terminal") {
-            terminal.Buffer.Write(data?.ToString() ?? "");
-            Render(terminal);
+            WriteOutput(terminal, data?.ToString() ?? "");
         } else if (type == "terminal-exit") {
             terminal.Ready = false;
+            terminal.StartupInput = null;
             terminal.Screen.IsReadOnly = true;
             terminal.Tab.Header = "PowerShell · exited";
         }
     }
 
-    public void Dispose() { terminals.Clear(); tabs.TabItems.Clear(); }
+    public void SelectAgentRun(string id)
+    {
+        if (terminals.TryGetValue("agent:" + id, out var terminal)) tabs.SelectedItem = terminal.Tab;
+    }
+
+    void WriteOutput(Session terminal, string text)
+    {
+        terminal.Buffer.Write(text);
+        terminal.NeedsRender = true;
+        if (IsLoaded && ReferenceEquals(tabs.SelectedItem, terminal.Tab) && !renderTimer.IsEnabled) renderTimer.Start();
+    }
+
+    public void Dispose() { disposed = true; renderTimer.Stop(); terminals.Clear(); tabs.TabItems.Clear(); }
 }

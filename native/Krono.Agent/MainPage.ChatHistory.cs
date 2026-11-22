@@ -17,13 +17,14 @@ public sealed partial class MainPage
     enum RailKind { Heading, Disclosure, More, Chat }
 
     sealed record RailEntry(RailKind Kind, string Name, string Id = "", bool Indented = false,
-        bool Pinned = false, bool Archived = false, bool Expanded = false, bool Project = false, string ProjectName = "")
+        bool Pinned = false, bool Archived = false, bool Expanded = false, bool Project = false, string ProjectName = "", bool Working = false)
     {
         public Thickness Indent => new(Indented ? 16 : 0, 0, 0, 0);
         public string ActionLabel => Kind == RailKind.Disclosure
             ? (Expanded ? "Collapse " : "Expand ") + Name
             : Name + " in " + ProjectName;
         public Visibility PinVisibility => Archived ? Visibility.Collapsed : Visibility.Visible;
+        public Visibility WorkingVisibility => Working ? Visibility.Visible : Visibility.Collapsed;
         public string PinLabel => Pinned ? "Unpin chat" : "Pin chat";
         public FrameworkElement PinIcon => KronoDesign.OutlineIcon(Pinned ? KronoDesign.OutlineGlyph.Unpin : KronoDesign.OutlineGlyph.Pin);
         public string ArchiveLabel => Archived ? "Restore chat" : "Archive chat";
@@ -182,7 +183,8 @@ public sealed partial class MainPage
         bool Pinned(JsonObject row) => row["pinned"]?.GetValue<long>() == 1;
         bool Archived(JsonObject row) => row["archived"]?.GetValue<long>() == 1;
         RailEntry Chat(JsonObject row, bool indent = false)
-            => new(RailKind.Chat, row["name"]!.ToString(), row["id"]!.ToString(), indent, Pinned(row), Archived(row));
+            => new(RailKind.Chat, row["name"]!.ToString(), row["id"]!.ToString(), indent, Pinned(row), Archived(row),
+                Working: row["id"]?.ToString() == (scheduledRun?.Chat ?? (runId is not null ? activityChatId : null)));
 
         var pinned = rows.Where(row => !Archived(row) && Pinned(row)).ToArray();
         if (pinned.Length > 0) {

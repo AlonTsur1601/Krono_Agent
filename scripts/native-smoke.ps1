@@ -36,6 +36,8 @@ public static class KronoWindowCapture {
     public static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
     [DllImport("user32.dll")]
     public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr window);
 }
 "@
 $script:process = $null
@@ -65,23 +67,18 @@ function Invoke([string]$Value, [switch]$ByName) { $element = Find $Value -ByNam
 function PressEnterOn([string]$Id) {
     $shell = New-Object -ComObject WScript.Shell
     # Activating the main window can take keyboard focus away from the open dialog.
-    if ($Id -notin @('AttachmentPath', 'CodeFontFamily', 'ScheduleFirstRun', 'ProviderEndpoint', 'ProviderKey', 'ModelSelector', 'TerminalInput', 'BrowserAddress', 'BrowserFindInput') -and !$shell.AppActivate($script:process.Id)) { throw 'Could not activate the app for keyboard input' }
+    if ($Id -notin @('AttachmentPath', 'ScheduleFirstRun', 'ProviderEndpoint', 'ProviderKey', 'ModelSelector', 'TerminalInput', 'BrowserAddress', 'BrowserFindInput') -and !$shell.AppActivate($script:process.Id)) { throw 'Could not activate the app for keyboard input' }
     if ($Id -eq 'PasswordInput') {
         (Find 'EmailInput').SetFocus()
         Start-Sleep -Milliseconds 150
         $shell.SendKeys('{TAB}')
         Start-Sleep -Milliseconds 150
-    } elseif ($Id -eq 'ModelSelector') {
-        $picker = Find $Id
-        $editType = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit)
-        $picker.FindFirst([Windows.Automation.TreeScope]::Descendants, $editType).SetFocus()
     } else {
         (Find $Id).SetFocus()
     }
     $shell.SendKeys('{ENTER}')
 }
 function SetValue([string]$Id, [string]$Value) { $element = Find $Id; $pattern = $element.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern); $pattern.SetValue($Value) }
-function SetEditableChoice([string]$Id, [string]$Value) { $element = Find $Id; $edit = $element.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit))); ($edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).SetValue($Value) }
 function SelectNav([string]$Name) {
     $element = Find $Name -ByName
     $pattern = $element.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)
@@ -96,12 +93,80 @@ function SelectSettingsCategory([string]$Name) {
     if (!$item) { throw "Settings category not found: $Name" }
     ($item.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)).Select()
 }
-function SelectChoice([string]$Id, [string]$Name) { $box = Find $Id; ($box.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand(); $item = Find $Name -ByName; ($item.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)).Select() }
+function SelectChoice([string]$Id, [string]$Name) {
+    $box = Find $Id
+    $popup = $box.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
+    $popup.Expand()
+    $condition = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, $Name)
+    $deadline = (Get-Date).AddSeconds(10)
+    do {
+        foreach ($item in $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)) {
+            $selection = $null
+            if (!$item.Current.IsOffscreen -and $item.Current.ClassName -like '*ComboBoxItem' -and $item.TryGetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern, [ref]$selection)) {
+                $selection.Select()
+                if ($popup.Current.ExpandCollapseState -eq [Windows.Automation.ExpandCollapseState]::Expanded) { $popup.Collapse() }
+                return
+            }
+        }
+        Start-Sleep -Milliseconds 100
+    } while ((Get-Date) -lt $deadline)
+    throw "Choice '$Name' did not appear in '$Id'"
+}
+function UseFixtureModel {
+    SelectNav 'Settings'
+    SelectSettingsCategory 'Models'
+    SetValue 'ProviderKey' 'fixture-provider-key'
+    Invoke 'Save key' -ByName
+    Find 'Show in the chat model picker' -ByName | Out-Null
+    SelectChoice 'ModelSelector' 'gpt-native-fixture-model'
+    Invoke 'Use model' -ByName
+}
+function OpenAdvancedModel {
+    Invoke 'Choose model' -ByName
+    Find 'Model options' -ByName | Out-Null
+    Invoke 'Advanced…' -ByName
+    Find 'ChatModelPicker' | Out-Null
+}
+function RightClick([string]$Id) {
+    $bounds = (Find $Id).Current.BoundingRectangle
+    if ($bounds.IsEmpty) { throw "No screen bounds for $Id" }
+    [KronoWindowCapture]::SetCursorPos([int]($bounds.Left + $bounds.Width / 2), [int]($bounds.Top + $bounds.Height / 2)) | Out-Null
+    [KronoWindowCapture]::mouse_event(8, 0, 0, 0, [UIntPtr]::Zero)
+    [KronoWindowCapture]::mouse_event(16, 0, 0, 0, [UIntPtr]::Zero)
+}
+function DragGameCell([int]$From, [int]$To) {
+    $source = (Find ('GameCell' + $From)).Current.BoundingRectangle
+    $target = (Find ('GameCell' + $To)).Current.BoundingRectangle
+    if ($source.IsEmpty -or $target.IsEmpty) { throw 'Puzzle squares do not have screen bounds' }
+    $x = $source.Left + $source.Width / 2
+    $y = $source.Top + $source.Height / 2
+    $dx = $target.Left + $target.Width / 2 - $x
+    $dy = $target.Top + $target.Height / 2 - $y
+    [KronoWindowCapture]::SetCursorPos([int]$x, [int]$y) | Out-Null
+    [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+    try {
+        foreach ($fraction in @(0.25, 0.5, 0.75, 1.0)) {
+            Start-Sleep -Milliseconds 30
+            [KronoWindowCapture]::SetCursorPos([int]($x + $dx * $fraction), [int]($y + $dy * $fraction)) | Out-Null
+        }
+    } finally { [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero) }
+}
+function WaitTicTurn {
+    $deadline = (Get-Date).AddSeconds(5)
+    do {
+        $state = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Tic-Tac-Toe').state
+        if ($null -ne $state -and $state.BotAt -eq 0) {
+            return (1..8 | Where-Object { $state.Board[$_] -eq 0 } | Select-Object -First 1)
+        }
+        Start-Sleep -Milliseconds 100
+    } while ((Get-Date) -lt $deadline)
+    throw 'Tic-tac-toe did not finish its bot turn'
+}
 function FindOptional([string]$Id) {
     $condition = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::AutomationIdProperty, $Id)
     try { $script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition) } catch { if ($_.FullyQualifiedErrorId -notmatch 'ElementNotAvailableException') { throw } }
 }
-function OpenGameTile([int]$Index, [string]$Choice = 'Continue saved game', [switch]$RequireChoice) {
+function OpenGameTile([int]$Index, [string]$Choice = 'Load save', [switch]$RequireChoice) {
     Invoke ('GameTile' + $Index)
     $deadline = (Get-Date).AddSeconds(8)
     do {
@@ -202,7 +267,17 @@ function TestWorkspaceInputs {
         if ($tip.Current.Name -match 'Ctrl\s*\+\s*F4') { throw 'The terminal close shortcut hint is still showing' }
     }
     Capture 'native-terminal-close-hover.png'
+    if ($env:KRONO_SMOKE_SCOPE -eq 'runtime-workspaces') {
+        Invoke 'Close tab' -ByName
+        SelectNav 'Chats'
+        SelectNav 'Terminal'
+        if (FindOptional 'TerminalOutput') { throw 'Terminal recreated its last closed tab' }
+        Invoke 'WorkspaceAddTab'
+        Find 'TerminalOutput' | Out-Null
+    }
     SelectNav 'Browser'
+    Find 'Search Google or enter an address' -ByName | Out-Null
+    1..3 | ForEach-Object { Invoke 'Reload' -ByName }
     Find 'Search Google or enter an address' -ByName | Out-Null
     Capture 'native-browser-new-tab.png'
     $deadline = (Get-Date).AddSeconds(30)
@@ -217,7 +292,7 @@ function TestWorkspaceInputs {
     $deadline = (Get-Date).AddSeconds(5)
     do { Start-Sleep -Milliseconds 100; $assertions = Invoke-RestMethod ($Fixture + '/assertions') } while (!$assertions.browserIsolated -and (Get-Date) -lt $deadline)
     if (!$assertions.browserIsolated) { throw 'Browser fixture did not prove host API / Node isolation' }
-    if ($env:KRONO_SMOKE_SCOPE -eq 'workspace-ui') {
+    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces')) {
         Invoke 'More options' -ByName
         Invoke 'Find on page' -ByName
         SetValue 'BrowserFindInput' 'WebView2'
@@ -248,11 +323,101 @@ try {
     $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
     if ($windowPattern.Current.WindowVisualState -ne [Windows.Automation.WindowVisualState]::Maximized) { throw 'Krono did not open maximized' }
     Find 'EmailInput' | Out-Null
-    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui')) {
+    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui')) {
         SetValue 'EmailInput' 'native-fixture@example.com'
         SetValue 'PasswordInput' 'fixture-password'
         Invoke 'LoginButton'
         Find 'Sign out' -ByName | Out-Null
+        if ($env:KRONO_SMOKE_SCOPE -eq 'runtime-workspaces') {
+            TestWorkspaceInputs
+            UseFixtureModel
+            SelectNav 'Chats'
+            SelectChoice 'Mode' 'agent'
+            SetValue 'Composer' 'NATIVE_BROWSER_PROOF'
+            Invoke 'Send' -ByName
+            Invoke 'Allow once' -ByName
+            Find 'AgentBrowserTab' | Out-Null
+            Invoke 'Allow once' -ByName
+            Find 'Native agent browser verified.' -ByName | Out-Null
+            $proof = Invoke-RestMethod ($Fixture + '/agent-browser-proof')
+            if (!$proof.agentBrowserRan -or !$proof.profilesSeparate -or !$proof.agentCookiePresent) { throw 'Agent browser visit, link follow, or profile isolation failed' }
+            Capture 'native-agent-browser-split.png'
+            SetValue 'Composer' 'NATIVE_COMMAND_PROOF'
+            Invoke 'Send' -ByName
+            Invoke 'Allow once' -ByName
+            Find 'Native command fixture response.' -ByName | Out-Null
+            Invoke 'Workspace' -ByName
+            $terminalName = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Terminal')
+            $deadline = (Get-Date).AddSeconds(5)
+            do {
+                $menuItem = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, $terminalName) |
+                    Where-Object { $_.Current.ControlType -eq [Windows.Automation.ControlType]::MenuItem } | Select-Object -First 1
+                if (!$menuItem) { Start-Sleep -Milliseconds 75 }
+            } while (!$menuItem -and (Get-Date) -lt $deadline)
+            if (!$menuItem) { throw 'The Terminal split action did not appear' }
+            ($menuItem.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)).Invoke()
+            $agentTerminal = Find 'TerminalOutput'
+            $agentOutput = $agentTerminal.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
+            if ($agentTerminal.Current.Name -ne 'Agent terminal' -or $agentOutput -notmatch 'native-command-proof' -or $agentOutput -notmatch '\b42\b') { throw 'The agent terminal did not show the real command and its output' }
+            Find 'Composer' | Out-Null
+            SetValue 'Composer' 'NATIVE_TRAY_PROOF'
+            Invoke 'Send' -ByName
+            $deadline = (Get-Date).AddSeconds(10)
+            do { $proof = Invoke-RestMethod ($Fixture + '/tray-proof'); Start-Sleep -Milliseconds 100 } while (!$proof.working -and (Get-Date) -lt $deadline)
+            if (!$proof.working) { throw 'Agent run never reached the provider before hiding to the tray' }
+            $hwnd = $script:process.MainWindowHandle
+            $windowPattern.Close()
+            $deadline = (Get-Date).AddSeconds(5)
+            while ([KronoWindowCapture]::IsWindowVisible($hwnd) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+            if ([KronoWindowCapture]::IsWindowVisible($hwnd) -or $script:process.HasExited) { throw 'The native window did not hide into the running tray instance' }
+            Invoke-RestMethod -Method Post ($Fixture + '/finish-tray-proof') | Out-Null
+            $deadline = (Get-Date).AddSeconds(10)
+            do { $proof = Invoke-RestMethod ($Fixture + '/tray-proof'); Start-Sleep -Milliseconds 100 } while (!$proof.completed -and (Get-Date) -lt $deadline)
+            if (!$proof.completed -or $script:process.HasExited -or [KronoWindowCapture]::IsWindowVisible($hwnd)) { throw 'The agent did not save its finished response while the app remained in the tray' }
+            Write-Output 'NATIVE_SMOKE_PASS: close last terminal, reopen PTY, reload blank tab, agent browser with separate session and complete agent response while hidden to tray'
+            return
+        }
+        if ($env:KRONO_SMOKE_SCOPE -eq 'plugins-ui') {
+            SelectNav 'Settings'
+            SelectSettingsCategory 'Plugins'
+            (Find 'Plugin-github').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+            Invoke 'PluginTest-github'
+            Find 'Save an access token before testing the connection.' -ByName | Out-Null
+            (Find 'Plugin-github').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse()
+            (Find 'Plugin-node').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+            Invoke 'PluginTest-node'
+            $deadline = (Get-Date).AddSeconds(5)
+            do {
+                $nodeStatus = (Find 'PluginStatus-node').Current.Name
+                if ($nodeStatus -match '^Bundled Node\.js [0-9]+\.') { break }
+                Start-Sleep -Milliseconds 100
+            } while ((Get-Date) -lt $deadline)
+            if ($nodeStatus -notmatch '^Bundled Node\.js [0-9]+\.') { throw 'The Node plugin did not reach its bundled runtime' }
+            Toggle 'PluginEnabled-node'
+            [IO.File]::WriteAllText((Join-Path $ReportDirectory 'package.json'), '{"name":"native-plugin-fixture","scripts":{"test":"node --test"}}')
+            UseFixtureModel
+            SelectNav 'Chats'
+            Invoke 'Projects' -ByName
+            Invoke 'New project' -ByName
+            SetValue 'ProjectName' 'Plugin fixture project'
+            Invoke 'Add folder…' -ByName
+            SetValue 'ProjectFolderPath' $ReportDirectory
+            Invoke 'Add folder' -ByName
+            Find 'Remove folder' -ByName | Out-Null
+            Invoke 'Save project' -ByName
+            Find 'Edit project' -ByName | Out-Null
+            Invoke 'Back to chat' -ByName
+            Invoke 'Project…' -ByName
+            SelectChoice 'ChatProjectSelector' 'Plugin fixture project'
+            Invoke 'Choose' -ByName
+            SelectChoice 'Mode' 'agent'
+            SelectChoice 'Permissions' 'project'
+            SetValue 'Composer' 'NATIVE_PLUGIN_PROOF'
+            Invoke 'Send' -ByName
+            Find 'Native Node plugin verified.' -ByName | Out-Null
+            Write-Output 'NATIVE_SMOKE_PASS: plugin Settings, local connection status and Node package tool through the agent'
+            return
+        }
         if ($env:KRONO_SMOKE_SCOPE -eq 'dropdown-ui') {
             foreach ($theme in @('light', 'dark', 'halloween')) {
                 SelectNav 'Settings'
@@ -319,9 +484,9 @@ try {
             }
             Capture 'compact-chat.png'
             Invoke 'Choose model' -ByName
-            Find 'Model and context' -ByName | Out-Null
+            Find 'Model options' -ByName | Out-Null
             Capture 'compact-model.png'
-            Invoke 'Cancel' -ByName
+            Invoke 'Done' -ByName
             SelectNav 'Chats'
             Invoke 'Projects' -ByName
             Find 'ProjectName' | Out-Null
@@ -350,23 +515,23 @@ try {
                     throw "$prefix font and size did not share a row"
                 }
             }
-            SetValue 'CodeFontFamily' 'Rubik'
-            PressEnterOn 'CodeFontFamily'
+            SelectChoice 'CodeFontFamily' 'Consolas'
             $deadline = (Get-Date).AddSeconds(5)
             do {
                 $font = (Invoke-RestMethod ($Fixture + '/font-proof')).codeFamily
-                if ($font -eq 'Rubik') { break }
+                if ($font -eq 'Consolas') { break }
                 Start-Sleep -Milliseconds 100
             } while ((Get-Date) -lt $deadline)
-            if ($font -ne 'Rubik') { throw 'Enter did not save the typography settings' }
+            if ($font -ne 'Consolas') { throw 'Choosing a font did not autosave the typography settings' }
+            UseFixtureModel
             SelectNav 'Scheduled tasks'
             Invoke '+ New task' -ByName
             SetValue 'ScheduleName' 'Schedule from Enter'
             SetValue 'SchedulePrompt' 'Keyboard submission fixture'
             (Find 'ScheduleModelOptions').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
             SelectChoice 'ScheduleProvider' 'OpenAI'
-            SetValue 'ScheduleModel' 'native-fixture-model'
-            SetValue 'ScheduleFirstRun' ((Get-Date).AddDays(1).ToString('yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture))
+            SelectChoice 'ScheduleModel' 'gpt-native-fixture-model'
+            SetValue 'ScheduleFirstRun' ((Get-Date).AddDays(1).ToString('yyyy-MM-dd, HH:mm', [Globalization.CultureInfo]::InvariantCulture))
             PressEnterOn 'ScheduleFirstRun'
             $deadline = (Get-Date).AddSeconds(5)
             do {
@@ -405,7 +570,7 @@ try {
             SelectChoice 'Provider' 'Ollama'
             $modelVisibility = (Find 'local-fixture-model' -ByName).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
             if ($modelVisibility.Current.ToggleState -ne [Windows.Automation.ToggleState]::Off) { throw 'Model visibility did not persist per provider' }
-            SetEditableChoice 'ModelSelector' 'native-keyboard-model'
+            SelectChoice 'ModelSelector' 'native-keyboard-model'
             PressEnterOn 'ModelSelector'
             SelectNav 'Chats'
             Find 'native-keyboard-model' -ByName | Out-Null
@@ -414,8 +579,8 @@ try {
         }
         if ($env:KRONO_SMOKE_SCOPE -eq 'menus-ui') {
             Invoke 'Choose model' -ByName
-            Find 'Model and context' -ByName | Out-Null
-            Find 'Apply' -ByName | Out-Null
+            Find 'Model options' -ByName | Out-Null
+            Find 'Advanced…' -ByName | Out-Null
             Capture 'native-model-dialog.png'
             if (!(New-Object -ComObject WScript.Shell).AppActivate($script:process.Id)) { throw "Could not activate the popup for pointer input" }
             $bounds = $script:window.Current.BoundingRectangle
@@ -423,7 +588,7 @@ try {
             [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
             [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
             Start-Sleep -Milliseconds 350
-            $dialogTitle = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Model and context')
+            $dialogTitle = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Model options')
             if ($script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, $dialogTitle)) { throw 'Clicking the popup scrim did not cancel the dialog' }
             Find 'Composer' | Out-Null
             Write-Output 'NATIVE_SMOKE_PASS: clicking outside the model dialog returns to the composer'
@@ -540,21 +705,14 @@ try {
         Capture ('native-dropdown-' + $appearance + '.png')
         $popup.Collapse()
     }
-    SelectSettingsCategory 'Models'
-    SetValue 'ProviderKey' 'fixture-provider-key'
-    Invoke 'Save key' -ByName
-    $model = Find 'ModelSelector'
-    $edit = $model.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit)))
-    ($edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).SetValue('native-fixture-model')
-    Invoke 'Use model' -ByName
+    UseFixtureModel
     SelectNav 'Chats'
-    Invoke 'native-fixture-model' -ByName
-    Find 'Model and context' -ByName | Out-Null
+    OpenAdvancedModel
     if ($env:KRONO_SMOKE_SCOPE -eq 'account-ui') { Capture 'native-model-dialog.png' }
-    SetEditableChoice 'ChatModelPicker' 'native-fixture-model'
+    SelectChoice 'ChatModelPicker' 'gpt-native-fixture-model'
     SelectChoice 'Conversationcontext' 'Recent messages'
     Invoke 'Apply' -ByName
-    Find 'native-fixture-model' -ByName | Out-Null
+    Find 'gpt-native-fixture-model' -ByName | Out-Null
     SetValue 'Composer' 'Native test message'
     Invoke 'Send' -ByName
     $deadline = (Get-Date).AddSeconds(15)
@@ -594,11 +752,14 @@ try {
     Invoke 'Move' -ByName
     WaitForChatProject 'Native fixture project'
     if ($env:KRONO_SMOKE_SCOPE -eq 'account-ui') {
-        Invoke 'native-fixture-model' -ByName
+        OpenAdvancedModel
         SelectChoice 'ChatModelPicker' 'gpt-5-mini'
-        SelectChoice 'Reasoningeffort' 'high'
         Invoke 'Apply' -ByName
         Find 'gpt-5-mini' -ByName | Out-Null
+        Invoke 'Choose model' -ByName
+        $effort = (Find 'Reasoning effort' -ByName).GetCurrentPattern([Windows.Automation.RangeValuePattern]::Pattern)
+        $effort.SetValue($effort.Current.Maximum)
+        Invoke 'Done' -ByName
         Invoke-RestMethod -Method Post ($Fixture + '/seed-chat-history') | Out-Null
         SetValue 'Composer' 'Verify the selected reasoning effort'
         Invoke 'Send' -ByName
@@ -652,7 +813,6 @@ try {
     $deadline = (Get-Date).AddSeconds(10)
     do { Start-Sleep -Milliseconds 200; $connected = (Find 'ProviderConnectionStatus').Current.Name } while ($connected -notmatch '^Connected' -and (Get-Date) -lt $deadline)
     if ($connected -notmatch '^Connected') { throw 'Native local endpoint connection test failed' }
-    if (FindOptional 'ModelSelector') { throw 'Model settings should be hidden for a provider without a key' }
     SetValue 'ProviderKey' 'fixture-local-placeholder'
     Invoke 'Save key' -ByName
     Invoke 'Load available models' -ByName
@@ -679,7 +839,7 @@ try {
     SelectSettingsCategory 'Models'
     $toggle = (Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
     $toggle.Toggle()
-    SetEditableChoice 'ModelSelector' 'basic-fixture-model'
+    SelectChoice 'ModelSelector' 'basic-fixture-model'
     Invoke 'Use model' -ByName
     if ((Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne [Windows.Automation.ToggleState]::Off) { throw 'Tool capability leaked from model A to model B' }
     SelectNav 'Chats'
@@ -690,15 +850,14 @@ try {
     if (!$assertions.localModelBNoTools) { throw 'Model B received tools despite its disabled capability' }
     SelectNav 'Settings'
     SelectSettingsCategory 'Models'
-    SetEditableChoice 'ModelSelector' 'local-fixture-model'
+    SelectChoice 'ModelSelector' 'local-fixture-model'
     Invoke 'Use model' -ByName
     $toggle = (Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
     if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw 'Model A lost its explicit tool capability' }
     $toggle.Toggle()
     SelectChoice 'Provider' 'OpenAI'
-    $model = Find 'ModelSelector'
-    $edit = $model.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit)))
-    if (($edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).Current.Value -ne 'native-fixture-model') { throw 'Provider switching lost its model selection' }
+    $selected = (Find 'ModelSelector').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
+    if ($selected.Count -ne 1 -or $selected[0].Current.Name -ne 'gpt-native-fixture-model') { throw 'Provider switching lost its model selection' }
     foreach ($cloudProfile in @(@{Id='azure';Name='Azure OpenAI'},@{Id='xai';Name='xAI'},@{Id='groq';Name='Groq'},@{Id='mistral';Name='Mistral'},@{Id='openrouter';Name='OpenRouter'})) {
         SelectNav 'Settings'
         SelectSettingsCategory 'Models'
@@ -771,8 +930,9 @@ try {
     do { Start-Sleep -Milliseconds 200; $proof = Invoke-RestMethod ($Fixture + '/side-proof') } while ($proof.queued -gt 0 -and (Get-Date) -lt $deadline)
     if ($proof.queued -ne 0 -or $proof.transferred -ne 1) { throw 'Side transfer did not append after the safe boundary' }
     Find 'Response ready' -ByName | Out-Null
-    Invoke 'GameCell1'
-    Find 'Cell 2: X' -ByName | Out-Null
+    $ticCell = WaitTicTurn
+    Invoke ('GameCell' + $ticCell)
+    Find ('Cell ' + ($ticCell + 1) + ': X') -ByName | Out-Null
     Capture 'native-game-agent-ready.png'
     Invoke 'Open chat' -ByName
     Invoke 'Side chat' -ByName
@@ -823,10 +983,10 @@ try {
             if ((Find 'GameCell0').Current.Name -ne 'Cell 1: X') { throw 'Native tic-tac-toe did not apply the move' }
         }
         if ($game -eq 'Minesweeper') {
-            Toggle 'MineFlagMode'
-            Invoke 'GameCell63'
-            if ((Find 'GameCell63').Current.Name -notmatch 'flagged$') { throw 'Minesweeper flag tool did not mark the tile' }
-            Toggle 'MineFlagMode'
+            RightClick 'GameCell63'
+            $deadline = (Get-Date).AddSeconds(2)
+            while ((Find 'GameCell63').Current.Name -notmatch 'flagged$' -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+            if ((Find 'GameCell63').Current.Name -notmatch 'flagged$') { throw 'Minesweeper right click did not mark the tile' }
             Invoke 'GameCell0'
             if ((Find 'GameStatus').Current.Name -match '^Score 0$') { throw 'Native minesweeper did not reveal the first cell' }
             if ((Find 'GameCell0').Current.Name -notmatch ': [0-8]$') { throw 'Minesweeper did not expose its dug count' }
@@ -840,8 +1000,15 @@ try {
             Invoke 'GameCell0'
             if ((Find 'GameCell0').Current.Name -eq 'Cell 1: ?') { throw 'Native memory game did not reveal a card' }
         }
-        if ($game -eq '2048') { Invoke 'Move left' -ByName }
-        if ($game -eq 'Breakout') { Capture 'native-breakout.png' }
+        if ($game -eq '2048') {
+            foreach ($direction in @('Move left', 'Move right', 'Move up', 'Move down')) {
+                Invoke $direction -ByName
+                if ((Invoke-RestMethod ($Fixture + '/game-proof')).saves.game -contains '2048') { break }
+            }
+        }
+        if ($game -eq 'Breakout') { Invoke 'Move left' -ByName; Capture 'native-breakout.png' }
+        if ($game -eq 'Pong') { Invoke 'Move up' -ByName }
+        if ($game -eq 'Snake') { Invoke 'Move right' -ByName }
         if ($game -eq 'Lights Out') {
             $initial = @(0..24 | ForEach-Object { [int]((Find ('GameCell' + $_)).Current.Name -match ': on$') })
             $solution = $null
@@ -890,8 +1057,17 @@ try {
             $odd = $tiles | Group-Object Shade | Where-Object Count -eq 1
             if (!$odd) { throw 'Odd Color did not generate exactly one different tile' }
             Invoke ('GameCell' + $odd.Group[0].Index)
-            if ((Find 'GameStatus').Current.Name -notmatch '^Shade 2/20 · Score 100') { throw 'Odd Color did not advance or score the correct choice' }
+            if ((Find 'GameStatus').Current.Name -notmatch '^Shade 2 · Score 100') { throw 'Odd Color did not advance or score the correct choice' }
             Capture 'native-odd-color.png'
+            Invoke 'Restart' -ByName
+            Invoke 'GameLibraryBack'
+            Invoke-RestMethod -Method Post ($Fixture + '/odd-color-round-20') | Out-Null
+            OpenGameTile 10 -RequireChoice
+            Invoke 'Pause / resume' -ByName
+            $color = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Odd Color').state
+            if ($color.OddRound -ne 20) { throw 'Reopening Odd Color replaced its saved fixture progress' }
+            Invoke ('GameCell' + $color.OddCell)
+            if ((Find 'GameStatus').Current.Name -notmatch '^Shade 21 · Score 2000') { throw 'Odd Color stopped at its previous twenty-round cap' }
             $tiles = @(0..15 | ForEach-Object { [pscustomobject]@{ Index = $_; Shade = ((Find ('GameCell' + $_)).Current.Name -split ': ')[1] } })
             $common = $tiles | Group-Object Shade | Where-Object Count -gt 1
             Invoke ('GameCell' + $common.Group[0].Index)
@@ -910,22 +1086,24 @@ try {
         }
         if ($game -eq 'Reversi') {
             if ((Find 'GameCell19').Current.Name -notmatch 'playable$') { throw 'Reversi did not show a legal opening move' }
-            Invoke 'GameCell0'
-            if ((Find 'GameCell0').Current.Name -notmatch 'empty$') { throw 'Reversi accepted an illegal corner' }
+            if ((Find 'GameCell0').Current.ControlType -eq [Windows.Automation.ControlType]::Button) { throw 'Reversi offered an illegal move' }
             Invoke 'GameCell19'
             if ((Find 'GameCell19').Current.Name -notmatch 'coral$') { throw 'Reversi did not apply the opening move' }
             Capture 'native-reversi.png'
         }
         if ($game -eq 'Sudoku') {
-            $sudoku = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Sudoku').state
-            $square = (0..80 | Where-Object { !$sudoku.Clues[$_] -and @($sudoku.Sudoku[([int][Math]::Floor($_ / 9) * 9)..([int][Math]::Floor($_ / 9) * 9 + 8)] | Where-Object { $_ -gt 0 }).Count -gt 0 } | Select-Object -First 1)
+            $sudoku = @(0..80 | ForEach-Object {
+                $name = (Find ('GameCell' + $_)).Current.Name
+                if ($name -match ': ([1-9]) fixed$') { [int]$Matches[1] } else { 0 }
+            })
+            $square = 0..80 | Where-Object { $sudoku[$_] -eq 0 -and @($sudoku[([int][Math]::Floor($_ / 9) * 9)..([int][Math]::Floor($_ / 9) * 9 + 8)] | Where-Object { $_ -gt 0 }).Count -gt 0 } | Select-Object -First 1
             $row = [int][Math]::Floor($square / 9)
-            $conflict = $sudoku.Sudoku[($row * 9)..($row * 9 + 8)] | Where-Object { $_ -gt 0 } | Select-Object -First 1
+            $conflict = $sudoku[($row * 9)..($row * 9 + 8)] | Where-Object { $_ -gt 0 } | Select-Object -First 1
             Invoke ('GameCell' + $square)
             Invoke ('SudokuDigit' + $conflict)
             if ((Find 'GameStatus').Current.Name -notmatch 'conflicts') { throw 'Sudoku accepted a conflicting row digit' }
             $column = $square % 9
-            $used = @(0..80 | Where-Object { $_ % 9 -eq $column -or [Math]::Floor($_ / 9) -eq $row -or ([Math]::Floor(($_ % 9) / 3) -eq [Math]::Floor($column / 3) -and [Math]::Floor($_ / 27) -eq [Math]::Floor($square / 27)) } | ForEach-Object { $sudoku.Sudoku[$_] })
+            $used = @(0..80 | Where-Object { $_ % 9 -eq $column -or [Math]::Floor($_ / 9) -eq $row -or ([Math]::Floor(($_ % 9) / 3) -eq [Math]::Floor($column / 3) -and [Math]::Floor($_ / 27) -eq [Math]::Floor($square / 27)) } | ForEach-Object { $sudoku[$_] })
             $valid = 1..9 | Where-Object { $_ -notin $used } | Select-Object -First 1
             Invoke ('SudokuDigit' + $valid)
             if ((Find ('GameCell' + $square)).Current.Name -ne ('Square ' + ($square + 1) + ': ' + $valid)) { throw 'Sudoku rejected a legal digit' }
@@ -973,11 +1151,21 @@ try {
             Capture 'native-darts.png'
         }
         if ($game -eq 'Jigsaw') {
-            $firstPiece = ((Find 'GameCell0').Current.Name -split 'Piece ')[1]
-            $secondPiece = ((Find 'GameCell1').Current.Name -split 'Piece ')[1]
-            Invoke 'GameCell0'
-            Invoke 'GameCell1'
-            if ((Find 'GameCell0').Current.Name -ne ('Tile 1 · Piece ' + $secondPiece) -or (Find 'GameCell1').Current.Name -ne ('Tile 2 · Piece ' + $firstPiece)) { throw 'Jigsaw did not exchange pieces' }
+            $emptyTiles = @(0..15 | Where-Object { (Find ('GameCell' + $_)).Current.Name -eq 'Empty square' })
+            if ($emptyTiles.Count -ne 1) { throw 'Jigsaw did not expose a single empty square' }
+            $blank = $emptyTiles[0]
+            $adjacent = @(0..15 | Where-Object { [Math]::Abs($_ % 4 - $blank % 4) + [Math]::Abs([Math]::Floor($_ / 4) - [Math]::Floor($blank / 4)) -eq 1 })
+            $distant = 0..15 | Where-Object { $_ -ne $blank -and $_ -notin $adjacent } | Select-Object -First 1
+            DragGameCell $distant $blank
+            if ((Find ('GameCell' + $blank)).Current.Name -ne 'Empty square') { throw 'Jigsaw accepted a nonadjacent drag' }
+            DragGameCell $adjacent[0] $blank
+            $deadline = (Get-Date).AddSeconds(3)
+            do {
+                $puzzle = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Jigsaw').state
+                if ($puzzle.Moves -eq 1) { break }
+                Start-Sleep -Milliseconds 100
+            } while ((Get-Date) -lt $deadline)
+            if ($puzzle.Moves -ne 1 -or (Find ('GameCell' + $adjacent[0])).Current.Name -ne 'Empty square') { throw 'Jigsaw did not slide the adjacent piece' }
             Capture 'native-jigsaw.png'
         }
         if ($game -eq 'Block Fit') {
@@ -1010,9 +1198,8 @@ try {
     if (!(Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-session.bin'))) { throw 'Encrypted session missing' }
     SelectNav 'Settings'
     SelectSettingsCategory 'Appearance'
-    SetValue 'TextFontFamily' 'Space Grotesk'
-    SetValue 'CodeFontFamily' 'Rubik'
-    Invoke 'Save typography' -ByName
+    SelectChoice 'TextFontFamily' 'Space Grotesk'
+    SelectChoice 'CodeFontFamily' 'Consolas'
     SelectNav 'Chats'
     SetValue 'Composer' 'Typography sample'
     $font = (Find 'Composer').GetCurrentPattern([Windows.Automation.TextPattern]::Pattern).DocumentRange.GetAttributeValue([Windows.Automation.TextPattern]::FontNameAttribute)
@@ -1020,13 +1207,12 @@ try {
     SetValue 'Composer' ''
     SelectNav 'Terminal'
     $font = (Find 'TerminalOutput').GetCurrentPattern([Windows.Automation.TextPattern]::Pattern).DocumentRange.GetAttributeValue([Windows.Automation.TextPattern]::FontNameAttribute)
-    if ($font -notmatch 'Rubik') { throw ('Cached terminal did not update its independent code font: ' + $font) }
+    if ($font -notmatch 'Consolas') { throw ('Cached terminal did not update its independent code font: ' + $font) }
     Capture 'native-typography-roles.png'
     SelectNav 'Settings'
     SelectSettingsCategory 'Appearance'
-    SetValue 'TextFontFamily' 'Rubik'
-    SetValue 'CodeFontFamily' 'JetBrains Mono'
-    Invoke 'Save typography' -ByName
+    SelectChoice 'TextFontFamily' 'Rubik'
+    SelectChoice 'CodeFontFamily' 'JetBrains Mono'
     SelectNav 'Chats'
     Invoke 'Side chat' -ByName
     Find 'SideComposer' | Out-Null
@@ -1040,8 +1226,7 @@ try {
     if ($proof.sideCount -ne 0 -or !$proof.kept) { throw 'Startup did not purge expired side chats while preserving kept history' }
     SelectNav 'Settings'
     SelectSettingsCategory 'Appearance'
-    Find 'TextFontSize' | Out-Null
-    Invoke 'Save typography' -ByName
+    SelectChoice 'CodeFontFamily' 'Consolas'
     $fontProof = Invoke-RestMethod ($Fixture + '/font-proof')
     if ($fontProof.text -ne '14' -or $fontProof.code -ne '14') { throw 'Non-finite font sizes prevented recovery to valid defaults' }
     $savedGames = (Invoke-RestMethod ($Fixture + '/game-proof')).saves
@@ -1053,10 +1238,12 @@ try {
     OpenGameTile 1 -RequireChoice
     if ((Find 'GameStatus').Current.Name -notmatch '^Paused') { throw 'Restored game started without resume consent' }
     if ((Find 'GameCell0').Current.Name -ne 'Cell 1: X') { throw 'Tic-tac-toe move was lost across process restart' }
-    Invoke 'GameCell1'
-    if ((Find 'GameCell1').Current.Name -eq 'Cell 2: X') { throw 'Paused game accepted a move' }
+    $pausedCell = 1..8 | Where-Object { (Find ('GameCell' + $_)).Current.Name -match 'empty$' } | Select-Object -First 1
+    $pausedSquare = Find ('GameCell' + $pausedCell)
+    if ($pausedSquare.Current.IsEnabled -and $pausedSquare.Current.ControlType -eq [Windows.Automation.ControlType]::Button) { Invoke ('GameCell' + $pausedCell) }
+    if ((Find ('GameCell' + $pausedCell)).Current.Name -notmatch 'empty$') { throw 'Paused game accepted a move' }
     Invoke 'Pause / resume' -ByName
-    $empty = 1..8 | Where-Object { (Find ('GameCell' + $_)).Current.Name -match 'empty$' } | Select-Object -First 1
+    $empty = WaitTicTurn
     Invoke ('GameCell' + $empty)
     if ((Find ('GameCell' + $empty)).Current.Name -ne ('Cell ' + ($empty + 1) + ': X')) { throw 'Resumed game did not accept input' }
     foreach ($game in @('2048','Minesweeper','Memory Match','Lights Out','Simon','Odd Color','Orbit')) {
@@ -1112,15 +1299,18 @@ try {
     if ((Find 'GameStatus').Current.Name -notmatch '^Nine darts thrown') { throw 'Darts did not complete nine throws' }
     SelectGame 'Jigsaw'
     $pieces = [int[]](($savedGames | Where-Object game -eq 'Jigsaw').state.Board[0..15])
-    if ((Find 'GameCell0').Current.Name -ne ('Tile 1 · Piece ' + ($pieces[0] + 1))) { throw 'Jigsaw board was lost across restart' }
-    Invoke 'Pause / resume' -ByName
     for ($i = 0; $i -lt 16; $i++) {
-        if ($pieces[$i] -eq $i) { continue }
-        $other = [Array]::IndexOf($pieces, $i)
-        Invoke ('GameCell' + $i)
-        Invoke ('GameCell' + $other)
-        $pieces[$other] = $pieces[$i]; $pieces[$i] = $i
+        $expected = if ($pieces[$i] -eq 15) { 'Empty square' } else { 'Tile ' + ($i + 1) + ' · Piece ' + ($pieces[$i] + 1) }
+        if ((Find ('GameCell' + $i)).Current.Name -ne $expected) { throw 'Jigsaw board was lost across restart' }
     }
+    Invoke 'Restart' -ByName
+    Invoke 'GameLibraryBack'
+    Invoke-RestMethod -Method Post ($Fixture + '/jigsaw-endgame') | Out-Null
+    OpenGameTile 19 -RequireChoice
+    Invoke 'Pause / resume' -ByName
+    DragGameCell 15 14
+    $deadline = (Get-Date).AddSeconds(3)
+    while ((Find 'GameStatus').Current.Name -notmatch '^Picture complete' -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
     if ((Find 'GameStatus').Current.Name -notmatch '^Picture complete') { throw 'Jigsaw did not recognize the solved picture' }
     SelectGame 'Block Fit'
     $savedFit = ($savedGames | Where-Object game -eq 'Block Fit').state
@@ -1140,6 +1330,7 @@ try {
     SelectGame 'Solitaire'
     if ((Find 'SolWaste').Current.Name -ne $wasteName) { throw 'Solitaire waste was lost across restart' }
     SelectGame 'Snake'
+    $untouchedSnake = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
     Invoke 'Restart' -ByName
     $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
     $windowPattern.SetWindowVisualState([Windows.Automation.WindowVisualState]::Minimized)
@@ -1150,6 +1341,7 @@ try {
     $beforeSnake = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
     Start-Sleep -Seconds 2
     $afterSnake = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
+    if ($afterSnake.Tick -ne $untouchedSnake.Tick -or ($afterSnake.Snake -join ',') -ne ($untouchedSnake.Snake -join ',')) { throw 'Restarting then leaving an untouched game replaced its saved progress' }
     if ($beforeSnake.Tick -ne $afterSnake.Tick) { throw 'Hidden moving game continued ticking' }
     Invoke-RestMethod -Method Post ($Fixture + '/corrupt-game') | Out-Null
     Invoke-RestMethod -Method Post ($Fixture + '/solitaire-endgame') | Out-Null
@@ -1158,6 +1350,7 @@ try {
     Find 'Sign out' -ByName | Out-Null
     SelectNav 'Games'
     OpenGameTile 0
+    Invoke 'Move right' -ByName
     $repaired = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
     if ($repaired.Version -ne 1 -or $repaired.Snake.Count -ne 3) { throw 'Invalid game save did not recover safely' }
     Capture 'native-restored-game.png'
@@ -1233,8 +1426,8 @@ try {
     SetValue 'SchedulePrompt' 'NATIVE_SCHEDULE_PROOF'
     (Find 'ScheduleModelOptions').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
     SelectChoice 'ScheduleProvider' 'OpenAI'
-    SetValue 'ScheduleModel' 'native-fixture-model'
-    SetValue 'ScheduleFirstRun' ((Get-Date).AddDays(-1).ToString('yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture))
+    SelectChoice 'ScheduleModel' 'gpt-native-fixture-model'
+    SetValue 'ScheduleFirstRun' ((Get-Date).AddDays(-1).ToString('yyyy-MM-dd, HH:mm', [Globalization.CultureInfo]::InvariantCulture))
     PressEnterOn 'ScheduleFirstRun'
     if (@((Invoke-RestMethod ($Fixture + '/schedule-proof')).runs).Count -ne 0) { throw 'Scheduled task ran before opting in' }
     Toggle 'ScheduleEnabled'

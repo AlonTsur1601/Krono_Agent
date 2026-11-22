@@ -17,5 +17,5 @@ public static class ProviderCatalog
     }
     public static string Name(string id) => Direct.TryGetValue(id, out var name) ? name : Profiles[id]?["name"]?.ToString() ?? id;
     public static string Endpoint(string id) => Compatible(id) ? Profiles[id]?["endpoint"]?.ToString() ?? "" : "";
-    public static string Help(string id) => Compatible(id) ? Profiles[id]?["help"]?.ToString() ?? "" : "Enter your provider's API key, load its current models or enter an exact model ID, then choose Use model. Usage follows your provider account.";
+    public static string Help(string id) => Compatible(id) ? Profiles[id]?["help"]?.ToString() ?? "" : "Save your provider’s API key and choose one of its available models.";
 }

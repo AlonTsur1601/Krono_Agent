@@ -68,6 +68,7 @@ export const runCommandTool: ToolDefinition = {
         const windows = process.platform === 'win32'
         const system = join(process.env.SystemRoot || 'C:\\Windows', 'System32')
         const child = spawn(windows ? join(system, 'WindowsPowerShell', 'v1.0', 'powershell.exe') : '/bin/sh', windows ? ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(windowsWrapper, 'utf16le').toString('base64')] : ['-s'], { cwd, env, windowsHide: true, detached: !windows, stdio: ['pipe', 'pipe', 'pipe'] })
+        context.emitProgress({ terminalPhase: 'start', message: `PS ${cwd}> ${config.command}` })
         let settled = false, cancelled = false, timedOut = false
         const terminate = () => {
           if (settled || !child.pid) return
@@ -78,7 +79,9 @@ export const runCommandTool: ToolDefinition = {
         const timer = setTimeout(() => { timedOut = true; terminate() }, config.timeout_ms)
         const finish = (code: number | null, error?: string) => {
           if (settled) return; settled = true; clearTimeout(timer); context.signal?.removeEventListener('abort', abort)
-          resolveResult({ success: code === 0 && !cancelled && !timedOut && !error, output: `Exit code: ${code ?? 'terminated'}\nSTDOUT:\n${stdout.finish()}\nSTDERR:\n${stderr.finish()}`, ...(error || cancelled || timedOut || code !== 0 ? { error: error || (cancelled ? 'Command cancelled' : timedOut ? 'Command timed out' : 'Command exited unsuccessfully') } : {}) })
+          const output = `Exit code: ${code ?? 'terminated'}\nSTDOUT:\n${stdout.finish()}\nSTDERR:\n${stderr.finish()}`
+          context.emitProgress({ terminalPhase: 'finish', message: output })
+          resolveResult({ success: code === 0 && !cancelled && !timedOut && !error, output, ...(error || cancelled || timedOut || code !== 0 ? { error: error || (cancelled ? 'Command cancelled' : timedOut ? 'Command timed out' : 'Command exited unsuccessfully') } : {}) })
         }
         child.stdout.on('data', buffer => stdout.write(buffer)); child.stderr.on('data', buffer => stderr.write(buffer))
         child.stdin.on('error', () => { /* close/error settles the result */ })

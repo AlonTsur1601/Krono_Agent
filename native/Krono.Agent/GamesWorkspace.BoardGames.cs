@@ -36,7 +36,7 @@ public sealed partial class GamesWorkspace
         if (game == Solitaire) cards = KlondikeRound.Deal(random);
     }
     void FillTray() { blocks.Tray = Enumerable.Range(0, 3).Select(_ => random.Next(BlockRules.FitCount)).ToArray(); blocks.Selected = 0; }
-    void PickFit(int slot) { if (paused || ended || slot is < 0 or >= 3 || blocks.Tray[slot] < 0) return; blocks.Selected = slot; gameMessage = ""; Draw(); SaveCurrent(); }
+    void PickFit(int slot) { if (paused || ended || slot is < 0 or >= 3 || blocks.Tray[slot] < 0) return; blocks.Selected = slot; gameMessage = ""; Draw(); SaveCurrent(false); }
     void PlaceFit(int index)
     {
         if (paused || ended) return;
@@ -79,7 +79,7 @@ public sealed partial class GamesWorkspace
         if (game == SandBlocks) { blocks.Settling = true; return; }
         var filled = Enumerable.Range(0, FallingHeight).Where(row => Enumerable.Range(0, FallingWidth).All(col => blocks.Grid[row*FallingWidth+col] > 0)).Select(row => (120.0,row*24.0,240.0,24.0)).ToArray();
         var lines = BlockRules.ClearRows(blocks.Grid, FallingWidth, FallingHeight); score += linePoints[Math.Min(4, lines)] * (1 + blocks.Lines / 10); blocks.Lines += lines;
-        if (lines > 0) ClearGlow(filled);
+        if (lines > 0) { PlayGameSound(GameSound.Click); ClearGlow(filled); }
         SpawnBlock();
     }
     void MoveBlock(int x, int y)
@@ -201,6 +201,10 @@ public sealed partial class GamesWorkspace
             var index = i; var button = new Button { Style = (Style)Application.Current.Resources["KronoButton"], Width = 56, Height = 56, Padding = new Thickness(0), CornerRadius = new CornerRadius(8), Background = board[i] == 0 ? Ink(0x23364f) : PieceBrush(board[i]), BorderBrush = board[i] == 0 ? Ink(0x344b67) : BlockShine, BorderThickness = new Thickness(board[i] == 0 ? 1 : 3) };
             StyleGamePiece(button);
             AutomationProperties.SetAutomationId(button, "GameCell" + i); AutomationProperties.SetName(button, $"Square {i + 1}: {(board[i] > 0 ? "filled" : "empty")}"); button.Click += (_, _) => PlaceFit(index);
+            button.PointerEntered += (_, _) => ShowFitPreview(index);
+            button.PointerExited += (_, _) => effects.Children.Clear();
+            button.GotFocus += (_, _) => ShowFitPreview(index);
+            button.LostFocus += (_, _) => effects.Children.Clear();
             Canvas.SetLeft(button, i % 8 * 60 + 2); Canvas.SetTop(button, i / 8 * 60 + 2); canvas.Children.Add(button);
         }
         fitTray.Children.Clear();
@@ -209,6 +213,23 @@ public sealed partial class GamesWorkspace
             if (piece >= 0) foreach (var cell in BlockRules.Fit(piece)) { var square = new Microsoft.UI.Xaml.Shapes.Rectangle { Width = 12, Height = 12, RadiusX = 3, RadiusY = 3, Fill = PieceBrush(piece % 7 + 1) }; Canvas.SetLeft(square, 6 + cell.X * 14); Canvas.SetTop(square, 2 + cell.Y * 14); preview.Children.Add(square); }
             var button = new Button { Content = preview, IsEnabled = !paused && !ended && piece >= 0, BorderThickness = new Thickness(2), BorderBrush = slot == blocks.Selected ? ReadableAccent : Muted };
             AutomationProperties.SetAutomationId(button, "FitPiece" + i); AutomationProperties.SetName(button, $"Piece {i + 1}{(i == blocks.Selected ? " selected" : "")}{(piece < 0 ? " used" : "")}"); button.Click += (_, _) => PickFit(slot); fitTray.Children.Add(button);
+        }
+    }
+    void ShowFitPreview(int index)
+    {
+        effects.Children.Clear();
+        if (ended || paused || blocks.Selected < 0 || blocks.Tray[blocks.Selected] < 0) return;
+        var shape = BlockRules.Fit(blocks.Tray[blocks.Selected]);
+        var x = index % 8;
+        var y = index / 8;
+        var canPlace = BlockRules.CanPlace(board, 8, 8, shape, x, y);
+        foreach (var cell in shape) {
+            if (x + cell.X >= 8 || y + cell.Y >= 8 || x + cell.X < 0 || y + cell.Y < 0) continue;
+            var ghost = new Microsoft.UI.Xaml.Shapes.Rectangle { Width = 54, Height = 54, RadiusX = 7, RadiusY = 7,
+                Fill = canPlace ? Mint : Ink(0xff7a83), Opacity = .45, IsHitTestVisible = false };
+            Canvas.SetLeft(ghost, (x + cell.X) * 60 + 3);
+            Canvas.SetTop(ghost, (y + cell.Y) * 60 + 3);
+            effects.Children.Add(ghost);
         }
     }
     void DrawSolitaire()

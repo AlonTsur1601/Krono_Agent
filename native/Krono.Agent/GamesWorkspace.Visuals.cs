@@ -18,12 +18,19 @@ public sealed partial class GamesWorkspace
     readonly Canvas effects = new() { Width = 480, Height = 480, IsHitTestVisible = false };
     readonly TextBlock scoreReadout = new() { FontSize = 21, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
     readonly TextBlock pointsGain = new() { FontSize = 13, Opacity = 0 };
-    readonly ToggleButton flagMode = new() { Content = "Place flags", HorizontalAlignment = HorizontalAlignment.Center };
     int shownScore = -1;
     Canvas? playTexture;
     int textureGame = -1;
     static readonly string[] MemorySymbols = ["✦", "◆", "☽", "✿", "●", "▲", "✚", "♥"];
-    static SolidColorBrush Ink(int color) => new(Color.FromArgb(255, (byte)(color >> 16), (byte)(color >> 8), (byte)color));
+    static class InkCache { internal static readonly Dictionary<int, SolidColorBrush> Brushes = new(); }
+    static SolidColorBrush Ink(int color)
+    {
+        var inks = InkCache.Brushes;
+        if (inks.TryGetValue(color, out var brush)) return brush;
+        brush = new(Color.FromArgb(255, (byte)(color >> 16), (byte)(color >> 8), (byte)color));
+        if (inks.Count < 512) inks[color] = brush;
+        return brush;
+    }
     static readonly SolidColorBrush[] MineNumbers = [Ink(0x6d5b45), Ink(0x245390), Ink(0x2f672b), Ink(0xa33635), Ink(0x59317b), Ink(0x873b25), Ink(0x187077), Ink(0x363542), Ink(0x635341)];
     static readonly SolidColorBrush[] DigitColors = [Ink(0x99c1ff), Ink(0x9de5bc), Ink(0xffb79e), Ink(0xd8baff), Ink(0xffd78b), Ink(0x8de1e5), Ink(0xffa9d1), Ink(0xb1e59a), Ink(0xa9b1ff)];
     static readonly SolidColorBrush[] BlockColors = [Ink(0x52e4ec), Ink(0xffde6d), Ink(0xbd86ff), Ink(0x69e99d), Ink(0xff7689), Ink(0x739fff), Ink(0xffa75e)];
@@ -95,6 +102,8 @@ public sealed partial class GamesWorkspace
         shownScore = score; pointsGain.Text = visible ? "+" + difference : "";
         if (!visible) { pointsGain.Opacity = 0; return; }
         pointsGain.Opacity = 1;
+        scoreDeltaTimer.Stop();
+        scoreDeltaTimer.Start();
         if (!new UISettings().AnimationsEnabled) return;
         var visual = ElementCompositionPreview.GetElementVisual(pointsGain);
         var fade = visual.Compositor.CreateScalarKeyFrameAnimation(); fade.InsertKeyFrame(0, 1); fade.InsertKeyFrame(.42f, 1); fade.InsertKeyFrame(1, 0); fade.Duration = TimeSpan.FromMilliseconds(760); visual.StartAnimation("Opacity", fade);
@@ -127,6 +136,14 @@ public sealed partial class GamesWorkspace
             snakeEndCard.Visibility = game == 0 && ended && endMessage == "Game over" ? Visibility.Visible : Visibility.Collapsed;
         if (replayButton is not null)
             replayButton.Visibility = ended && snakeEndCard?.Visibility != Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
+        var hint = game switch {
+            0 when SnakeWaitingToStart => "Choose a direction to start",
+            MazeChase when arcade.WantedDirection == 0 => "Choose a direction to start",
+            Flap when !arcade.FlapStarted => "Press Space or tap to fly",
+            _ => ""
+        };
+        ((TextBlock)waitingPrompt.Child).Text = hint;
+        waitingPrompt.Visibility = !paused && !ended && hint.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         var full = status.Text;
         AutomationProperties.SetName(status, full);
         var caption = string.Join(" · ", full.Split(" · ", StringSplitOptions.RemoveEmptyEntries).Where(part => !part.StartsWith("Score ", StringComparison.Ordinal)));
@@ -187,8 +204,14 @@ public sealed partial class GamesWorkspace
                     var flag = new Polygon { Fill = Ink(0xff785f) }; flag.Points.Add(new(21, 12)); flag.Points.Add(new(43, 20)); flag.Points.Add(new(21, 28)); surface.Children.Add(flag);
                 }
             }
-            var button = GameTileButton(i, x + 2, y + 2, 56, 56, surface, mine ? "mine" : exposed ? n.ToString() : flags[i] ? "flagged" : "unopened", ground, 5);
-            button.Click += (_, _) => { if (flagMode.IsChecked == true) ToggleMineFlag(index); else PlayAt(x + 30, y + 30); };
+            if (exposed || ended) {
+                var square = PassiveTile(surface, x + 2, y + 2, 56, 56, ground);
+                AutomationProperties.SetAutomationId(square, "GameCell" + i);
+                AutomationProperties.SetName(square, $"Cell {i + 1}: {(mine ? "mine" : n.ToString())}");
+                continue;
+            }
+            var button = GameTileButton(i, x + 2, y + 2, 56, 56, surface, flags[i] ? "flagged" : "unopened", ground, 5);
+            button.Click += (_, _) => PlayAt(x + 30, y + 30);
             button.RightTapped += (_, e) => { e.Handled = true; ToggleMineFlag(index); };
         }
     }
@@ -208,6 +231,12 @@ public sealed partial class GamesWorkspace
             var tone = value == 1 ? Ink(0x84e5cd) : Ink(0xf7a7c3);
             if (value == 1) { Mark(39, 39, 107, 107); Mark(107, 39, 39, 107); }
             else if (value == 2) { var ring = new Ellipse { Width = 88, Height = 88, StrokeThickness = 15, Stroke = tone }; Canvas.SetLeft(ring, 29); Canvas.SetTop(ring, 29); surface.Children.Add(ring); }
+            if (value != 0 || ended) {
+                var square = PassiveTile(surface, x + 7, y + 7, 146, 146, Ink(winning.Contains(i) ? 0x34524f : 0x25334c));
+                AutomationProperties.SetAutomationId(square, "GameCell" + i);
+                AutomationProperties.SetName(square, $"Cell {i + 1}: {(value == 1 ? "X" : value == 2 ? "O" : "empty")}");
+                continue;
+            }
             var tile = GameTileButton(i, x + 7, y + 7, 146, 146, surface, value == 1 ? "X" : value == 2 ? "O" : "empty", Ink(winning.Contains(i) ? 0x34524f : 0x25334c), 14);
             if (winning.Contains(i)) { tile.BorderBrush = tone; tile.BorderThickness = new Thickness(3); }
             tile.Click += (_, _) => PlayAt(x + 80, y + 80);
@@ -261,7 +290,6 @@ public sealed partial class GamesWorkspace
         if (game == 16) { arcade.MazePlayer = 196; arcade.Ghosts = [82, 112]; foreach (var i in new[] {196,197,198,199,200,201,202,203,204,205}) arcade.Pellets[i] = 0; }
         if (game == 17) { arcade.BirdY = 210; arcade.Pipes = [[230,265,0],[440,215,0]]; }
         if (game == 18) { arcade.XLocked = true; arcade.DartX = -19; arcade.Hits = [[12,28],[-44,60],[10,-96]]; tick = 24; }
-        if (game == 19) for (var i = 0; i < 16; i++) board[i] = i == 6 ? 10 : i == 10 ? 6 : i;
         if (game == 20) for (var y = 0; y < 8; y++) for (var x = 0; x < 8; x++) if ((x + y * 3) % 7 < 3) board[y * 8 + x] = 1 + (x / 2 + y / 2) % 7;
         if (game is 21 or 22) {
             for (var y = FallingHeight - 1; y >= FallingHeight * .68; y--) for (var x = 0; x < FallingWidth; x++) if ((x * 11 + y * 7) % 11 < 8 || game == 21 && y % 3 > 0) blocks.Grid[y * FallingWidth + x] = (x / BlockScale + y / BlockScale) % 7 + 1;

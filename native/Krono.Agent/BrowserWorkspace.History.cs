@@ -75,7 +75,7 @@ public sealed partial class BrowserWorkspace
         content.Children.Add(heading);
         var visits = workspace.Query("""
             SELECT value, CAST(substr(key,17) AS INTEGER) AS visited_at
-            FROM settings WHERE key LIKE 'browser.history.%' ORDER BY visited_at DESC LIMIT 200
+            FROM settings WHERE key GLOB 'browser.history.*' ORDER BY visited_at DESC LIMIT 200
             """).Select(row => (Visit: ParseVisit(row["value"]!.ToString()), Time: row["visited_at"]!.GetValue<long>()))
             .Where(row => row.Visit is not null && row.Time is > 0 and <= 253402300799999)
             .GroupBy(row => DateTimeOffset.FromUnixTimeMilliseconds(row.Time).LocalDateTime.Date).ToArray();
@@ -87,7 +87,7 @@ public sealed partial class BrowserWorkspace
             });
             foreach (var visit in day) content.Children.Add(HistoryRow(visit.Visit!, privateContext));
         }
-        var bookmarks = workspace.Query("SELECT value FROM settings WHERE key LIKE 'browser.bookmark.%' ORDER BY key LIMIT 100")
+        var bookmarks = workspace.Query("SELECT value FROM settings WHERE key GLOB 'browser.bookmark.*' ORDER BY key LIMIT 100")
             .Select(row => ParseVisit(row["value"]!.ToString())).OfType<BrowserVisit>().ToArray();
         if (bookmarks.Length > 0) {
             content.Children.Add(new TextBlock { Text = "Bookmarks", Margin = new Thickness(0, 8, 0, 0),
@@ -108,7 +108,7 @@ public sealed partial class BrowserWorkspace
     {
         var uri = new Uri(visit.Url);
         var icon = new Grid { Width = 20, Height = 20 };
-        icon.Children.Add(KronoDesign.NavigationIcon(Symbol.World));
+        icon.Children.Add(BrowserTabIcon());
         var encoded = workspace.Setting(FaviconKey(uri));
         var loading = false;
         if (encoded.Length is > 0 and <= 45000)

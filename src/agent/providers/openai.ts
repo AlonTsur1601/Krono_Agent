@@ -65,13 +65,19 @@ export class OpenAIProvider implements ProviderAdapter {
   }
 
   private getCapabilitiesForModel(modelId: string): ModelCapabilities {
-    if (modelId === 'gpt-5-mini' || modelId.startsWith('gpt-5-mini-')) {
+    const modelFamily = modelId.replace(/-\d{4}-\d{2}-\d{2}$/, '')
+    const fast = /^(gpt-6\.2-(astra|sol)|gpt-6\.1-(sol|terra)|gpt-6-(astra|sol|luna)|gpt-5\.6-sol|gpt-5\.4(-mini)?|gpt-5\.2)$/.test(modelFamily)
+    const flagship = /^gpt-6(\.2-(astra|sol)|\.1-(sol|terra)|-(astra|sol|luna))$/.test(modelFamily)
+    if (modelFamily === 'gpt-5-mini' || fast) {
       return {
         supportsTools: true,
         supportsImages: true,
         supportsReasoningEffort: true,
+        reasoningEfforts: flagship ? (['gpt-6.1-terra', 'gpt-6-luna'].includes(modelFamily)
+          ? ['none', 'low', 'medium', 'high', 'xhigh', 'max'] : ['low', 'medium', 'high', 'xhigh', 'max']) : undefined,
+        supportsFastMode: fast,
         supportsStructuredOutput: true,
-        contextWindow: 400000,
+        contextWindow: modelFamily.startsWith('gpt-6.2-') ? 1050000 : 400000,
         maxOutputTokens: 128000,
         streamingSupported: true,
       }
@@ -145,6 +151,7 @@ export class OpenAIProvider implements ProviderAdapter {
       input,
       tools: request.tools?.map(tool => ({ type: 'function' as const, name: tool.name, description: tool.description, parameters: tool.inputSchema, strict: false })),
       ...(request.reasoningEffort ? { reasoning: { effort: request.reasoningEffort } } : {}),
+      ...(request.fastMode && this.getCapabilitiesForModel(request.model).supportsFastMode ? { service_tier: 'priority' as const } : {}),
       ...(request.maxTokens ? { max_output_tokens: request.maxTokens } : {}),
       stream: true,
       store: false,

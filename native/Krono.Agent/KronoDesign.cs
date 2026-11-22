@@ -190,6 +190,15 @@ public static class KronoDesign
         host.Content = content;
         RefreshTypography(content);
         AnimateOpacity(host, 0);
+        if (new UISettings().AnimationsEnabled) {
+            ElementCompositionPreview.SetIsTranslationEnabled(host, true);
+            var visual = ElementCompositionPreview.GetElementVisual(host);
+            var rise = visual.Compositor.CreateVector3KeyFrameAnimation();
+            rise.Duration = PageMotion;
+            rise.InsertKeyFrame(0, new(0, 9, 0));
+            rise.InsertKeyFrame(1, System.Numerics.Vector3.Zero, visual.Compositor.CreateCubicBezierEasingFunction(new(.18f, .8f), new(.3f, 1)));
+            visual.StartAnimation("Translation", rise);
+        }
     }
 
     public static void AnimateThemeChange(FrameworkElement surface) => AnimateOpacity(surface, .78f);
@@ -202,7 +211,8 @@ public static class KronoDesign
     internal static void StyleTabHeader(TabViewItem tab, string selectedSurface = "KronoSurface")
     {
         tab.KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
-        tab.MinWidth = tab.MaxWidth = TabWidth;
+        tab.MinWidth = 12;
+        tab.MaxWidth = TabWidth;
         tab.HeaderTemplate = (DataTemplate)Application.Current.Resources["KronoTabTitle"];
         tab.MinHeight = TabHeight;
         tab.Padding = new Thickness(0);
@@ -304,8 +314,10 @@ public static class KronoDesign
         tabs.Margin = new Thickness(-2.5, 0, 0, 0);
         tabs.Padding = new Thickness(0, TabStripInset, 0, 0);
         tabs.BorderThickness = new Thickness(0);
-        tabs.TabWidthMode = TabViewWidthMode.SizeToContent;
-        tabs.CloseButtonOverlayMode = TabViewCloseButtonOverlayMode.Always;
+        tabs.TabWidthMode = TabViewWidthMode.Equal;
+        tabs.Resources["TabViewItemMinWidth"] = 12.0;
+        tabs.Resources["TabViewItemMaxWidth"] = TabWidth;
+        tabs.CloseButtonOverlayMode = TabViewCloseButtonOverlayMode.OnPointerOver;
         tabs.KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
 
         tabs.AddTabButtonClick += (_, _) => addTab();
@@ -366,15 +378,10 @@ public static class KronoDesign
                 line.Opacity = 0;
             foreach (var button in KronoInputMotion.Descendants(strip).OfType<Microsoft.UI.Xaml.Controls.Primitives.RepeatButton>()
                 .Where(part => part.Name is "ScrollDecreaseButton" or "ScrollIncreaseButton")) {
-                button.Style = (Style)Application.Current.Resources["KronoRepeatButton"];
-                KronoInputMotion.StyleButton(button);
-                button.Width = button.Height = TabButtonSize;
-                if (button.Content is FontIcon icon) icon.FontSize = 12;
-                if (button.Parent is Border container) {
-                    container.VerticalAlignment = VerticalAlignment.Bottom;
-                    container.Height = TabHeight;
-                    container.Padding = new Thickness(0);
-                }
+                button.IsTabStop = false;
+                button.IsHitTestVisible = false;
+                button.MinWidth = button.Width = 0;
+                if (button.Parent is Border container) container.MinWidth = container.Width = 0;
             }
         };
         return header;
@@ -443,6 +450,32 @@ public static class KronoDesign
         fade.InsertKeyFrame(1, 1);
         fade.Duration = PageMotion;
         visual.StartAnimation("Opacity", fade);
+    }
+
+    internal static FrameworkElement DiscreteSlider(string name, string[] labels, int selected, Action<int> change)
+    {
+        var title = new TextBlock { FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
+        var slider = new Slider { Minimum = 0, Maximum = labels.Length - 1, Value = selected, StepFrequency = 1,
+            TickFrequency = 1, TickPlacement = Microsoft.UI.Xaml.Controls.Primitives.TickPlacement.BottomRight,
+            IsThumbToolTipEnabled = false, MinHeight = 30, HorizontalAlignment = HorizontalAlignment.Stretch };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(slider, name);
+        void Palette()
+        {
+            slider.Resources["SliderTrackFill"] = ThemeBrush("KronoInputFace", slider.ActualTheme);
+            slider.Resources["SliderTrackValueFill"] = ThemeBrush("KronoPrimaryFace", slider.ActualTheme);
+            slider.Resources["SliderThumbBackground"] = ThemeBrush("KronoAccentForeground", slider.ActualTheme);
+        }
+        void Refresh(int index) => title.Text = name + " · " + labels[index];
+        Palette();
+        slider.ActualThemeChanged += (_, _) => Palette();
+        Refresh(selected);
+        slider.ValueChanged += (_, args) => { var index = Math.Clamp((int)Math.Round(args.NewValue), 0, labels.Length - 1); Refresh(index); change(index); };
+        var track = new Border { CornerRadius = new CornerRadius(12), Padding = new Thickness(12, 0, 12, 2),
+            BorderThickness = new Thickness(1, 1, 1, 3), Child = slider };
+        void PaintTrack() { track.Background = ThemeBrush("KronoButtonFace", track.ActualTheme); track.BorderBrush = ThemeBrush("KronoBorder", track.ActualTheme); }
+        PaintTrack();
+        track.ActualThemeChanged += (_, _) => PaintTrack();
+        return new StackPanel { Spacing = 5, Children = { title, track } };
     }
 
     internal static Expander Section(string title, FrameworkElement content)

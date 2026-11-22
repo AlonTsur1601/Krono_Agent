@@ -49,9 +49,10 @@
     <DataTemplate x:Key="ChatRailConversation">
         <Grid Background="Transparent" MinHeight="32" ColumnSpacing="4" Margin="{Binding Indent}"
               PointerEntered="ChatRowPointerEntered" PointerExited="ChatRowPointerExited">
-            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" Visibility="Collapsed">
+            <ProgressRing Grid.Column="1" Width="13" Height="13" Visibility="{Binding WorkingVisibility}" IsActive="{Binding Working}" AutomationProperties.Name="Agent working"/>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" Visibility="Collapsed">
                 <Button Style="{StaticResource ChatRailIconButton}" Width="24" Height="24" Click="ChatPinClicked"
                         Content="{Binding PinIcon}" Visibility="{Binding PinVisibility}" AutomationProperties.Name="{Binding PinLabel}"
                         ToolTipService.ToolTip="{Binding PinLabel}"/>
@@ -104,7 +105,7 @@
       Data="F0 M15,6 C10,0 2,5 2,13 C2,21 8,25 15,23 C22,25 28,21 28,13 C28,5 20,0 15,6 Z M8,11 L13,13 L8,15 Z M22,11 L17,13 L22,15 Z M10,18 L13,18 L14,20 L16,18 L20,18 Q15,23 10,18 Z M14,5 Q14,1 18,0 L18,2 Q16,3 16,6 Z"/>
 </Canvas>
 </Viewbox>
-<StackPanel Spacing="8"><InfoBar x:Name="Notice" IsOpen="False" IsClosable="True" Severity="Error"/>
+<StackPanel Spacing="8">
 <InfoBar x:Name="RunActivity" IsOpen="False" IsClosable="False" IsIconVisible="False" Background="{ThemeResource KronoSurface}" BorderBrush="{ThemeResource KronoBorder}" Closed="ActivityClosed"><InfoBar.ActionButton><Button Content="Open chat" Click="OpenActivityChat"/></InfoBar.ActionButton></InfoBar>
 </StackPanel>
 <InfoBar x:Name="Approval" Grid.Row="1" IsOpen="False" IsClosable="False" Severity="Warning" Title="Agent action needs approval"><StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Review details" Click="ReviewApproval"/><Button Content="Allow once" Click="Approve"/><Button Content="Deny" Click="Deny"/></StackPanel></InfoBar>
@@ -139,7 +140,6 @@
 <Button x:Name="CreateAccountButton" Content="Create account" Visibility="Collapsed" Style="{StaticResource KronoPrimaryButton}" HorizontalAlignment="Stretch" Click="CreateAccount"/>
 </Grid>
 <Button Content="Continue with Google" HorizontalAlignment="Stretch" Click="SignInWithGoogle"/>
-<TextBlock x:Name="AuthError" Visibility="Collapsed" TextWrapping="Wrap" Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
 <TextBlock Text="Your sign-in is encrypted on this Windows account and remembered until you sign out." TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 <Border BorderBrush="{ThemeResource KronoBorder}" BorderThickness="0,1,0,0" Padding="0,16,0,0" Margin="0,8,0,0">
 <Grid>

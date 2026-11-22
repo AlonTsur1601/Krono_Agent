@@ -18,7 +18,8 @@ public sealed partial class GamesWorkspace
             _ => "failure.mp3",
         };
         try {
-            gamePlayer ??= new MediaPlayer { Volume = .35 };
+            gamePlayer ??= new MediaPlayer();
+            gamePlayer.Volume = sound == GameSound.Failure ? .12 : .30;
             gamePlayer.Source = MediaSource.CreateFromUri(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "GameAudio", file)));
             gamePlayer.Play();
         } catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidOperationException) {

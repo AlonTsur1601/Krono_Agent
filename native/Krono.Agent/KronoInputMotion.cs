@@ -168,7 +168,7 @@ public sealed class KronoComboBox : ComboBox
             highlight.Background = null;
         }
         if (GetTemplateChild("PopupBorder") is Border popup) {
-            popup.CornerRadius = new CornerRadius(16);
+            popup.CornerRadius = CornerRadius;
             popup.Padding = new Thickness(2);
             popup.BorderThickness = new Thickness(1, 1, 1, 3);
             if (popup.Child is FrameworkElement content && !ReferenceEquals(content.Tag, this)) {
@@ -176,7 +176,7 @@ public sealed class KronoComboBox : ComboBox
                 var surface = new Grid { Tag = this };
                 surface.Children.Add(content);
                 emptyOptions = new TextBlock { Text = "No options available.", Margin = new Thickness(12, 10, 12, 10),
-                    IsHitTestVisible = false, Opacity = .72 };
+                    TextWrapping = TextWrapping.Wrap, MinHeight = 24, IsHitTestVisible = false, Opacity = .72 };
                 surface.Children.Add(emptyOptions);
                 popup.Child = surface;
                 RefreshEmptyOptions();
@@ -256,7 +256,7 @@ internal static class KronoInputMotion
         var multiline = field is TextBox { AcceptsReturn: true };
         foreach (var part in Descendants(field)) {
             if (part is ScrollViewer { Name: "ContentElement" } viewer) {
-                viewer.VerticalAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
+                viewer.VerticalAlignment = VerticalAlignment.Stretch;
                 viewer.VerticalContentAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
             } else if (part is FrameworkElement { Name: "PlaceholderTextContentPresenter" } placeholder)
                 placeholder.VerticalAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
@@ -327,7 +327,8 @@ internal static class KronoInputMotion
                 field is KronoComboBox { IsEditable: true } && Descendants(field).OfType<TextBox>().Any(editor => editor.FocusState != FocusState.Unfocused);
             var active = field.IsEnabled && (focused || hover);
             var pressing = field.IsEnabled && (pressed || pressFeedback.IsEnabled);
-            AnimateSurface(field, pressing && field is not KronoTextBox { PressMotionEnabled: false } ? field is KronoComboBox ? .97f : .99f : 1, companion);
+            if (field is not (TextBox or PasswordBox))
+                AnimateSurface(field, pressing ? .98f : 1, companion);
             if (rim is null || shade is null || fill is null) return;
             var theme = field.ActualTheme;
             shade.Color = ((SolidColorBrush)KronoDesign.ThemeBrush(field.IsEnabled ? "KronoInputShade" : "KronoInputFace", theme)).Color;

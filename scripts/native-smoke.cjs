@@ -32,6 +32,8 @@ function complete(response, text) {
   response.write('data: ' + JSON.stringify({ type: 'response.output_text.delta', delta: text }) + '\n\n')
   response.end('data: ' + JSON.stringify({ type: 'response.completed', response: { usage: { input_tokens: 1, output_tokens: 1 } } }) + '\n\n')
 }
+let agentBrowserRan = false, profilesSeparate = false, agentCookiePresent = false
+let trayResponse = null
 const server = http.createServer((request, response) => {
   const rest = request.url.match(/^\/rest\/v1\/([a-z_]+)\?/)
   if (rest) {
@@ -104,6 +106,19 @@ const server = http.createServer((request, response) => {
   else if (request.url === '/game-proof') { const saves = fixtureDb(db => db.prepare('SELECT game_id,state FROM game_saves WHERE account_id=? ORDER BY game_id').all(user.id).map(row => ({ game: row.game_id, state: JSON.parse(row.state) }))); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ saves })) }
   else if (request.url === '/local-reply-proof') { const count = fixtureDb(db => db.prepare("SELECT count(*) AS n FROM messages WHERE role='assistant' AND content='Native local endpoint reply.'").get().n); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ count })) }
   else if (request.url === '/corrupt-game') { fixtureDb(db => db.prepare("UPDATE game_saves SET state='{}' WHERE game_id='Snake'").run()); response.end('ok') }
+  else if (request.url === '/odd-color-round-20' && request.method === 'POST') {
+    fixtureDb(db => db.prepare("UPDATE game_saves SET state=json_set(state, '$.OddRound', 20, '$.Score', 1900) WHERE game_id='Odd Color'").run())
+    response.end('ok')
+  }
+  else if (request.url === '/jigsaw-endgame' && request.method === 'POST') {
+    fixtureDb(db => {
+      const row = db.prepare("SELECT id,state FROM game_saves WHERE game_id='Jigsaw'").get()
+      const state = JSON.parse(row.state)
+      for (let i = 0; i < 16; i++) state.Board[i] = i
+      state.Board[14] = 15; state.Board[15] = 14; state.Ended = false
+      db.prepare('UPDATE game_saves SET state=? WHERE id=?').run(JSON.stringify(state), row.id)
+    }); response.end('ok')
+  }
   else if (request.url === '/solitaire-endgame') {
     fixtureDb(db => {
       const row = db.prepare("SELECT id,state FROM game_saves WHERE game_id='Solitaire'").get()
@@ -133,7 +148,7 @@ const server = http.createServer((request, response) => {
   }
   else if (request.url === '/expire-side') { fixtureDb(db => db.prepare('UPDATE side_chats SET expires_at=?').run(Date.now() - 1)); response.end('ok') }
   else if (request.url === '/release-parent') { for (const held of heldParents) complete(held, 'Native parent continued.'); heldParents.clear(); response.end('ok') }
-  else if (request.url === '/local/v1/models') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ data: [{ id: 'local-fixture-model' }] })) }
+  else if (request.url === '/local/v1/models') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ data: ['local-fixture-model', 'basic-fixture-model', 'native-keyboard-model'].map(id => ({ id })) })) }
   else if (request.url === '/local/v1/chat/completions') {
     let body = ''; request.on('data', chunk => body += chunk); request.on('end', () => {
       const input = JSON.parse(body)
@@ -147,7 +162,7 @@ const server = http.createServer((request, response) => {
   }
   else if (request.url === '/v1/models') {
     response.setHeader('Content-Type', 'application/json')
-    response.end(JSON.stringify({ object: 'list', data: ['native-fixture-model', 'gpt-5-mini'].map(id => ({ id, object: 'model' })) }))
+    response.end(JSON.stringify({ object: 'list', data: ['gpt-native-fixture-model', 'gpt-5-mini'].map(id => ({ id, object: 'model' })) }))
   }
   else if (request.url === '/seed-chat-history' && request.method === 'POST') {
     fixtureDb(db => {
@@ -180,7 +195,25 @@ const server = http.createServer((request, response) => {
         attachmentAccepted = !input.tools && lastUser.includes('fixture-attachment.txt') && lastUser.includes('ATTACHMENT_PROOF_TEXT \u05e9\u05dc\u05d5\u05dd') && !lastUser.includes(home)
         complete(response, 'Native attachment fixture result.'); return
       }
-      if (lastUser === 'NATIVE_SCHEDULE_PROOF') { if (input.tools) { response.writeHead(400); response.end(); return }; complete(response, 'Native scheduled result.'); return }
+      if (lastUser === 'NATIVE_PLUGIN_PROOF') {
+        const result = input.input.find(message => message.type === 'function_call_output' && message.call_id === 'native-node-plugin')
+        if (!result) {
+          if (!input.tools?.some(tool => tool.name === 'node_inspect_package') || input.tools.some(tool => tool.name.startsWith('github_'))) {
+            complete(response, 'Unexpected native plugin tool list.'); return
+          }
+          response.write('data: ' + JSON.stringify({ type: 'response.output_item.done', item: { type: 'function_call', call_id: 'native-node-plugin', name: 'node_inspect_package', arguments: '{}' } }) + '\n\n')
+          response.end('data: ' + JSON.stringify({ type: 'response.completed', response: {} }) + '\n\n')
+        } else {
+          const output = JSON.parse(result.output)
+          const manifest = output.success && JSON.parse(output.output)
+          complete(response, manifest?.name === 'native-plugin-fixture' && manifest.scripts.includes('test') ? 'Native Node plugin verified.' : 'The native Node plugin returned the wrong manifest.')
+        }
+        return
+      }
+      if (lastUser === 'NATIVE_SCHEDULE_PROOF') {
+        if (!input.tools?.some(tool => tool.name === 'read_file')) { complete(response, 'Scheduled task did not default to Agent mode.'); return }
+        complete(response, 'Native scheduled result.'); return
+      }
       if (lastUser === 'NATIVE_COMMAND_PROOF') {
         const result = input.input.find(message => message.type === 'function_call_output' && message.call_id === 'native-command-call')
         if (!result) {
@@ -192,6 +225,32 @@ const server = http.createServer((request, response) => {
           commandRan = output.success && output.output.includes('42') && fs.readFileSync(path.join(home, 'native-command-proof.txt'), 'utf8') === 'native command proof'
           complete(response, 'Native command fixture response.')
         }
+        return
+      }
+      if (lastUser === 'NATIVE_BROWSER_PROOF') {
+        const output = id => input.input.find(message => message.type === 'function_call_output' && message.call_id === id)?.output
+        const visit = output('native-browser-visit'), follow = output('native-browser-follow')
+        if (follow) {
+          const result = JSON.parse(follow)
+          agentBrowserRan = result.success && JSON.parse(result.output).text.includes('AGENT_BROWSER_NEXT_PAGE')
+          complete(response, agentBrowserRan ? 'Native agent browser verified.' : 'Native agent browser failed.')
+          return
+        }
+        if (!input.tools?.some(tool => tool.name === 'browse_page' && tool.parameters?.type === 'object') || visit && !JSON.parse(visit).success) {
+          complete(response, 'Native agent browser unavailable.'); return
+        }
+        const url = 'http://127.0.0.1:' + server.address().port + '/agent-browser'
+        const item = visit
+          ? { type: 'function_call', call_id: 'native-browser-follow', name: 'browse_page', arguments: JSON.stringify({ action: 'follow', link: 'Open next fixture' }) }
+          : { type: 'function_call', call_id: 'native-browser-visit', name: 'browse_page', arguments: JSON.stringify({ action: 'visit', url }) }
+        response.write('data: ' + JSON.stringify({ type: 'response.output_item.done', item }) + '\n\n')
+        response.end('data: ' + JSON.stringify({ type: 'response.completed', response: {} }) + '\n\n')
+        return
+      }
+      if (lastUser === 'NATIVE_TRAY_PROOF') {
+        response.flushHeaders()
+        trayResponse = response
+        response.on('close', () => { if (trayResponse === response) trayResponse = null })
         return
       }
       if (last === 'NATIVE_PARENT_WAIT') { response.flushHeaders(); heldParents.add(response); response.on('close', () => heldParents.delete(response)); return }
@@ -235,14 +294,35 @@ const server = http.createServer((request, response) => {
       response.end(JSON.stringify({ user, access_token: 'native-fixture-access', refresh_token: 'native-fixture-refresh', expires_in: 3600, token_type: 'bearer' }))
     })
   } else if (request.url.startsWith('/browser-proof')) { const query = new URL(request.url, 'http://localhost').searchParams; browserIsolated = query.get('api') === 'undefined' && query.get('node') === 'undefined'; response.end('ok') }
+  else if (request.url === '/agent-browser-proof') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ agentBrowserRan, profilesSeparate, agentCookiePresent })) }
+  else if (request.url === '/tray-proof') {
+    const completed = fixtureDb(db => !!db.prepare("SELECT id FROM messages WHERE role='assistant' AND content='Agent response while hidden.'").get())
+    response.setHeader('Content-Type', 'application/json')
+    response.end(JSON.stringify({ working: !!trayResponse, completed }))
+  }
+  else if (request.url === '/finish-tray-proof' && request.method === 'POST') {
+    if (trayResponse) complete(trayResponse, 'Agent response while hidden.')
+    response.end('ok')
+  }
+  else if (request.url === '/agent-browser') {
+    profilesSeparate = !request.headers.cookie?.includes('KronoManual=1')
+    response.writeHead(200, { 'Content-Type': 'text/html', 'Set-Cookie': 'KronoAgent=1; Path=/; SameSite=Lax' })
+    response.end('<title>Native agent browser</title><a href="/agent-browser-next">Open next fixture</a>')
+  }
+  else if (request.url === '/agent-browser-next') {
+    agentCookiePresent = request.headers.cookie?.includes('KronoAgent=1') === true
+    response.writeHead(200, { 'Content-Type': 'text/html' })
+    response.end('<title>Native agent browser next</title><h1>AGENT_BROWSER_NEXT_PAGE</h1>')
+  }
   else if (request.url.startsWith('/browser-selection?')) { browserSelection = new URL(request.url, 'http://localhost').searchParams.get('text'); response.end('ok') }
   else if (request.url === '/browser-selection') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserSelection })) }
-  else { response.setHeader('Content-Type', 'text/html'); response.end('<title>' + (request.url === '/home' ? 'Native browser home' : 'Native browser fixture') + '</title><h1>WebView2 fixture</h1><script>fetch("/browser-proof?api="+typeof window.api+"&node="+typeof require);document.addEventListener("selectionchange",()=>fetch("/browser-selection?text="+encodeURIComponent(String(getSelection()))))</script>') }
+  else { response.setHeader('Content-Type', 'text/html'); if (request.url === '/probe') response.setHeader('Set-Cookie', 'KronoManual=1; Path=/; SameSite=Lax'); response.end('<title>' + (request.url === '/home' ? 'Native browser home' : 'Native browser fixture') + '</title><h1>WebView2 fixture</h1><script>fetch("/browser-proof?api="+typeof window.api+"&node="+typeof require);document.addEventListener("selectionchange",()=>fetch("/browser-selection?text="+encodeURIComponent(String(getSelection()))))</script>') }
 })
 server.listen(0, '127.0.0.1', () => {
   const root = `http://127.0.0.1:${server.address().port}`
   fs.writeFileSync(path.join(home, 'account-service.json'), JSON.stringify({ url: root, anonKey: 'native-public-fixture' }))
   const exe = process.env.KRONO_SMOKE_EXE || path.resolve('native/Krono.Agent/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/KronoAgent.exe')
-  const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/native-smoke.ps1'), '-Executable', exe, '-Fixture', root, '-ReportDirectory', home], { env: { ...process.env, KRONO_USER_DATA: home, KRONO_SMOKE_CLOSE_WINDOW: '1', OPENAI_BASE_URL: root + '/v1' }, stdio: 'inherit', windowsHide: true })
+  const closeWindow = process.env.KRONO_SMOKE_SCOPE === 'runtime-workspaces' ? '0' : '1'
+  const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/native-smoke.ps1'), '-Executable', exe, '-Fixture', root, '-ReportDirectory', home], { env: { ...process.env, KRONO_USER_DATA: home, KRONO_SMOKE_CLOSE_WINDOW: closeWindow, OPENAI_BASE_URL: root + '/v1' }, stdio: 'inherit', windowsHide: true })
   child.on('exit', code => { server.close(); console.log('Native smoke artifacts:', home); process.exitCode = code ?? 1 })
 })

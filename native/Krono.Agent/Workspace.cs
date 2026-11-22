@@ -13,6 +13,7 @@ namespace Krono_Agent;
 public sealed partial class Workspace : IDisposable
 {
     public static readonly string Home = Environment.GetEnvironmentVariable("KRONO_USER_DATA") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "krono-agent");
+    static readonly Lazy<string> schema = new(() => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Engine", "schema.sql")));
     private readonly HttpClient http = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(30) };
     private string url = "", key = "", access = "", refresh = "";
     public string AccountId { get; private set; } = "";
@@ -117,7 +118,7 @@ public sealed partial class Workspace : IDisposable
         db?.Dispose(); Directory.CreateDirectory(Path.Combine(dataHome, "databases"));
         db = new SqliteConnection($"Data Source={Path.Combine(dataHome, "databases", AccountId + ".db")}"); db.Open();
         Execute("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
-        Execute(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Engine", "schema.sql")));
+        Execute(schema.Value);
         Execute("INSERT INTO accounts(id,email,created_at) VALUES($p0,$p1,$p2) ON CONFLICT(id) DO UPDATE SET email=excluded.email", AccountId, Email, Now);
         PurgeExpiredSideChats();
     }
@@ -126,11 +127,33 @@ public sealed partial class Workspace : IDisposable
     private SqliteCommand Command(string sql, object?[] args) { var command = (db ?? throw new InvalidOperationException("Sign in first.")).CreateCommand(); command.CommandText = sql; for (var i = 0; i < args.Length; i++) command.Parameters.AddWithValue("$p" + i, args[i] ?? DBNull.Value); return command; }
     public List<JsonObject> Query(string sql, params object?[] args)
     {
-        using var command = Command(sql, args); using var rows = command.ExecuteReader(); var result = new List<JsonObject>();
-        while (rows.Read()) { var row = new JsonObject(); for (var i = 0; i < rows.FieldCount; i++) row[rows.GetName(i)] = rows.IsDBNull(i) ? null : JsonSerializer.SerializeToNode(rows.GetValue(i)); result.Add(row); } return result;
+        using var command = Command(sql, args);
+        using var rows = command.ExecuteReader();
+        var result = new List<JsonObject>();
+        var columns = new string[rows.FieldCount];
+        for (var i = 0; i < columns.Length; i++) columns[i] = rows.GetName(i);
+        while (rows.Read()) {
+            var row = new JsonObject();
+            for (var i = 0; i < columns.Length; i++) {
+                row[columns[i]] = rows.GetValue(i) switch {
+                    DBNull => null,
+                    string value => JsonValue.Create(value),
+                    long value => JsonValue.Create(value),
+                    double value => JsonValue.Create(value),
+                    byte[] value => JsonValue.Create(Convert.ToBase64String(value)),
+                    var value => JsonSerializer.SerializeToNode(value)
+                };
+            }
+            result.Add(row);
+        }
+        return result;
     }
-    public string Setting(string name) => Query("SELECT value FROM settings WHERE key=$p0", name).FirstOrDefault()?["value"]?.ToString() ?? "";
-    public void SetSetting(string name, string value) => Execute("INSERT INTO settings(key,value) VALUES($p0,$p1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", name, value);
+    public string Setting(string name)
+    {
+        using var command = Command("SELECT value FROM settings WHERE key=$p0", [name]);
+        return command.ExecuteScalar() as string ?? "";
+    }
+    public void SetSetting(string name, string value) => Execute("INSERT INTO settings(key,value) VALUES($p0,$p1) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value IS NOT excluded.value", name, value);
     public JsonObject ProjectPreferences(string id) { var value = Setting("project." + id); if (value.Length == 0) return new(); try { return JsonNode.Parse(value) as JsonObject ?? new(); } catch (JsonException) { return new(); } }
     internal string Instructions(string? project) => string.Join("\n\n", new[] {
         Setting("instructions.global").Trim(),

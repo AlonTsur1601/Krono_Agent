@@ -18,6 +18,7 @@ interface AgentConfig {
   permissions: 'ask' | 'project' | 'full'
   modelId: string
   reasoningEffort?: CompletionRequest['reasoningEffort']
+  fastMode?: boolean
   providerId: string
   projectPath?: string
   projectDirs?: string[]
@@ -27,6 +28,8 @@ interface AgentConfig {
   maxToolCalls?: number
   toolsEnabled?: boolean
   requestApproval?: ExecutionContext['requestApproval']
+  emitProgress?: ExecutionContext['emitProgress']
+  emitFileChange?: ExecutionContext['emitFileChange']
 }
 
 export class AgentRuntime {
@@ -89,14 +92,21 @@ export class AgentRuntime {
     ]
 
     // Create completion request
+    const capabilities = provider.getModelCapabilities(config.modelId)
+    const efforts = capabilities.reasoningEfforts ?? ['low', 'medium', 'high']
     const request: CompletionRequest = {
       model: config.modelId,
-      reasoningEffort: config.reasoningEffort && provider.getModelCapabilities(config.modelId).supportsReasoningEffort ? config.reasoningEffort : undefined,
+      reasoningEffort: capabilities.supportsReasoningEffort && config.reasoningEffort && efforts.includes(config.reasoningEffort) ? config.reasoningEffort : undefined,
+      fastMode: config.fastMode && capabilities.supportsFastMode === true,
       messages: allMessages,
       tools: availableTools.length > 0 ? this.convertToolsForProvider(availableTools) : undefined,
       stream: true,
     }
 
+    const redactValues = [...new Set([this.providerKeys.get(config.providerId), ...Object.entries(process.env)
+      .filter(([name]) => sensitiveVariable.test(name)).map(([, value]) => value)]
+      .filter((value): value is string => !!value && value.length >= 4))].sort((a, b) => b.length - a.length)
+    const redact = (value: string | undefined) => redactValues.reduce((text, secret) => text?.split(secret).join('[redacted]'), value)
     let calls = 0
     const failures = new Map<string, number>()
     const deadline = Date.now() + 30 * 60 * 1000
@@ -126,21 +136,21 @@ export class AgentRuntime {
           projectDirs: config.projectDirs ?? (config.projectPath ? [config.projectPath] : []),
           permissions: config.permissions,
           signal: config.signal,
-          redactValues: [...new Set([this.providerKeys.get(config.providerId), ...Object.entries(process.env).filter(([name]) => sensitiveVariable.test(name)).map(([, value]) => value)].filter((value): value is string => !!value && value.length >= 4))].sort((a, b) => b.length - a.length),
+          redactValues,
           requestApproval: config.requestApproval ?? (async () => ({ approved: false })),
-          emitProgress: () => {},
+          emitProgress: progress => config.emitProgress?.({ ...progress, message: redact(progress.message)! }),
+          emitFileChange: change => config.emitFileChange?.({ path: redact(change.path)!, before: redact(change.before)!, after: redact(change.after)! }),
         }
         const permission = tool.capabilities.requiresPermission
         if (permission !== 'none' && permission !== 'read' && config.permissions === 'ask') {
           const details = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : call.arguments
-          const approval = await context.requestApproval({ id: call.id, action: call.name, target: String(details.command ?? details.path ?? ''), details })
+          const approval = await context.requestApproval({ id: call.id, action: call.name, target: String(details.command ?? details.path ?? details.url ?? details.link ?? details.repository ?? details.projectId ?? ''), details })
           if (!approval.approved) throw new Error(config.signal?.aborted ? 'Run cancelled' : 'Tool execution requires user approval')
           // Approval is bound to this one action, not future calls.
           context.requestApproval = async () => ({ approved: true })
         }
         yield { type: 'tool_call', toolCall: call }
         const raw = await tool.execute(parsed, context)
-        const redact = (value: string | undefined) => context.redactValues!.reduce((text, secret) => text?.split(secret).join('[redacted]'), value)
         const result = { ...raw, output: redact(raw.output), error: redact(raw.error), artifacts: raw.artifacts?.map(artifact => ({ ...artifact, name: redact(artifact.name)!, content: redact(artifact.content)! })) }
         const step = call.name + JSON.stringify(call.arguments, Object.keys(call.arguments).sort())
         if (!result.success) {

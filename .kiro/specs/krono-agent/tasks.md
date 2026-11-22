@@ -1171,3 +1171,7 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 
 - Remote tags run consecutively from v0.1.0 through v0.1.41. The historical tags v0.1.2, v0.1.3, and v0.1.25 lacked release pages. Preserve their original commit mappings and published installer version numbers.
 - Verified flat add-tab and close-tab buttons in the browser and terminal. The same flat template is used for embedded input icons. Checked twelve browser tabs in wide and compact windows.
+
+## November 21 feedback and release
+
+- Follow implementation and verification by feedback item in [the November 21 review](review-2026-11-21.md).
