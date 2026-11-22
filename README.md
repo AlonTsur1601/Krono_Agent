@@ -10,7 +10,7 @@ See [implementation status](IMPLEMENTATION_STATUS.md) and [.kiro requirements](.
 
 ## Develop on Windows
 
-For Windows x64, [download the Krono Agent installer](https://github.com/AlonTsur1601/Krono_Agent/releases/latest/download/Krono-Agent-Setup-x64.exe). The installer works offline and lets you choose the installation folder and add a desktop shortcut named **Krono Agent**.
+For Windows x64, [download the Krono Agent installer](https://github.com/KronoAgent/Krono_Agent/releases/latest/download/Krono-Agent-Setup-x64.exe). The installer works offline and lets you choose the installation folder and add a desktop shortcut named **Krono Agent**.
 
 To build from source, install Node 24+ and .NET 10 SDK, then:
 
@@ -50,7 +50,7 @@ are included with the runtime bundle.
 ## Account service setup
 
 1. Create a Supabase project and run `supabase/migrations/202611030001_accounts.sql` in its SQL Editor. Verify that row-level security is enabled on the account tables and that the `krono-attachments` bucket is private.
-2. Enable the Email provider and email confirmation. Set the Site URL to `https://alontsur1601.github.io/Krono_Agent/`. For public signups, configure an SMTP provider and check its sending limits.
+2. Enable the Email provider and email confirmation. Set the Site URL to `https://kronoagent.github.io/Krono_Agent/`. For public signups, configure an SMTP provider and check its sending limits.
 3. Create `%APPDATA%\krono-agent\account-service.json` with the project URL and public publishable key. The JSON properties are `url` and `anonKey`. Keep private keys and database credentials out of this file. Restart Krono after saving. If both `SUPABASE_URL` and `SUPABASE_ANON_KEY` are set, they take precedence.
 4. Register in Krono and confirm your email. Keep the app open on the confirmation screen to let it finish signing in. Check Spam if the message does not appear.
 5. To generate a branded template, run `node supabase/auth-email.mjs confirmation`. Copy the generated subject and HTML into the matching Supabase email template. Keep the template variables intact.

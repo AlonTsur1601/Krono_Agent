@@ -24,7 +24,7 @@ public sealed partial class Workspace : IDisposable
     int sessionEpoch;
     public Workspace(string? dataDirectory = null) { dataHome = dataDirectory ?? Home; Directory.CreateDirectory(dataHome); }
     private string SessionFile => Path.Combine(dataHome, "native-session.bin");
-    const string ConfirmationRedirect = "https://alontsur1601.github.io/Krono_Agent/";
+    const string ConfirmationRedirect = "https://kronoagent.github.io/Krono_Agent/";
     public sealed class EmailConfirmationRequiredException : Exception;
     public static void Protect(string file, string value) { Directory.CreateDirectory(Path.GetDirectoryName(file)!); var temporary = file + "." + Guid.NewGuid() + ".tmp"; File.WriteAllBytes(temporary, ProtectedData.Protect(Encoding.UTF8.GetBytes(value), null, DataProtectionScope.CurrentUser)); File.Move(temporary, file, true); }
     public static string? Unprotect(string file) { if (!File.Exists(file)) return null; return Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(file), null, DataProtectionScope.CurrentUser)); }
