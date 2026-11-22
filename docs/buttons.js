@@ -11,7 +11,7 @@ for (const button of document.querySelectorAll('.button')) {
     pulse = face.animate([
       { transform: current, easing },
       { transform: 'translateY(4px)', offset: .44, easing },
-      { transform: 'translateY(0)' },
+      { transform: button.matches(':hover') ? 'translateY(-3px)' : 'translateY(0)' },
     ], 200);
   }
   button.addEventListener('pointerdown', event => {
