@@ -33,7 +33,7 @@ public sealed partial class MainPage
         var endpoint = workspace.Setting("native.endpoint." + id) is { Length: > 0 } custom ? custom : ProviderCatalog.Endpoint(id);
         var key = workspace.Key(id);
         if (key.Length == 0 && ProviderCatalog.RequiresKey(id)) return [];
-        if (!refresh && discoveredModels.TryGetValue(id, out var cached)) return cached;
+        if (!refresh && !ProviderCatalog.AutomaticLocal(id) && discoveredModels.TryGetValue(id, out var cached)) return cached;
         if (worker is null) return [];
         var generation = sessionGeneration;
         var result = await worker.Request(Guid.NewGuid().ToString(), "models",
@@ -46,8 +46,9 @@ public sealed partial class MainPage
     string[] ModelChoices(string id, JsonArray available, string selected, bool honorHidden = true)
     {
         var hidden = honorHidden ? HiddenModels(id) : [];
-        return available.Select(entry => entry?["id"]?.ToString() ?? "").Where(name => !hidden.Contains(name))
-            .Append(selected).Where(name => name.Length > 0).Distinct().Order(StringComparer.OrdinalIgnoreCase).ToArray();
+        var names = available.Select(entry => entry?["id"]?.ToString() ?? "").Where(name => !hidden.Contains(name) || name == selected);
+        if (!ProviderCatalog.AutomaticLocal(id)) names = names.Append(selected);
+        return names.Where(name => name.Length > 0).Distinct().Order(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     void SelectChatModel(string selected)
@@ -66,7 +67,7 @@ public sealed partial class MainPage
             var id = provider;
             var generation = sessionGeneration;
             var available = discoveredModels.GetValueOrDefault(id) ?? [];
-            if (available.Count == 0) {
+            if (available.Count == 0 || ProviderCatalog.AutomaticLocal(id)) {
                 try { available = await DiscoverModels(id); }
                 catch (Exception error) { Error(error); }
             }

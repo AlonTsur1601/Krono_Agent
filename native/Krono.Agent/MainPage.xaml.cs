@@ -697,6 +697,7 @@ public sealed partial class MainPage : Page
     bool ProviderToolsEnabled => !CompatibleEndpoint || model.Length > 0 && workspace.Setting(ModelToolsSetting) == "true";
     string ConnectionKey() {
         if (model.Length == 0) throw new InvalidOperationException("Choose a provider and model in Settings first.");
+        if (ProviderCatalog.AutomaticLocal(provider)) return "";
         var endpoint = CompatibleEndpoint ? ProviderCatalog.ParseEndpoint(ProviderEndpoint) : null;
         var key = workspace.Key(provider);
         if (key.Length == 0 && (ProviderCatalog.RequiresKey(provider) || endpoint is not null && !ProviderCatalog.Local(endpoint))) throw new InvalidOperationException("Save this provider's API key in Settings first.");
@@ -740,6 +741,7 @@ public sealed partial class MainPage : Page
         var modelVisibility = new StackPanel { Spacing = 2 };
         var modelStatus = new TextBlock { TextWrapping = TextWrapping.Wrap };
         int modelRequest = 0;
+        var saveKey = Button("Save key", SaveKey);
         void SaveEndpoint() { try {
             var url = ProviderCatalog.ParseEndpoint(endpoint.Text);
             workspace.SetSetting("native.endpoint." + provider, url.AbsoluteUri.TrimEnd('/')); connectionStatus.Text = "Endpoint saved.";
@@ -757,7 +759,9 @@ public sealed partial class MainPage : Page
         }
         void EndpointVisibility()
         {
-            endpoint.Visibility = saveEndpoint.Visibility = CompatibleEndpoint ? Visibility.Visible : Visibility.Collapsed;
+            var automatic = ProviderCatalog.AutomaticLocal(provider);
+            endpoint.Visibility = saveEndpoint.Visibility = CompatibleEndpoint && !automatic ? Visibility.Visible : Visibility.Collapsed;
+            secret.Visibility = saveKey.Visibility = automatic ? Visibility.Collapsed : Visibility.Visible;
             tools.Visibility = CompatibleEndpoint ? Visibility.Visible : Visibility.Collapsed;
             tools.IsEnabled = model.Length > 0;
             RefreshModelVisibility();
@@ -777,16 +781,17 @@ public sealed partial class MainPage : Page
             catch (Exception error) { Error(error); }
         }
         secret.PreviewKeyDown += (_, args) => { if (args.Key == Windows.System.VirtualKey.Enter) { args.Handled = true; SaveKey(); } };
-        panel.Children.Add(Button("Save key", SaveKey));
+        panel.Children.Add(saveKey);
         panel.Children.Add(Button("Test connection", async () => {
             var id = provider;
-            var key = workspace.Key(id);
-            if (key.Length == 0 && (ProviderCatalog.RequiresKey(id) || CompatibleEndpoint && !ProviderCatalog.Local(ProviderCatalog.ParseEndpoint(ProviderEndpoint))))
+            var automatic = ProviderCatalog.AutomaticLocal(id);
+            var key = automatic ? "" : workspace.Key(id);
+            if (!automatic && key.Length == 0 && (ProviderCatalog.RequiresKey(id) || CompatibleEndpoint && !ProviderCatalog.Local(ProviderCatalog.ParseEndpoint(ProviderEndpoint))))
                 throw new InvalidOperationException("Save the provider’s API key before testing the connection.");
             var result = await worker!.Request(Guid.NewGuid().ToString(), "test", new { providerId = id, apiKey = key, endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled });
             if (provider != id) return;
             if (result?["success"]?.GetValue<bool>() != true)
-                throw new InvalidOperationException("Connection failed. Check the server, endpoint and credentials.");
+                throw new InvalidOperationException(automatic ? "No local models found. Start your model server and refresh." : "Connection failed. Check the server, endpoint and credentials.");
             connectionStatus.Text = "Connected · " + result["latencyMs"] + " ms";
         }));
         panel.Children.Add(connectionStatus);
@@ -810,9 +815,15 @@ public sealed partial class MainPage : Page
                 var ids = ModelChoices(selectedProvider, result, model, false);
                 var hidden = HiddenModels(selectedProvider);
                 models.ItemsSource = ids;
+                if (ProviderCatalog.AutomaticLocal(selectedProvider) && model.Length == 0 && ids.Length == 1) {
+                    SelectChatModel(ids[0]);
+                    tools.IsChecked = ProviderToolsEnabled;
+                    tools.IsEnabled = true;
+                }
                 models.SelectedItem = model;
                 modelVisibility.Children.Clear();
-                modelStatus.Text = ids.Length == 0 ? "This provider returned no models." : "Show in the chat model picker";
+                modelStatus.Text = ids.Length == 0 ? (ProviderCatalog.AutomaticLocal(selectedProvider)
+                    ? "No local models found. Start your model server and refresh." : "This provider returned no models.") : "Show in the chat model picker";
                 foreach (var id in ids) {
                     var checkbox = new KronoCheckBox { Content = id, IsChecked = !hidden.Contains(id) };
                     void SaveVisibility()

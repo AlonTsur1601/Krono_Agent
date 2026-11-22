@@ -8,6 +8,7 @@ import type { ToolResult } from '../agent/types'
 import { AnthropicProvider } from '../agent/providers/anthropic'
 import { GoogleProvider } from '../agent/providers/google'
 import { CompatibleProvider, COMPATIBLE_PROFILES, isCompatibleProvider, type CompatibleId } from '../agent/providers/compatible'
+import { LocalProvider, stopLocalRuntime } from '../agent/providers/local'
 import { PluginConfig, pluginTools, testPlugin } from '../agent/tools/plugins'
 import { z } from 'zod'
 import * as pty from 'node-pty'
@@ -16,7 +17,8 @@ function createRuntime() {
   const runtime = new AgentRuntime()
   runtime.registerProvider(new AnthropicProvider())
   runtime.registerProvider(new GoogleProvider())
-  for (const id of Object.keys(COMPATIBLE_PROFILES) as CompatibleId[]) runtime.registerProvider(new CompatibleProvider(id))
+  for (const id of Object.keys(COMPATIBLE_PROFILES) as CompatibleId[])
+    runtime.registerProvider(id === 'local' ? new LocalProvider() : new CompatibleProvider(id))
   return runtime
 }
 const active = new Map<string, AbortController>()
@@ -142,4 +144,4 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     finally { cleanupRun?.() }
   })()
 })
-process.stdin.on('end', () => { for (const controller of active.values()) controller.abort(); for (const terminal of terminals.values()) terminal.kill(); process.exit(0) })
+process.stdin.on('end', () => { for (const controller of active.values()) controller.abort(); for (const terminal of terminals.values()) terminal.kill(); stopLocalRuntime(); process.exit(0) })

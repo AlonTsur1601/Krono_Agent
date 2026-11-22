@@ -9,6 +9,7 @@ public static class ProviderCatalog
     static readonly Dictionary<string, string> Direct = new() { ["openai"] = "OpenAI", ["anthropic"] = "Anthropic", ["google"] = "Google" };
     public static string[] Ids => Direct.Keys.Concat(Profiles.Select(profile => profile.Key)).ToArray();
     public static bool Compatible(string id) => Profiles.ContainsKey(id);
+    public static bool AutomaticLocal(string id) => id == "local";
     public static bool RequiresKey(string id) => !Compatible(id) || Profiles[id]?["requiresKey"]?.GetValue<bool>() == true;
     public static bool Local(Uri uri) => uri.Host is "localhost" or "127.0.0.1" or "[::1]";
     public static Uri ParseEndpoint(string value) {

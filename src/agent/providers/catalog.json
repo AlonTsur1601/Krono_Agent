@@ -1,4 +1,10 @@
 {
+  "local": {
+    "name": "Local Model",
+    "endpoint": "",
+    "requiresKey": false,
+    "help": "Discovers models from Ollama, LM Studio and Jan on this computer. If the list is empty, start your model server and refresh."
+  },
   "azure": {
     "name": "Azure OpenAI",
     "endpoint": "",

@@ -324,7 +324,7 @@ try {
     $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
     if ($windowPattern.Current.WindowVisualState -ne [Windows.Automation.WindowVisualState]::Maximized) { throw 'Krono did not open maximized' }
     Find 'EmailInput' | Out-Null
-    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui')) {
+    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui')) {
         SetValue 'EmailInput' 'native-fixture@example.com'
         SetValue 'PasswordInput' 'fixture-password'
         Invoke 'LoginButton'
@@ -376,6 +376,22 @@ try {
             do { $proof = Invoke-RestMethod ($Fixture + '/tray-proof'); Start-Sleep -Milliseconds 100 } while (!$proof.completed -and (Get-Date) -lt $deadline)
             if (!$proof.completed -or $script:process.HasExited -or [KronoWindowCapture]::IsWindowVisible($hwnd)) { throw 'The agent did not save its finished response while the app remained in the tray' }
             Write-Output 'NATIVE_SMOKE_PASS: close last terminal, reopen PTY, reload blank tab, agent browser with separate session and complete agent response while hidden to tray'
+            return
+        }
+        if ($env:KRONO_SMOKE_SCOPE -eq 'local-model-ui') {
+            SelectNav 'Settings'
+            SelectSettingsCategory 'Models'
+            SelectChoice 'Provider' 'Local Model'
+            Find 'native-discovered-model:latest · Jan' -ByName | Out-Null
+            if (FindOptional 'ProviderEndpoint') { throw 'Automatic local discovery showed a manual endpoint' }
+            if (FindOptional 'ProviderKey') { throw 'Automatic local discovery showed a key field' }
+            SelectChoice 'ModelSelector' 'native-discovered-model:latest · Jan'
+            Invoke 'Use model' -ByName
+            SelectNav 'Chats'
+            SetValue 'Composer' 'NATIVE_AUTOMATIC_LOCAL_MODEL'
+            Invoke 'Send' -ByName
+            Find 'Automatically discovered local model replied.' -ByName | Out-Null
+            Write-Output 'NATIVE_SMOKE_PASS: automatic local discovery and routed completion'
             return
         }
         if ($env:KRONO_SMOKE_SCOPE -eq 'plugins-ui') {

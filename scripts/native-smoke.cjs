@@ -318,11 +318,31 @@ const server = http.createServer((request, response) => {
   else if (request.url === '/browser-selection') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserSelection })) }
   else { response.setHeader('Content-Type', 'text/html'); if (request.url === '/probe') response.setHeader('Set-Cookie', 'KronoManual=1; Path=/; SameSite=Lax'); response.end('<title>' + (request.url === '/home' ? 'Native browser home' : 'Native browser fixture') + '</title><h1>WebView2 fixture</h1><script>fetch("/browser-proof?api="+typeof window.api+"&node="+typeof require);document.addEventListener("selectionchange",()=>fetch("/browser-selection?text="+encodeURIComponent(String(getSelection()))))</script>') }
 })
+const localDiscovery = process.env.KRONO_SMOKE_SCOPE === 'local-model-ui'
+const modelServer = localDiscovery ? http.createServer((request, response) => {
+  if (request.url === '/v1/models') {
+    response.setHeader('Content-Type', 'application/json')
+    response.end(JSON.stringify({ data: [{ id: 'native-discovered-model:latest' }] }))
+  } else if (request.url === '/v1/chat/completions') {
+    let body = ''
+    request.on('data', chunk => { body += chunk })
+    request.on('end', () => {
+      if (JSON.parse(body).model !== 'native-discovered-model:latest') { response.writeHead(400).end(); return }
+      response.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      response.end('data: {"choices":[{"delta":{"content":"Automatically discovered local model replied."},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
+    })
+  } else response.writeHead(404).end()
+}) : null
+
+function startSmoke() {
 server.listen(0, '127.0.0.1', () => {
   const root = `http://127.0.0.1:${server.address().port}`
   fs.writeFileSync(path.join(home, 'account-service.json'), JSON.stringify({ url: root, anonKey: 'native-public-fixture' }))
   const exe = process.env.KRONO_SMOKE_EXE || path.resolve('native/Krono.Agent/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/KronoAgent.exe')
   const closeWindow = process.env.KRONO_SMOKE_SCOPE === 'runtime-workspaces' ? '0' : '1'
   const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/native-smoke.ps1'), '-Executable', exe, '-Fixture', root, '-ReportDirectory', home], { env: { ...process.env, KRONO_USER_DATA: home, KRONO_SMOKE_CLOSE_WINDOW: closeWindow, OPENAI_BASE_URL: root + '/v1' }, stdio: 'inherit', windowsHide: true })
-  child.on('exit', code => { server.close(); console.log('Native smoke artifacts:', home); process.exitCode = code ?? 1 })
+  child.on('exit', code => { server.close(); modelServer?.close(); console.log('Native smoke artifacts:', home); process.exitCode = code ?? 1 })
 })
+}
+if (modelServer) modelServer.listen(1337, '127.0.0.1', startSmoke)
+else startSmoke()

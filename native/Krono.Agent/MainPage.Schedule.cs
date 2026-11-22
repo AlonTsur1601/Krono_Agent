@@ -49,8 +49,9 @@ public sealed partial class MainPage
             if (!ProviderCatalog.Ids.Contains(task.Provider)) throw new InvalidOperationException("This task's provider is no longer available.");
             var compatible = ProviderCatalog.Compatible(task.Provider);
             var endpoint = workspace.Setting("native.endpoint." + task.Provider) is { Length: > 0 } custom ? custom : ProviderCatalog.Endpoint(task.Provider);
-            var address = compatible ? ProviderCatalog.ParseEndpoint(endpoint) : null;
-            credential = workspace.Key(task.Provider);
+            var automatic = ProviderCatalog.AutomaticLocal(task.Provider);
+            var address = compatible && !automatic ? ProviderCatalog.ParseEndpoint(endpoint) : null;
+            credential = automatic ? "" : workspace.Key(task.Provider);
             if (credential.Length == 0 && (ProviderCatalog.RequiresKey(task.Provider) || address is not null && !ProviderCatalog.Local(address))) throw new InvalidOperationException("Save the task provider's API key in Settings.");
             var toolsEnabled = !compatible || workspace.Setting("native.tools." + task.Provider + "." + task.Model) == "true";
             var dirs = task.Project is null ? [] : workspace.Query("SELECT path FROM project_directories WHERE project_id=$p0", task.Project).Select(row => row["path"]!.ToString()).ToArray();
