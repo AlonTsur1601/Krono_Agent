@@ -103,6 +103,7 @@ p { margin: 0; color: var(--muted); }
   border-radius: inherit;
   background: var(--button-face);
   font-weight: 600;
+  transition: transform 140ms cubic-bezier(.42, 0, .58, 1), filter 140ms ease;
 }
 .button span::before {
   content: "";
@@ -116,7 +117,10 @@ p { margin: 0; color: var(--muted); }
 }
 .button.primary { --button-base: var(--primary-base); color: #10231f; }
 .button.primary span { background: var(--primary-face); }
-.button:hover span::before { opacity: .16; }
+@media (hover: hover) {
+  .button:hover span { transform: translateY(-3px); filter: brightness(1.12); }
+  .button:hover span::before { opacity: .2; }
+}
 .details { padding-inline: clamp(20px, 4vw, 32px); }
 .feature { display: grid; grid-template-columns: minmax(130px, 1fr) 3fr; align-items: baseline; gap: 12px 24px; padding-block: 18px; }
 .feature + .feature { border-top: 1px solid var(--border); }
@@ -133,5 +137,6 @@ p { margin: 0; color: var(--muted); }
   .feature { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .button span::before, .top-link { transition: none; }
+  .button span, .button span::before, .top-link { transition: none; }
+  .button:hover span { transform: none; }
 }
