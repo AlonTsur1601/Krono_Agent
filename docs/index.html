@@ -1,43 +1,71 @@
 <!doctype html>
-<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Krono Agent — Development</title>
-<style>body{margin:0;background:#111316;color:#f1f3f5;font:16px/1.7 system-ui}main{max-width:760px;margin:10vh auto;padding:32px}a{color:#8fd7c7}.badge{display:inline-block;border:1px solid #2b323c;border-radius:20px;padding:4px 14px;color:#ffb879}h1{font-size:48px;letter-spacing:-2px;margin:20px 0}p{color:#a5adb8}nav{display:flex;gap:24px;flex-wrap:wrap}</style>
-<script>
-const values = new URLSearchParams(location.hash.slice(1));
-const query = new URLSearchParams(location.search);
-const error = values.get('error_description') || query.get('error_description');
-if (error || values.has('access_token')) {
-  const result = error ? 'expired' : 'confirmed';
-  document.documentElement.dataset.confirmation = result;
-  document.title = 'Email confirmation · Krono Agent';
-  history.replaceState(null, '', new URL('confirm.html#' + result, location.href));
-}
-</script>
-<style>
-  .confirmation { display:none }
-  [data-confirmation] body { min-height:100vh; display:grid; place-items:center; background:#10151d; color:#f4f8f6; font:16px/1.55 system-ui,sans-serif }
-  [data-confirmation] .landing { display:none }
-  [data-confirmation] .confirmation { display:block; margin:24px; width:min(400px,calc(100% - 112px)); padding:32px; border:1px solid #344452; border-radius:22px; background:#1b2532 }
-  .confirmation h1 { font-size:2em; line-height:1.15; letter-spacing:normal }
-  .confirmation img { display:block }
-  .confirmation p { color:#d2dce5; margin-bottom:0 }
-  .confirmation .confirmed, .confirmation .expired { display:none }
-  [data-confirmation="confirmed"] .confirmed, [data-confirmation="expired"] .expired { display:block }
-</style>
-<main class="confirmation">
-  <img src="krono-mark.png" width="48" height="48" alt="Krono Agent">
-  <div class="confirmed"><h1>Email confirmed</h1><p>You can close this tab and return to Krono Agent.</p></div>
-  <div class="expired"><h1>Confirmation link expired</h1><p>Return to Krono Agent and request a new confirmation email.</p></div>
-</main>
-<main class="landing"><span class="badge">In development</span><div style="display:flex;align-items:center;gap:20px"><img src="https://raw.githubusercontent.com/AlonTsur1601/Krono_Agent/main/assets/logo/logo.svg" width="72" height="72" alt=""><h1>Krono Agent</h1></div>
-<p>A native Windows agent workspace with games to play while tasks run.</p>
-<p><a href="https://github.com/AlonTsur1601/Krono_Agent/releases/latest/download/Krono-Agent-Setup-x64.exe" style="display:inline-block;background:#8fd7c7;color:#111316;padding:10px 18px;border-radius:8px;font-weight:700;text-decoration:none">Download for Windows (x64)</a></p>
-<p>The installer lets you choose an installation folder and add a desktop shortcut. Krono Agent is in development and uses WinUI 3.</p>
-<p>Development checks include account-ownership policy tests and an integrated PowerShell terminal and isolated WebView2 browsing. The WinUI interface includes local project and memory management, native Markdown and 24 games with actual gameplay previews, personal bests, favorites, search and category filters. Ollama, LM Studio and custom OpenAI-compatible servers can be configured; local model downloads and inference hardware acceptance are not bundled or verified yet. Full release acceptance is still pending.</p>
-<p>Temporary side conversations keep a context snapshot, run independently in Chat mode, expire after 24 hours of message inactivity, and can be kept or transferred back to their parent at a safe boundary. They are stored locally; cross-device synchronization and attachments remain in development.</p>
-<p>Provider setup includes OpenAI, Anthropic, Google, Azure OpenAI, xAI, Groq, Mistral and OpenRouter. Compatible endpoints use opt-in tool support per model. Credentials and real provider quotas are supplied by the user's account; fixture checks do not establish live provider acceptance.</p>
-<p>Agent commands support detailed Ask approval, bounded PowerShell execution and cancellation. A native activity strip keeps task progress visible while playing and pauses the game when returning to the response. All 24 games have local account-scoped saves. Select a game to start fresh or continue an existing save; games pause when returning to chat or losing window focus. Optional account sync covers regular conversations, projects, memories, appearance and game data. Device keys, paths, tool permissions and temporary side chats remain local. Two-device fixtures verify offline retry and conflict resolution; production account acceptance and attachment sync are pending.</p><p>Opt-in one-time and recurring tasks run while the Windows app is open. Their results are kept in run history. The composer can send bounded text and code snapshots without their local paths.</p><nav><a href="https://github.com/AlonTsur1601/Krono_Agent#develop-on-windows">Setup guide</a><a href="https://github.com/AlonTsur1601/Krono_Agent">Source code</a>
-<a href="https://github.com/AlonTsur1601/Krono_Agent/blob/main/IMPLEMENTATION_STATUS.md">Implementation status</a>
-<a href="https://github.com/AlonTsur1601/Krono_Agent/blob/main/.kiro/specs/krono-agent/requirements.md">Requirements</a></nav>
-<p>Initial development through Kiro Crew; continued implementation and review
-through Codex, authorized by the project owner.</p></main></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Krono Agent</title>
+  <link rel="icon" href="krono-mark.png">
+  <link rel="stylesheet" href="krono.css">
+  <script src="confirmation.js" defer></script>
+</head>
+<body>
+  <div class="landing">
+    <header class="masthead">
+      <div class="shell">
+        <a class="brand" href="./" aria-label="Krono Agent home">
+          <img src="krono-mark.png" width="34" height="34" alt="">
+          <span class="wordmark" aria-hidden="true"><strong>KRONO</strong><small>AGENT</small></span>
+        </a>
+        <a class="top-link" href="https://github.com/KronoAgent/Krono_Agent">Source code</a>
+      </div>
+    </header>
+    <main class="shell landing-content">
+      <section class="surface hero">
+        <h1>Krono Agent</h1>
+        <p>A native Windows agent workspace with games to play while tasks run.</p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/KronoAgent/Krono_Agent/releases/latest/download/Krono-Agent-Setup-x64.exe"><span>Download for Windows (x64)</span></a>
+          <a class="button" href="https://github.com/KronoAgent/Krono_Agent#develop-on-windows"><span>Setup guide</span></a>
+        </div>
+      </section>
+      <section class="surface details" aria-label="Krono Agent features">
+        <div class="feature">
+          <h2>Windows installer</h2>
+          <p>The installer lets you choose an installation folder and add a desktop shortcut. Krono Agent is in development and uses WinUI 3.</p>
+        </div>
+        <div class="feature">
+          <h2>Agent workspace</h2>
+          <p>Development checks include account-ownership policy tests and an integrated PowerShell terminal and isolated WebView2 browsing. The WinUI interface includes local project and memory management, native Markdown and 24 games with actual gameplay previews, personal bests, favorites, search and category filters. Ollama, LM Studio and custom OpenAI-compatible servers can be configured; local model downloads and inference hardware acceptance are not bundled or verified yet. Full release acceptance is still pending.</p>
+        </div>
+        <div class="feature">
+          <h2>Side conversations</h2>
+          <p>Temporary side conversations keep a context snapshot, run independently in Chat mode, expire after 24 hours of message inactivity, and can be kept or transferred back to their parent at a safe boundary. They are stored locally; cross-device synchronization and attachments remain in development.</p>
+        </div>
+        <div class="feature">
+          <h2>Model providers</h2>
+          <p>Provider setup includes OpenAI, Anthropic, Google, Azure OpenAI, xAI, Groq, Mistral and OpenRouter. Compatible endpoints use opt-in tool support per model. Credentials and real provider quotas are supplied by the user's account; fixture checks do not establish live provider acceptance.</p>
+        </div>
+        <div class="feature">
+          <h2>Tools, games and sync</h2>
+          <p>Agent commands support detailed Ask approval, bounded PowerShell execution and cancellation. A native activity strip keeps task progress visible while playing and pauses the game when returning to the response. All 24 games have local account-scoped saves. Select a game to start fresh or continue an existing save; games pause when returning to chat or losing window focus. Optional account sync covers regular conversations, projects, memories, appearance and game data. Device keys, paths, tool permissions and temporary side chats remain local. Two-device fixtures verify offline retry and conflict resolution; production account acceptance and attachment sync are pending.</p>
+        </div>
+        <div class="feature">
+          <h2>Scheduled tasks</h2>
+          <p>Opt-in one-time and recurring tasks run while the Windows app is open. Their results are kept in run history. The composer can send bounded text and code snapshots without their local paths.</p>
+        </div>
+      </section>
+      <nav class="footer-links" aria-label="Project documentation">
+        <a href="https://github.com/KronoAgent/Krono_Agent/blob/main/IMPLEMENTATION_STATUS.md">Implementation status</a>
+        <a href="https://github.com/KronoAgent/Krono_Agent/blob/main/.kiro/specs/krono-agent/requirements.md">Requirements</a>
+      </nav>
+      <p class="credits">Initial development through Kiro Crew; continued implementation and review
+through Codex, authorized by the project owner.</p>
+    </main>
+  </div>
+  <main class="surface confirmation">
+    <img src="krono-mark.png" width="48" height="48" alt="Krono Agent">
+    <h1 data-confirmation-title>Email confirmation</h1>
+    <p data-confirmation-message>Open the link in your confirmation email to continue.</p>
+  </main>
+</body>
+</html>

@@ -96,7 +96,7 @@ if ($Offline) {
         $_.Extension -notin '.pdb', '.map' -and $_.Name -notlike '*.test.js'
     } | ForEach-Object { $_.FullName.Substring($appDirectory.Length + 1) }
 } else {
-    if (!$PayloadUrl) { $PayloadUrl = "https://github.com/AlonTsur1601/Krono_Agent/releases/download/v$version/$payloadName" }
+    if (!$PayloadUrl) { $PayloadUrl = "https://github.com/KronoAgent/Krono_Agent/releases/download/v$version/$payloadName" }
     $payloadSize = (Get-Item -LiteralPath $payload).Length
     $payloadHash = (Get-FileHash -LiteralPath $payload -Algorithm SHA256).Hash
     $defines += "/DKronoPayloadUrl=$PayloadUrl", "/DKronoPayloadSize=$payloadSize", "/DKronoPayloadHash=$payloadHash"

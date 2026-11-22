@@ -11,7 +11,7 @@ namespace Krono_Agent;
 
 public sealed partial class MainPage
 {
-    const string ReleaseRoot = "https://github.com/AlonTsur1601/Krono_Agent/releases";
+    const string ReleaseRoot = "https://github.com/KronoAgent/Krono_Agent/releases";
     const string InstallerName = "Krono-Agent-Setup-x64.exe";
     static readonly HttpClient UpdateHttp = new() { Timeout = TimeSpan.FromSeconds(30) };
     readonly DispatcherTimer updateTimer = new() { Interval = TimeSpan.FromHours(4) };
@@ -130,7 +130,7 @@ public sealed partial class MainPage
         checkingUpdate = true;
         try {
             using var request = new HttpRequestMessage(HttpMethod.Get,
-                "https://api.github.com/repos/AlonTsur1601/Krono_Agent/releases/latest");
+                "https://api.github.com/repos/KronoAgent/Krono_Agent/releases/latest");
             request.Headers.UserAgent.ParseAdd("KronoAgent/" + InstalledVersion.ToString(3));
             using var response = await UpdateHttp.SendAsync(request, updateLifetime.Token);
             response.EnsureSuccessStatusCode();

@@ -36,8 +36,8 @@ console.log(`Subject: ${title} · Krono Agent
 <html lang="en">
 <head><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-@font-face{font-family:Rubik;src:url('https://alontsur1601.github.io/Krono_Agent/fonts/Rubik.ttf') format('truetype');font-weight:100 900;font-display:swap}
-@font-face{font-family:'Space Grotesk';src:url('https://alontsur1601.github.io/Krono_Agent/fonts/SpaceGrotesk.ttf') format('truetype');font-weight:300 700;font-display:swap}
+@font-face{font-family:Rubik;src:url('https://kronoagent.github.io/Krono_Agent/fonts/Rubik.ttf') format('truetype');font-weight:100 900;font-display:swap}
+@font-face{font-family:'Space Grotesk';src:url('https://kronoagent.github.io/Krono_Agent/fonts/SpaceGrotesk.ttf') format('truetype');font-weight:300 700;font-display:swap}
 .krono-action-face{transition:transform 100ms ease-out,filter 100ms ease-out}
 .krono-action:hover .krono-action-face{transform:translateY(-2px);filter:brightness(1.06)}
 .krono-action:active .krono-action-face{transition:none;transform:translateY(2px);filter:brightness(.92)}
@@ -49,7 +49,7 @@ console.log(`Subject: ${title} · Krono Agent
     <tr><td align="center" style="padding:32px 16px">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#1b2532" style="max-width:520px;border:1px solid #344452;border-radius:20px">
         <tr><td style="padding:30px">
-          <img src="https://alontsur1601.github.io/Krono_Agent/krono-mark.png" width="44" height="44" alt="" style="display:block;margin-bottom:12px">
+          <img src="https://kronoagent.github.io/Krono_Agent/krono-mark.png" width="44" height="44" alt="" style="display:block;margin-bottom:12px">
           <div style="color:#84e6b1;font-size:13px;letter-spacing:.14em;font-weight:bold">KRONO AGENT</div>
           <h1 style="margin:16px 0 10px;color:#f4f8f6;font-family:'Space Grotesk',Rubik,Arial,sans-serif;font-size:27px;line-height:1.2">${title}</h1>
           <p style="margin:0 0 22px;color:#d2dce5;font-size:16px;line-height:1.6">${intro}</p>
