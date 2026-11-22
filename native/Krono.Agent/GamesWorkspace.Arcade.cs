@@ -253,7 +253,7 @@ public sealed partial class GamesWorkspace
             var center = i * 18 - 90; var band = i % 2 == 0 ? ringA : ringB;
             Segment(16, 170, center, i % 2 == 0 ? Ink(0x312c2b) : Ink(0xe2ceaa));
             Segment(156, 170, center, band); Segment(96, 108, center, band);
-            var p = At(200, center); var label = new TextBlock { Text = ArcadeRules.DartSectors[i].ToString(), FontFamily = KronoDesign.CodeFont, FontSize = 18, Foreground = Ink(0xf1e1c7), Width = 30, TextAlignment = TextAlignment.Center }; Canvas.SetLeft(label, p.X - 15); Canvas.SetTop(label, p.Y - 12); result.Children.Add(label);
+            var p = At(200, center); var label = new TextBlock { Tag = "game-code", Text = ArcadeRules.DartSectors[i].ToString(), FontFamily = KronoDesign.CodeFont, FontSize = 18, Foreground = Ink(0xf1e1c7), Width = 30, TextAlignment = TextAlignment.Center }; Canvas.SetLeft(label, p.X - 15); Canvas.SetTop(label, p.Y - 12); result.Children.Add(label);
         }
         foreach (var (radius, fill) in new[] { (16, ringB), (6, ringA) }) { var circle = new Ellipse { Width = 2 * radius, Height = 2 * radius, Fill = fill }; Canvas.SetLeft(circle, 240 - radius); Canvas.SetTop(circle, 240 - radius); result.Children.Add(circle); }
         return result;

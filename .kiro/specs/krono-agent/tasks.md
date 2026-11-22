@@ -1175,3 +1175,7 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 ## November 21 feedback and release
 
 - Follow implementation and verification by feedback item in [the November 21 review](review-2026-11-21.md).
+
+## November 22 desktop feedback
+
+- See [the November 22 review](review-2026-11-22.md) for implementation and verification.

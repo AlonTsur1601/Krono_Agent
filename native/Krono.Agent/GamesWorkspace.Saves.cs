@@ -8,14 +8,17 @@ namespace Krono_Agent;
 public sealed partial class GamesWorkspace
 {
     bool stateReady, madeProgress, disposed, openingGame;
+    bool savePending;
+    int lastSavedTick = -1;
     string endMessage = "";
     readonly List<TextBlock> saveLabels = [];
     string SaveId(int index) => "native-v1:" + names[index];
     string BestCaption(int index)
     {
         var best = workspace.Query("SELECT MAX(score) AS best FROM game_scores WHERE account_id=$p0 AND game_id=$p1", workspace.AccountId, names[index]).First()["best"]?.ToString();
-        return "PERSONAL BEST  " + (best ?? "—");
+        return BestCaptionText(best);
     }
+    static string BestCaptionText(string? best) => "PERSONAL BEST  " + (best ?? "—");
     async Task ChooseGame(int index)
     {
         if (disposed || openingGame) return;
@@ -40,8 +43,9 @@ public sealed partial class GamesWorkspace
                 }
             }
             if (disposed) return;
-            timer.Stop(); game = index; Reset(); stateReady = true;
+            timer.Stop(); game = index; Reset();
             if (resume) madeProgress = RestoreCurrent();
+            stateReady = true;
             shownScore = -1;
             library!.Visibility = Visibility.Collapsed; playScreen!.Visibility = Visibility.Visible;
             Draw(); AnimateBoardEntry(); if (!paused && !ended) timer.Start(); Focus(FocusState.Programmatic);
@@ -62,8 +66,8 @@ public sealed partial class GamesWorkspace
     void SaveCurrent(bool userAction = true)
     {
         if (disposed || !stateReady) return;
-        madeProgress |= userAction;
-        if (!madeProgress) return;
+        if (userAction) madeProgress = savePending = true;
+        if (!madeProgress || !savePending && tick == lastSavedTick) return;
         try {
             var state = new GameSave {
                 Version = 1, Game = names[game], Score = score, Tick = tick, Moves = moves,
@@ -81,6 +85,8 @@ public sealed partial class GamesWorkspace
             };
             workspace.Execute("INSERT INTO game_saves(id,account_id,game_id,state,saved_at) VALUES($p0,$p1,$p2,$p3,$p4) ON CONFLICT(id) DO UPDATE SET state=excluded.state,saved_at=excluded.saved_at,synced=0",
                 SaveId(game), workspace.AccountId, names[game], JsonSerializer.Serialize(state), Workspace.Now);
+            lastSavedTick = tick;
+            savePending = false;
         } catch (Exception error) when (error is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException) {
             // Keep the playable state in memory and make a failed disk write visible.
             gameHelp.Text = "Could not save this game. " + error.Message;
@@ -116,6 +122,7 @@ public sealed partial class GamesWorkspace
         if (game is BlockFit or FallingBlocks or SandBlocks) blocks = state.Blocks;
         if (game == Solitaire) cards = state.Cards;
         // Restoration never starts a moving game or advances a pattern without consent.
+        lastSavedTick = tick;
         paused = true; return true;
     }
     bool Valid(GameSave s)

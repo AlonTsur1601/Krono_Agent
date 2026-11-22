@@ -1,34 +1,97 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
 namespace Krono_Agent;
 
 static class PluginCatalog
 {
-    internal sealed record Plugin(string Id, string Name, string Description, bool NeedsToken = false, string? SetupUrl = null)
+    internal sealed record Plugin(string Id, string Name, string Type, string Icon, string Color, string Description, string? SetupUrl)
     {
-        public string Setting => "native.plugin." + Id;
+        internal string Setting => "native.plugin." + Id;
+        internal string GrantSetting => Setting + ".grant";
+        internal bool RequiresAccount => Type == "account";
+        internal bool UsesCli => Id is "github" or "firebase";
     }
 
-    internal static readonly Plugin[] All = [
-        new("github", "GitHub", "Read repositories, issues and pull requests. Use a fine-grained token with access to the selected repositories and read permissions for Issues and Pull requests.", true, "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens"),
-        new("vercel", "Vercel", "Read projects and deployment status. Use a Vercel access token scoped to the relevant account or team.", true, "https://vercel.com/docs/rest-api"),
-        new("firebase", "Firebase", "Read Firebase projects and registered apps. On this computer, sign into Google Cloud CLI with gcloud auth application-default login, then test the connection.", SetupUrl: "https://cloud.google.com/docs/authentication/set-up-adc-local-dev-environment"),
-        new("node", "Node.js", "Inspect package.json, engine requirements, dependency names and available npm scripts in your project."),
-    ];
+    internal static readonly Plugin[] All = Load();
 
-    internal const string TeamSetting = "native.plugin.vercel.team";
-
-    internal static object? Configuration(Workspace workspace, Plugin plugin)
+    static Plugin[] Load()
     {
-        if (!plugin.NeedsToken) return new { id = plugin.Id };
-        var token = workspace.Key(plugin.Setting);
-        if (token.Length == 0) return null;
-        var teamId = plugin.Id == "vercel" ? workspace.Setting(TeamSetting) : "";
-        if (teamId.Length > 0) return new { id = plugin.Id, token, teamId };
-        return new { id = plugin.Id, token };
+        using var manifest = typeof(PluginCatalog).Assembly.GetManifestResourceStream("KronoAgent.PluginCatalog.json")
+            ?? throw new InvalidOperationException("The plugin catalog is missing.");
+        return JsonSerializer.Deserialize<Plugin[]>(manifest, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
     }
 
-    internal static object[] Enabled(Workspace workspace) => All
-        .Where(plugin => workspace.Setting(plugin.Setting) == "true")
-        .Select(plugin => Configuration(workspace, plugin))
-        .OfType<object>()
-        .ToArray();
+    internal static bool Installed(Workspace workspace, Plugin plugin) => workspace.Setting(plugin.Setting) == "true";
+
+    internal static JsonObject? Configuration(Workspace workspace, Plugin plugin)
+    {
+        if (!plugin.RequiresAccount) return new JsonObject { ["id"] = plugin.Id, ["skill"] = plugin.Type == "skill" ? JsonValue.Create(true) : null };
+        var value = workspace.Key(plugin.GrantSetting);
+        if (value.Length > 0) {
+            try { return JsonNode.Parse(value) as JsonObject; }
+            catch (JsonException) { return null; }
+        }
+
+        // Previously configured, encrypted credentials still work until the user reconnects or removes the plugin.
+        if (plugin.Id is not ("github" or "vercel") || workspace.Key(plugin.Setting) is not { Length: > 0 } credential) return null;
+        var config = new JsonObject { ["id"] = plugin.Id, ["token"] = credential };
+        if (plugin.Id == "vercel" && workspace.Setting("native.plugin.vercel.team") is { Length: > 0 } team)
+            config["teamId"] = team;
+        return config;
+    }
+
+    internal static object[] Enabled(Workspace workspace, bool includeTools = true) => All
+        .Where(plugin => (includeTools || plugin.Type == "skill") && Installed(workspace, plugin))
+        .Select(plugin => Configuration(workspace, plugin)).OfType<object>().ToArray();
+
+    internal static void SaveConnection(Workspace workspace, Plugin plugin, JsonNode response, string? profile)
+    {
+        if (!Installed(workspace, plugin)) return;
+        var previous = Configuration(workspace, plugin)?["profile"]?.GetValue<string>();
+        var config = new JsonObject { ["id"] = plugin.Id, ["grantId"] = Guid.NewGuid().ToString() };
+        if (plugin.UsesCli && profile is not null && response["profile"]?.ToString() == profile) config["profile"] = profile;
+        else if (!plugin.UsesCli && response["connection"] is JsonObject connection) config["connection"] = connection.DeepClone();
+        else throw new InvalidOperationException("The provider did not return a valid sign-in session.");
+        workspace.SaveKey(plugin.GrantSetting, config.ToJsonString());
+        if (plugin.Id is "github" or "vercel") workspace.SaveKey(plugin.Setting, "");
+        if (previous is not null && previous != profile) workspace.ClearPluginProfile(plugin.Id, previous);
+    }
+
+    internal static void AcceptRefresh(Workspace workspace, JsonNode data)
+    {
+        if (workspace.AccountId.Length == 0 || data["connection"] is not JsonObject connection) return;
+        var plugin = All.FirstOrDefault(item => item.Id == data["pluginId"]?.ToString());
+        if (plugin is null || !Installed(workspace, plugin)) return;
+        var config = Configuration(workspace, plugin);
+        if (config is null || config["grantId"] is not { } current || current.ToString() != data["grantId"]?.ToString()) return;
+        config["connection"] = connection.DeepClone();
+        workspace.SaveKey(plugin.GrantSetting, config.ToJsonString());
+    }
+
+    internal static void Remove(Workspace workspace, Plugin plugin)
+    {
+        var profile = plugin.UsesCli ? Configuration(workspace, plugin)?["profile"]?.GetValue<string>() : null;
+        workspace.SetSetting(plugin.Setting, "false");
+        if (plugin.RequiresAccount) workspace.SaveKey(plugin.GrantSetting, "");
+        if (plugin.Id is "github" or "vercel") workspace.SaveKey(plugin.Setting, "");
+        if (profile is not null) workspace.ClearPluginProfile(plugin.Id, profile);
+    }
+}
+
+public sealed partial class Workspace
+{
+    string PluginProfileRoot(string plugin) => Path.Combine(dataHome, "native-plugin-profiles", AccountId, plugin);
+    internal string NewPluginProfile(string plugin) => Path.GetFullPath(Path.Combine(PluginProfileRoot(plugin), Guid.NewGuid().ToString("N")));
+
+    internal void ClearPluginProfile(string plugin, string path)
+    {
+        try {
+            var full = Path.GetFullPath(path);
+            var root = Path.GetFullPath(PluginProfileRoot(plugin));
+            if (!string.Equals(Path.GetDirectoryName(full), root, StringComparison.OrdinalIgnoreCase) ||
+                !Guid.TryParseExact(Path.GetFileName(full), "N", out _) || !Directory.Exists(full)) return;
+            Directory.Delete(full, recursive: true);
+        } catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException) { }
+    }
 }

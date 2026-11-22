@@ -12,6 +12,7 @@ public sealed class AgentWorker : IDisposable
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonNode?>> pending = new();
     public event Action<string, string, JsonNode?>? Event;
     internal Func<string, JsonNode, Task<object>>? BrowserRequest { get; set; }
+    internal Action<JsonNode>? PluginCredentialsChanged { get; set; }
     private readonly SemaphoreSlim writer = new(1);
     private readonly Microsoft.UI.Dispatching.DispatcherQueue dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread() ?? throw new InvalidOperationException("Create the worker on the UI thread.");
     private readonly Task output;
@@ -74,7 +75,8 @@ public sealed class AgentWorker : IDisposable
         if (!dispatcher.TryEnqueue(() => {
             try {
                 if (!disposed) {
-                    if (type == "browser" && data is not null) _ = AnswerBrowser(id, data);
+                    if (type == "plugin:credentials" && data is not null) PluginCredentialsChanged?.Invoke(data);
+                    else if (type == "browser" && data is not null) _ = AnswerBrowser(id, data);
                     else Event?.Invoke(id, type, data);
                 }
                 delivered.TrySetResult();
@@ -131,6 +133,7 @@ public sealed class AgentWorker : IDisposable
         disposed = true;
         Event = null;
         BrowserRequest = null;
+        PluginCredentialsChanged = null;
         _ = Task.Run(Stop);
     }
 

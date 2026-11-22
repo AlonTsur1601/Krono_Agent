@@ -69,7 +69,7 @@ public sealed partial class BrowserWorkspace
     void OpenHistory()
     {
         var privateContext = tabs.SelectedItem is TabViewItem selected && privateTabs.Contains(selected);
-        var content = new StackPanel { Spacing = 8, MaxWidth = 820, Margin = new Thickness(22, 18, 22, 20) };
+        var content = new StackPanel { Spacing = 8, MaxWidth = 820, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(22, 18, 22, 20) };
         var heading = new TextBlock { Text = "History", FontSize = 26 };
         AutomationProperties.SetAutomationId(heading, "BrowserHistory");
         content.Children.Add(heading);
@@ -85,26 +85,22 @@ public sealed partial class BrowserWorkspace
                 Text = day.Key.ToString("dddd, MMMM d, yyyy", CultureInfo.InvariantCulture),
                 Margin = new Thickness(0, 8, 0, 0), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
             });
-            foreach (var visit in day) content.Children.Add(HistoryRow(visit.Visit!, privateContext));
-        }
-        var bookmarks = workspace.Query("SELECT value FROM settings WHERE key GLOB 'browser.bookmark.*' ORDER BY key LIMIT 100")
-            .Select(row => ParseVisit(row["value"]!.ToString())).OfType<BrowserVisit>().ToArray();
-        if (bookmarks.Length > 0) {
-            content.Children.Add(new TextBlock { Text = "Bookmarks", Margin = new Thickness(0, 8, 0, 0),
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-            foreach (var bookmark in bookmarks) content.Children.Add(HistoryRow(bookmark, privateContext));
+            foreach (var visit in day) content.Children.Add(HistoryRow(visit.Visit!, privateContext,
+                DateTimeOffset.FromUnixTimeMilliseconds(visit.Time).ToLocalTime().ToString("t", CultureInfo.CurrentCulture)));
         }
         var page = new Grid { Visibility = Visibility.Collapsed };
-        page.Children.Add(KronoDesign.ScrollPage(content, "KronoSurface"));
+        var scroll = new ScrollViewer { Content = content, HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        scroll.SizeChanged += (_, args) => content.Width = Math.Max(0, Math.Min(820, args.NewSize.Width - 60));
+        page.Children.Add(KronoDesign.ScrollPage(scroll, "KronoSurface"));
         var tab = new TabViewItem();
-        CreateBrowserTabHeader(tab, "History", new SymbolIcon(Symbol.Clock));
+        CreateBrowserTabHeader(tab, "History", KronoDesign.NavigationIcon(Symbol.Clock));
         pages.Add(tab, page);
         pageHost.Children.Add(page);
         tabs.TabItems.Add(tab);
         tabs.SelectedItem = tab;
     }
 
-    Button HistoryRow(BrowserVisit visit, bool privateContext)
+    Button HistoryRow(BrowserVisit visit, bool privateContext, string time)
     {
         var uri = new Uri(visit.Url);
         var icon = new Grid { Width = 20, Height = 20 };
@@ -129,9 +125,13 @@ public sealed partial class BrowserWorkspace
         var title = new TextBlock { Text = visit.Title, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         row.Children.Add(title);
         Grid.SetColumn(title, 1);
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var timestamp = new TextBlock { Text = time, Opacity = .65, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(timestamp, 2);
+        row.Children.Add(timestamp);
         var button = new Button { Content = row, HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(10, 6, 10, 6) };
-        AutomationProperties.SetName(button, visit.Title);
+        AutomationProperties.SetName(button, visit.Title + ", " + time);
         ToolTipService.SetToolTip(button, uri.Host);
         button.Click += (_, _) => _ = Open(visit.Url, privateContext);
         return button;

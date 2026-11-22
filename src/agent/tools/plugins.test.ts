@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentRuntime } from '../runtime'
 import type { CompletionRequest, ExecutionContext, ProviderAdapter } from '../types'
-import { PluginConfig, pluginTools, testPlugin } from './plugins'
+import { PluginConfig, pluginGuidance, pluginTools, testPlugin } from './plugins'
 
 const firebaseHeaders = vi.hoisted(() => vi.fn())
 vi.mock('google-auth-library', () => ({ GoogleAuth: class { getRequestHeaders = firebaseHeaders } }))
@@ -21,6 +21,26 @@ afterEach(() => {
 })
 
 describe('optional plugins', () => {
+  it('applies only installed skill guidance and exposes no executable tool for a skill pack', () => {
+    const config = PluginConfig.parse({ id: 'typescript', skill: true })
+    expect(pluginGuidance([config])).toContain('nearest tsconfig')
+    expect(pluginGuidance([config])).not.toContain('For Vue work')
+    expect(pluginTools([config])).toEqual([])
+    expect(PluginConfig.safeParse({ id: 'unknown-skill', skill: true }).success).toBe(false)
+  })
+
+  it('searches Hugging Face public models without credentials and projects only catalog data', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json([
+      { id: 'example/test-model', pipeline_tag: 'text-generation', downloads: 25, ignored: 'omitted' },
+    ]))
+    vi.stubGlobal('fetch', fetch)
+    const [tool] = pluginTools([PluginConfig.parse({ id: 'huggingface' })])
+    const result = await tool.execute({ search: 'test', task: 'text-generation' }, context)
+    expect(String(fetch.mock.calls[0][0])).toBe('https://huggingface.co/api/models?search=test&limit=15&pipeline_tag=text-generation')
+    expect(fetch.mock.calls[0][1]?.headers).toBeUndefined()
+    expect(JSON.parse(result.output!)).toEqual({ models: [{ id: 'example/test-model', pipeline_tag: 'text-generation', downloads: 25 }] })
+  })
+
   it('checks GitHub sign-in and reads repository metadata without exposing a credential', async () => {
     const config = PluginConfig.parse({ id: 'github', token: credential })
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () => new Response(JSON.stringify({ login: 'octocat' })))

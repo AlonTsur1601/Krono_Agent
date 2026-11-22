@@ -1,22 +1,33 @@
 import { open, stat } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { GoogleAuth } from 'google-auth-library'
 import { z } from 'zod'
 import type { ExecutionContext, ToolDefinition, ToolResult } from '../types'
 import { authorizePath } from './files'
+import { CliProfile, connectCli, githubGet } from './plugin-cli'
+import { McpGrant, McpId, checkMcp, connectMcp, mcpTools } from './plugin-mcp'
+import catalog from './plugin-catalog.json'
 
 const token = z.string().min(1).max(4096).regex(/^[\x21-\x7E]+$/)
 const team = z.string().regex(/^team_[a-z0-9_]+$/i).max(100)
-export const PluginConfig = z.discriminatedUnion('id', [
-  z.object({ id: z.literal('github'), token }),
+const rest = z.discriminatedUnion('id', [
+  z.object({ id: z.literal('github'), token: token.optional(), profile: CliProfile.optional() }).refine(options => !!(options.token || options.profile)),
   z.object({ id: z.literal('vercel'), token, teamId: team.optional() }),
-  z.object({ id: z.literal('firebase') }),
+  z.object({ id: z.literal('firebase'), profile: CliProfile.optional() }),
+])
+const mcp = z.object({ id: McpId, connection: McpGrant, grantId: z.uuid() })
+export const PluginConfig = z.union([
+  rest, mcp,
   z.object({ id: z.literal('node') }),
+  z.object({ id: z.literal('huggingface') }),
+  z.object({ id: z.string().refine(id => catalog.some(item => item.id === id && item.type === 'skill')), skill: z.literal(true) }),
 ])
 type Config = z.infer<typeof PluginConfig>
-type FirebaseConfig = Extract<Config, { id: 'firebase' }> & { auth?: GoogleAuth }
-type RemoteConfig = Exclude<Config, { id: 'node' | 'firebase' }> | FirebaseConfig
+type RestConfig = z.infer<typeof rest>
+type FirebaseConfig = Extract<RestConfig, { id: 'firebase' }> & { auth?: GoogleAuth }
+type RemoteConfig = Exclude<RestConfig, { id: 'firebase' }> | FirebaseConfig
 type Query = Record<string, string | number | undefined>
+type PersistGrant = (id: string, grantId: string, connection: McpGrant) => void
 
 const origins = {
   github: 'https://api.github.com',
@@ -26,7 +37,10 @@ const origins = {
 const pageSize = 15
 const responseLimit = 4 * 1024 * 1024
 const packageLimit = 128 * 1024
-const createFirebaseAuth = () => new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform.read-only'] })
+const createFirebaseAuth = (profile?: string) => new GoogleAuth({
+  scopes: ['https://www.googleapis.com/auth/cloud-platform.read-only'],
+  ...(profile ? { keyFilename: join(profile, 'application_default_credentials.json') } : {}),
+})
 
 class PluginError extends Error {}
 
@@ -47,12 +61,12 @@ function items(value: unknown, names: readonly string[]) {
 async function requestHeaders(config: RemoteConfig, url: URL): Promise<Headers> {
   if (config.id === 'firebase') {
     try {
-      const firebaseAuth = config.auth ?? createFirebaseAuth()
+      const firebaseAuth = config.auth ?? createFirebaseAuth(config.profile)
       const credentials = await firebaseAuth.getRequestHeaders(url)
       if (!credentials.has('authorization')) throw new Error()
       return new Headers(credentials)
     } catch {
-      throw new PluginError('Firebase sign-in is required. Run gcloud auth application-default login, then test the connection again.')
+      throw new PluginError(config.profile ? 'Reconnect Firebase in Settings → Plugins.' : 'Firebase sign-in is required. Run gcloud auth application-default login, then test the connection again.')
     }
   }
   const headers = new Headers({ Authorization: `Bearer ${config.token}` })
@@ -85,6 +99,7 @@ async function boundedJson(response: Response): Promise<unknown> {
 async function getJson(config: RemoteConfig, path: string, query: Query, signal?: AbortSignal) {
   const url = new URL(path, origins[config.id])
   for (const [key, value] of Object.entries(query)) if (value !== undefined) url.searchParams.set(key, String(value))
+  if (config.id === 'github' && config.profile) return githubGet(config.profile, url.pathname + url.search, signal)
   const timeout = AbortSignal.timeout(15_000)
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout
   const headers = await new Promise<Headers>((resolveHeaders, rejectHeaders) => {
@@ -151,7 +166,7 @@ function remoteTool<T extends z.ZodType>(
   }
 }
 
-function githubTools(config: Extract<Config, { id: 'github' }>): ToolDefinition[] {
+function githubTools(config: Extract<RestConfig, { id: 'github' }>): ToolDefinition[] {
   return [
     remoteTool(config, 'github_list_repositories', 'List repositories accessible to the connected GitHub account, sorted by most recently updated.',
       z.object({ page }), input => ({ path: '/user/repos', query: { sort: 'updated', per_page: pageSize, page: input.page } }),
@@ -164,7 +179,7 @@ function githubTools(config: Extract<Config, { id: 'github' }>): ToolDefinition[
   ]
 }
 
-function vercelTools(config: Extract<Config, { id: 'vercel' }>): ToolDefinition[] {
+function vercelTools(config: Extract<RestConfig, { id: 'vercel' }>): ToolDefinition[] {
   const schemas = { until: z.number().int().min(0).optional(), search: z.string().min(1).max(100).optional() }
   return [
     remoteTool(config, 'vercel_list_projects', 'List projects for the connected Vercel account or configured team.',
@@ -177,8 +192,8 @@ function vercelTools(config: Extract<Config, { id: 'vercel' }>): ToolDefinition[
   ]
 }
 
-function firebaseTools(config: Extract<Config, { id: 'firebase' }>): ToolDefinition[] {
-  const connected = { ...config, auth: createFirebaseAuth() }
+function firebaseTools(config: Extract<RestConfig, { id: 'firebase' }>): ToolDefinition[] {
+  const connected = { ...config, auth: createFirebaseAuth(config.profile) }
   return [
     remoteTool(connected, 'firebase_list_projects', 'List Firebase projects accessible to the connected Google account.',
       z.object({ pageToken: cursor }), input => ({ path: '/v1beta1/projects', query: { pageSize, ...input } }),
@@ -224,35 +239,80 @@ const nodeTool: ToolDefinition = {
   },
 }
 
-export function pluginTools(configs: readonly Config[]): ToolDefinition[] {
+const hubInput = z.object({ search: z.string().min(1).max(120), task: z.string().regex(/^[a-z-]+$/).max(70).optional() })
+const hubTool: ToolDefinition = {
+  name: 'huggingface_find_public_models', description: 'Search public models on the Hugging Face Hub by name or task.', inputSchema: hubInput,
+  capabilities: { requiresPermission: 'execute', canCancel: true, longRunning: false },
+  async execute(input, context) {
+    if (context.permissions === 'project') return { success: false, error: 'Online tools require Ask or Full permissions.' }
+    const query = hubInput.parse(input)
+    try {
+      const url = new URL('https://huggingface.co/api/models')
+      url.searchParams.set('search', query.search); url.searchParams.set('limit', String(pageSize))
+      if (query.task) url.searchParams.set('pipeline_tag', query.task)
+      const timeout = AbortSignal.timeout(15_000)
+      const response = await fetch(url, { signal: context.signal ? AbortSignal.any([context.signal, timeout]) : timeout, redirect: 'error' })
+      if (!response.ok) return { success: false, error: 'Hugging Face could not complete the model search.' }
+      return success({ models: items(await boundedJson(response), ['id', 'pipeline_tag', 'library_name', 'downloads', 'likes']) })
+    } catch (error) { return failure(error) }
+  },
+}
+
+export function pluginTools(configs: readonly Config[], persist: PersistGrant = () => {}): ToolDefinition[] {
   return configs.flatMap(config => {
+    if ('skill' in config) return []
+    if ('connection' in config) return mcpTools(config.id, config.connection, grant => persist(config.id, config.grantId, grant))
     switch (config.id) {
       case 'github': return githubTools(config)
       case 'vercel': return vercelTools(config)
       case 'firebase': return firebaseTools(config)
       case 'node': return [nodeTool]
+      case 'huggingface': return [hubTool]
     }
   })
 }
 
-export async function testPlugin(config: Config): Promise<{ success: boolean; message: string }> {
+export function pluginGuidance(configs: readonly Config[]) {
+  const installed = new Set(configs.filter(item => 'skill' in item).map(item => item.id))
+  return catalog.filter(item => installed.has(item.id) && item.guidance).map(item => `${item.name}: ${item.guidance}`).join('\n')
+}
+
+export const PluginConnect = z.union([
+  z.object({ id: McpId }),
+  z.object({ id: z.literal('github'), profile: CliProfile }),
+  z.object({ id: z.literal('firebase'), profile: CliProfile }),
+])
+
+export async function connectPlugin(config: z.infer<typeof PluginConnect>, signal: AbortSignal, open: (url: string) => void, notify: (message: string) => void) {
+  if (!('profile' in config)) return connectMcp(config.id, signal, open)
+  const state = await connectCli(config.id, config.profile, signal, open, notify)
+  if (!state.success) return state
+  const checked = await testPlugin(config, signal)
+  return checked.success ? { ...checked, profile: state.profile } : checked
+}
+
+export async function testPlugin(config: Config, signal = AbortSignal.timeout(20_000), persist: PersistGrant = () => {}): Promise<{ success: boolean; message: string }> {
   try {
+    if ('skill' in config) return { success: true, message: 'Skill pack is available.' }
+    if ('connection' in config) return checkMcp(config.id, config.connection, signal, grant => persist(config.id, config.grantId, grant))
     switch (config.id) {
       case 'github': {
-        const { data } = await getJson(config, '/user', {})
+        const { data } = await getJson(config, '/user', {}, signal)
         if (typeof object(data).login !== 'string') throw new PluginError('GitHub did not confirm the account.')
         return { success: true, message: 'GitHub confirmed the connected account.' }
       }
       case 'vercel': {
-        const { data } = await getJson(config, '/v10/projects', { teamId: config.teamId, limit: 1 })
+        const { data } = await getJson(config, '/v10/projects', { teamId: config.teamId, limit: 1 }, signal)
         if (!Array.isArray(object(data).projects)) throw new PluginError('Vercel did not confirm project access.')
         return { success: true, message: 'Vercel project access verified.' }
       }
       case 'firebase':
-        await getJson(config, '/v1beta1/projects', { pageSize: 1 })
+        await getJson(config, '/v1beta1/projects', { pageSize: 1 }, signal)
         return { success: true, message: 'Firebase project access verified.' }
       case 'node':
         return { success: true, message: `Bundled Node.js ${process.versions.node} is available.` }
+      case 'huggingface':
+        return { success: true, message: 'Public model search is available.' }
     }
   } catch (error) {
     return { success: false, message: failure(error).error ?? 'The connection failed.' }

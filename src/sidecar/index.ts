@@ -9,7 +9,7 @@ import { AnthropicProvider } from '../agent/providers/anthropic'
 import { GoogleProvider } from '../agent/providers/google'
 import { CompatibleProvider, COMPATIBLE_PROFILES, isCompatibleProvider, type CompatibleId } from '../agent/providers/compatible'
 import { LocalProvider, stopLocalRuntime } from '../agent/providers/local'
-import { PluginConfig, pluginTools, testPlugin } from '../agent/tools/plugins'
+import { PluginConfig, PluginConnect, connectPlugin, pluginGuidance, pluginTools, testPlugin } from '../agent/tools/plugins'
 import { z } from 'zod'
 import * as pty from 'node-pty'
 
@@ -26,7 +26,7 @@ const approvals = new Map<string, (approved: boolean) => void>()
 const browserRequests = new Map<string, { run: string; finish: (result: ToolResult) => void }>()
 const terminals = new Map<string, pty.IPty>()
 const send = (data: unknown) => process.stdout.write(JSON.stringify(data) + '\n')
-const Request = z.object({ id: z.string(), method: z.enum(['models','test','run','cancel','approve','plugin:test','browser:result','terminal:create','terminal:write','terminal:resize','terminal:close']), data: z.any() })
+const Request = z.object({ id: z.string(), method: z.enum(['models','test','run','cancel','approve','plugin:connect','plugin:test','browser:result','terminal:create','terminal:write','terminal:resize','terminal:close']), data: z.any() })
 readline.createInterface({ input: process.stdin }).on('line', line => {
   void (async () => {
     let id = ''
@@ -44,9 +44,23 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       const request = Request.parse(JSON.parse(line)); id = request.id
       const { method, data } = request
       credential = typeof data?.apiKey === 'string' ? data.apiKey : ''
+      const savePlugin = (pluginId: string, grantId: string, connection: unknown) =>
+        send({ id, event: 'plugin:credentials', data: { pluginId, grantId, connection } })
+      if (method === 'plugin:connect') {
+        const plugin = PluginConnect.safeParse(data)
+        if (!plugin.success) { send({ id, result: { success: false, message: 'This plugin does not have a supported sign-in.' } }); return }
+        const connection = new AbortController()
+        active.set(id, connection)
+        const deadline = setTimeout(() => connection.abort(), 5 * 60_000)
+        cleanupRun = () => { clearTimeout(deadline); connection.abort(); active.delete(id) }
+        const result = await connectPlugin(plugin.data, connection.signal,
+          url => send({ id, event: 'plugin:authorize', data: url }),
+          text => send({ id, event: 'plugin:status', data: text }))
+        send({ id, result }); return
+      }
       if (method === 'plugin:test') {
         const plugin = PluginConfig.safeParse(data)
-        send({ id, result: plugin.success ? await testPlugin(plugin.data) : { success: false, message: 'Check the plugin settings and try again.' } })
+        send({ id, result: plugin.success ? await testPlugin(plugin.data, undefined, savePlugin) : { success: false, message: 'Connect this plugin before checking it.' } })
         return
       }
       if (method === 'terminal:create') {
@@ -103,11 +117,12 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       if (method === 'test') { send({ id, result: await runtime.getProvider(provider)!.testConnection() }); return }
       {
         const config = z.object({ mode: z.enum(['chat','plan','agent','goal']), permissions: z.enum(['ask','project','full']), modelId: z.string().min(1), reasoningEffort: z.enum(['none','low','medium','high','xhigh','max']).optional(), fastMode: z.boolean().optional(), projectDirs: z.array(z.string()), instructions: z.string(), memories: z.array(z.string()) }).parse(data)
-        if (toolsEnabled && (config.mode === 'agent' || config.mode === 'goal')) {
-          const plugins = z.array(PluginConfig).max(4).safeParse(data.plugins ?? [])
-          if (!plugins.success) throw new Error('Check the enabled plugins in Settings and try again.')
-          runtime.registerTools(pluginTools(plugins.data))
-        }
+        const plugins = z.array(PluginConfig).max(40).safeParse(data.plugins ?? [])
+        if (!plugins.success) throw new Error('Check the enabled plugins in Settings and try again.')
+        const guidance = pluginGuidance(plugins.data)
+        if (guidance) config.instructions = [config.instructions, 'Installed skill packs (apply only when relevant):\n' + guidance].filter(Boolean).join('\n\n')
+        if (toolsEnabled && (config.mode === 'agent' || config.mode === 'goal'))
+          runtime.registerTools(pluginTools(plugins.data, savePlugin))
         const messages = z.array(z.object({ role: z.enum(['user','assistant','system']), content: z.string(), imagePng: z.string().max(5_592_408).regex(/^iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/).optional() })).parse(data.messages)
         if (messages.some(message => message.imagePng && (provider !== 'openai' || message.role !== 'user')))
           throw new Error('Pasted images require an OpenAI model that accepts images.')

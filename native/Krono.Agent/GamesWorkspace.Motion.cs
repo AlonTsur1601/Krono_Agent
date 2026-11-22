@@ -46,7 +46,6 @@ public sealed partial class GamesWorkspace
         scoreDeltaTimer.Stop();
         pointsGain.Text = "";
         shownScore = -1;
-        madeProgress = false;
         botAt = 0;
         movingStack = null;
     }

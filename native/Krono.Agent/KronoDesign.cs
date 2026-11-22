@@ -160,7 +160,7 @@ public static class KronoDesign
         var codeSize = ReadSize(workspace.Setting("native.codeSize"), 10, 26);
         Application.Current.Resources["KronoTextFont"] = text;
         Application.Current.Resources["ContentControlThemeFontFamily"] = text;
-        Application.Current.Resources["KronoDisplayFont"] = ResolveFont(textName.Length == 0 || textName.Equals("Rubik", StringComparison.OrdinalIgnoreCase) ? "Space Grotesk" : textName);
+        Application.Current.Resources["KronoDisplayFont"] = text;
         Application.Current.Resources["KronoCodeFont"] = code;
         Application.Current.Resources["KronoTextSize"] = textSize;
         Application.Current.Resources["KronoCodeSize"] = codeSize;
@@ -173,14 +173,16 @@ public static class KronoDesign
         void Refresh(DependencyObject element, bool codeContext = false)
         {
             if (element is IconElement) return;
-            var isCode = codeContext;
+            var codeLabel = element is FrameworkElement { Tag: "game-code" or "code" };
+            var isCode = codeContext || codeLabel;
             if (element is Control control) {
                 var id = Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(control);
-                var gameCode = control.Tag?.ToString() == "game-code";
-                isCode |= id is "TerminalInput" or "TerminalOutput" or "ToolApprovalDetails" || gameCode;
+                isCode |= id is "TerminalInput" or "TerminalOutput" or "ToolApprovalDetails";
                 control.FontFamily = isCode ? code : text;
-                if (!gameCode && !id.StartsWith("GameCell", StringComparison.Ordinal) && control is TextBox or PasswordBox or ComboBox or NumberBox or Button or AppBarButton) control.FontSize = isCode ? codeSize : control.Tag?.ToString() == "caption" ? Math.Max(11, textSize - 3) : textSize;
+                if (!codeLabel && !id.StartsWith("GameCell", StringComparison.Ordinal) && control is TextBox or PasswordBox or ComboBox or NumberBox or Button or AppBarButton) control.FontSize = isCode ? codeSize : control.Tag?.ToString() == "caption" ? Math.Max(11, textSize - 3) : textSize;
             }
+            if (element is TextBlock label) label.FontFamily = isCode ? code : text;
+            if (element is RichTextBlock rich) rich.FontFamily = isCode ? code : text;
             for (var i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++) Refresh(VisualTreeHelper.GetChild(element, i), isCode);
         }
     }
@@ -201,7 +203,45 @@ public static class KronoDesign
         }
     }
 
-    public static void AnimateThemeChange(FrameworkElement surface) => AnimateOpacity(surface, .78f);
+    internal static void AnimateMenuOpening(FrameworkElement surface)
+    {
+        if (!new UISettings().AnimationsEnabled) return;
+        AnimateOpacity(surface, .35f);
+        ElementCompositionPreview.SetIsTranslationEnabled(surface, true);
+        var visual = ElementCompositionPreview.GetElementVisual(surface);
+        var animation = visual.Compositor.CreateVector3KeyFrameAnimation();
+        animation.InsertKeyFrame(0, new(0, -5, 0));
+        animation.InsertKeyFrame(1, System.Numerics.Vector3.Zero);
+        animation.Duration = TimeSpan.FromMilliseconds(135);
+        visual.StartAnimation("Translation", animation);
+    }
+
+    internal static Task BeginThemeChange(FrameworkElement surface)
+    {
+        if (!new UISettings().AnimationsEnabled) return Task.CompletedTask;
+        var visual = ElementCompositionPreview.GetElementVisual(surface);
+        var fade = visual.Compositor.CreateScalarKeyFrameAnimation();
+        fade.InsertExpressionKeyFrame(0, "this.StartingValue");
+        fade.InsertKeyFrame(1, .72f);
+        fade.Duration = TimeSpan.FromMilliseconds(75);
+        visual.StartAnimation("Opacity", fade);
+        return Task.Delay(fade.Duration);
+    }
+
+    internal static void FinishThemeChange(FrameworkElement surface)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(surface);
+        if (!new UISettings().AnimationsEnabled) {
+            visual.StopAnimation("Opacity");
+            visual.Opacity = 1;
+            return;
+        }
+        var fade = visual.Compositor.CreateScalarKeyFrameAnimation();
+        fade.InsertExpressionKeyFrame(0, "this.StartingValue");
+        fade.InsertKeyFrame(1, 1);
+        fade.Duration = TimeSpan.FromMilliseconds(120);
+        visual.StartAnimation("Opacity", fade);
+    }
 
     const double TabHeight = 34;
     const double TabButtonSize = 26;
@@ -221,6 +261,7 @@ public static class KronoDesign
         var hovered = false;
         var pressed = false;
         Border? face = null;
+        var firstLoad = true;
         void Refresh()
         {
             if (face is null || new AccessibilitySettings().HighContrast) return;
@@ -249,7 +290,7 @@ public static class KronoDesign
                     if (face is null) {
                         face = new Border { Name = "KronoTabFace", CornerRadius = new CornerRadius(9, 9, 0, 0),
                             IsHitTestVisible = false, Margin = new Thickness(-header.Padding.Left, -header.Padding.Top,
-                                -header.Padding.Right, -header.Padding.Bottom),
+                                -header.Padding.Right, Math.Max(1, -header.Padding.Bottom + 1)),
                             BackgroundTransition = new BrushTransition { Duration = TimeSpan.FromMilliseconds(120) } };
                         Grid.SetColumnSpan(face, header.ColumnDefinitions.Count);
                         header.Children.Insert(0, face);
@@ -259,6 +300,15 @@ public static class KronoDesign
                     decoration.Opacity = 0;
             }
             Refresh();
+            if (firstLoad && new UISettings().AnimationsEnabled) {
+                var visual = ElementCompositionPreview.GetElementVisual(tab);
+                var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
+                animation.InsertKeyFrame(0, 0);
+                animation.InsertKeyFrame(1, 1);
+                animation.Duration = TimeSpan.FromMilliseconds(115);
+                visual.StartAnimation("Opacity", animation);
+            }
+            firstLoad = false;
         };
         tab.PointerEntered += (_, _) => { hovered = true; Refresh(); };
         tab.PointerExited += (_, _) => { hovered = pressed = false; Refresh(); };
@@ -268,6 +318,18 @@ public static class KronoDesign
         KronoInputMotion.RegisterPaletteRefresh(tab, Refresh);
         tab.ActualThemeChanged += (_, _) => Refresh();
         tab.RegisterPropertyChangedCallback(TabViewItem.IsSelectedProperty, (_, _) => Refresh());
+    }
+
+    internal static async Task FadeTabClose(TabViewItem tab)
+    {
+        if (!tab.IsLoaded || !new UISettings().AnimationsEnabled) return;
+        var visual = ElementCompositionPreview.GetElementVisual(tab);
+        var fade = visual.Compositor.CreateScalarKeyFrameAnimation();
+        fade.InsertExpressionKeyFrame(0, "this.StartingValue");
+        fade.InsertKeyFrame(1, 0);
+        fade.Duration = TimeSpan.FromMilliseconds(80);
+        visual.StartAnimation("Opacity", fade);
+        await Task.Delay(fade.Duration);
     }
 
     internal static Grid ScrollPage(FrameworkElement content, string background = "KronoBackground")
@@ -296,7 +358,8 @@ public static class KronoDesign
         root.ActualThemeChanged += (_, _) => RefreshPalette();
         KronoInputMotion.RegisterPaletteRefresh(root, RefreshPalette);
         scroll.ViewChanged += (_, _) => RefreshEdges();
-        scroll.LayoutUpdated += (_, _) => RefreshEdges();
+        scroll.SizeChanged += (_, _) => RefreshEdges();
+        content.SizeChanged += (_, _) => RefreshEdges();
         RefreshEdges();
         return root;
 
@@ -401,7 +464,8 @@ public static class KronoDesign
     internal static PathIcon NavigationIcon(Symbol symbol)
     {
         var data = symbol switch {
-            Symbol.World => "F0 M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 Z M10,3.85 A6.15,6.15 0 1 1 10,16.15 A6.15,6.15 0 1 1 10,3.85 Z M9.075,3.85 H10.925 V9.075 H16.15 V10.925 H10.925 V16.15 H9.075 V10.925 H3.85 V9.075 H9.075 Z",
+            Symbol.World => "F0 M10,1 A9,9 0 1 0 10,19 A9,9 0 1 0 10,1 Z M10,2.8 A7.2,7.2 0 1 1 10,17.2 A7.2,7.2 0 1 1 10,2.8 Z M4.1,6.1 L6.7,4.4 L8.8,4.9 L8.5,6.4 L7,7.1 L7.4,8.7 L9.7,9.9 L9.8,11.2 L8.6,12.5 L8.3,15.9 L6.7,14.1 L6.1,11.9 L4.8,10.9 L4.5,8.6 L3.6,8 Z M11.5,4.15 L14.1,4.8 L16.2,7 L16.6,9 L14.9,9.7 L13.4,8.7 L11.8,9.6 L10,8.5 L10.9,7 L12.2,6.6 Z M13.4,11.3 L15.6,11.5 L15.7,12.9 L14.3,14.7 L12.6,14.2 L12.3,12.7 Z",
+            Symbol.Clock => "F0 M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 Z M10,3.6 A6.4,6.4 0 1 1 10,16.4 A6.4,6.4 0 1 1 10,3.6 Z M9.2,5.5 H10.8 V9.2 H14 V10.8 H9.2 Z",
             Symbol.Download => "M9.25,2 H10.75 V10.2 L13.7,7.25 L14.75,8.3 L10,13.05 L5.25,8.3 L6.3,7.25 L9.25,10.2 Z M2,12 H3.5 V16.5 H16.5 V12 H18 V18 H2 Z",
             _ => throw new ArgumentOutOfRangeException(nameof(symbol))
         };

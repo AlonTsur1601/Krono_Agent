@@ -62,7 +62,11 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         var restart = new Button { Content = "Restart" }; restart.Click += (_, _) => Restart(); toolbar.Children.Add(restart);
         var pause = new Button { Content = "Pause / resume" }; pause.Click += (_, _) => { if (ended) return; paused = !paused; if (!paused) timer.Start(); else timer.Stop(); Draw(); SaveCurrent(false); }; toolbar.Children.Add(pause); Children.Add(toolbar);
         var header = ScoreHeader(); Grid.SetRow(header, 1); Children.Add(header);
-        var stageContent = new Grid { Width = 480, Height = 480, CornerRadius = new CornerRadius(12) }; stageContent.Children.Add(canvas); stageContent.Children.Add(effects);
+        var stageContent = new GameDisplayTile { Width = 480, Height = 480, CornerRadius = new CornerRadius(12) };
+        AutomationProperties.SetAutomationId(stageContent, "GameStage");
+        AutomationProperties.SetName(stageContent, "Game board");
+        stageContent.Children.Add(canvas);
+        stageContent.Children.Add(effects);
         var retry = new Button { Content = "Play again", Style = (Style)Application.Current.Resources["KronoPrimaryButton"], HorizontalAlignment = HorizontalAlignment.Center };
         retry.Click += (_, _) => { Restart(); Focus(FocusState.Programmatic); };
         var endContent = new StackPanel { Spacing = 14 };
@@ -75,7 +79,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         var stage = new Border { Child = view, CornerRadius = new CornerRadius(14), Padding = new Thickness(3), BorderThickness = new Thickness(1), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         void SetStagePalette() { stage.Background = KronoDesign.ThemeBrush("KronoSidebar", ActualTheme); stage.BorderBrush = KronoDesign.ThemeBrush("KronoBorder", ActualTheme); }
         SetStagePalette();
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(stage, "GameStage"); Grid.SetRow(stage, 2); Children.Add(stage);
+        Grid.SetRow(stage, 2); Children.Add(stage);
         status.FontFamily = KronoDesign.CodeFont; status.FontSize = 18; status.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
         var footer = new StackPanel { Spacing = 8 };
         replayButton = new Button { Content = "Play again", Style = (Style)Application.Current.Resources["KronoPrimaryButton"], Visibility = Visibility.Collapsed };
@@ -110,7 +114,6 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
             if (MainWindow.Instance?.AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized }) { PauseAndSave("Krono window minimized"); return; }
             Update(); if (!paused && !ended && tick > 0 && tick % 60 == 0) SaveCurrent(false);
         }; Loaded += (_, _) => { Focus(FocusState.Programmatic); if (library?.Visibility == Visibility.Visible) ResetLibraryScroll(); if (!paused && playScreen?.Visibility == Visibility.Visible) timer.Start(); }; Unloaded += (_, _) => PauseAndSave();
-        Reset();
         BuildLibrary();
         if (playScreen is { } screen) {
             screen.ColumnDefinitions.Add(new ColumnDefinition());
@@ -162,6 +165,8 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         content.Children.Add(empty);
         var cards = new Grid(); var buttons = new List<Grid>();
         var favorites = new HashSet<string>(StringComparer.Ordinal);
+        var bestScores = workspace.Query("SELECT game_id,MAX(score) AS best FROM game_scores WHERE account_id=$p0 GROUP BY game_id", workspace.AccountId)
+            .ToDictionary(row => row["game_id"]!.ToString(), row => row["best"]?.ToString(), StringComparer.Ordinal);
         try { if (workspace.Setting("native.gameFavorites") is { Length: > 0 } json) favorites.UnionWith(System.Text.Json.JsonSerializer.Deserialize<string[]>(json) ?? []); } catch (System.Text.Json.JsonException) { }
         for (var i = 0; i < names.Length; i++) {
             var index = i;
@@ -169,7 +174,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
             card.Children.Add(BoardPreview(i));
             card.Children.Add(new TextBlock { Text = names[i], FontFamily = (FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(14, 0, 14, 0) });
             card.Children.Add(new TextBlock { Text = descriptions[i], FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.Normal, Opacity = .72, TextWrapping = TextWrapping.Wrap, MinHeight = 34, Margin = new Thickness(14, 0, 14, 6) });
-            var saveLabel = new TextBlock { Text = BestCaption(i), FontFamily = KronoDesign.CodeFont, FontSize = 10, CharacterSpacing = 85, Foreground = ReadableAccent, Margin = new Thickness(14, 0, 14, 14) }; saveLabels.Add(saveLabel); card.Children.Add(saveLabel);
+            var saveLabel = new TextBlock { Text = BestCaptionText(bestScores.GetValueOrDefault(names[i])), FontFamily = KronoDesign.CodeFont, FontSize = 10, CharacterSpacing = 85, Foreground = ReadableAccent, Margin = new Thickness(14, 0, 14, 14) }; saveLabels.Add(saveLabel); card.Children.Add(saveLabel);
             var button = new Button { Style = (Style)Application.Current.Resources["KronoButton"], Content = card, Padding = new Thickness(0), CornerRadius = new CornerRadius(16), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(button, "GameTile" + i);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, names[i]);
@@ -203,7 +208,13 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
             for (var i = 0; i < columns; i++) cards.ColumnDefinitions.Add(new ColumnDefinition());
             for (var i = 0; i < (shown.Length + columns - 1) / columns; i++) cards.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             foreach (var frame in buttons) frame.Visibility = Visibility.Collapsed;
-            for (var i = 0; i < shown.Length; i++) { var frame = buttons[shown[i]]; Grid.SetColumn(frame, i % columns); Grid.SetRow(frame, i / columns); frame.Visibility = Visibility.Visible; }
+            Array.Clear(previewVisible);
+            for (var i = 0; i < shown.Length; i++) {
+                previewVisible[shown[i]] = true;
+                var frame = buttons[shown[i]];
+                Grid.SetColumn(frame, i % columns); Grid.SetRow(frame, i / columns); frame.Visibility = Visibility.Visible;
+            }
+            QueueVisiblePreviews();
         }
         search.TextChanged += (_, _) => Arrange(); category.SelectionChanged += (_, _) => Arrange(); favoritesOnly.Checked += (_, _) => Arrange(); favoritesOnly.Unchecked += (_, _) => Arrange(); recentOnly.Checked += (_, _) => Arrange(); recentOnly.Unchecked += (_, _) => Arrange();
         SizeChanged += (_, _) => Arrange(); library.RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => { if (library.Visibility == Visibility.Visible) Arrange(); }); Arrange();
@@ -213,10 +224,15 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
             workspace.SetSetting("native.gameBotDifficulty", index.ToString(System.Globalization.CultureInfo.InvariantCulture));
         })));
         libraryScroll = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        libraryScroll.Loaded += (_, _) => QueueVisiblePreviews();
+        libraryScroll.SizeChanged += (_, _) => QueueVisiblePreviews();
+        libraryScroll.ViewChanged += (_, _) => QueueVisiblePreviews();
         library.Children.Add(KronoDesign.ScrollPage(libraryScroll)); Children.Add(library);
     }
     void Reset()
     {
+        stateReady = madeProgress = savePending = false;
+        lastSavedTick = -1;
         movementControls.Visibility = game is 0 or 2 or 5 or 7 or MazeChase or FallingBlocks or SandBlocks ? Visibility.Visible : Visibility.Collapsed;
         if (moveLeftButton is not null) moveLeftButton.Visibility = game == 7 ? Visibility.Collapsed : Visibility.Visible;
         if (moveRightButton is not null) moveRightButton.Visibility = game == 7 ? Visibility.Collapsed : Visibility.Visible;
@@ -255,8 +271,11 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         ended = true; endMessage = message; status.Text = message + " · Score " + score;
         if (previewOnly) return;
         if (message != "Draw") PlayGameSound(won ? GameSound.Success : GameSound.Failure);
-        workspace.Execute("INSERT INTO game_scores(id,account_id,game_id,score,achieved_at) VALUES($p0,$p1,$p2,$p3,$p4)", Guid.NewGuid().ToString(), workspace.AccountId, names[game], score, Workspace.Now);
-        if (game < saveLabels.Count) saveLabels[game].Text = BestCaption(game);
+        if (madeProgress) {
+            workspace.Execute("INSERT INTO game_scores(id,account_id,game_id,score,achieved_at) VALUES($p0,$p1,$p2,$p3,$p4)", Guid.NewGuid().ToString(), workspace.AccountId, names[game], score, Workspace.Now);
+            if (game < saveLabels.Count) saveLabels[game].Text = BestCaption(game);
+            savePending = true;
+        }
         UpdateScore(); StageStatus();
         SaveCurrent(false);
     }
@@ -303,6 +322,7 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
     }
     void Key(object sender, KeyRoutedEventArgs args)
     {
+        if (!stateReady || playScreen?.Visibility != Visibility.Visible) return;
         if (game == Jigsaw && JigsawKey(args.Key)) { args.Handled = true; return; }
         if (args.KeyStatus.WasKeyDown && args.Key is Windows.System.VirtualKey.Space or Windows.System.VirtualKey.Enter) return;
         if (game is Flap or Darts && args.Key == Windows.System.VirtualKey.Space) { args.Handled = true; ArcadeAction(); return; }
@@ -325,10 +345,16 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
     {
         if (ended || paused) return;
         if (game is FallingBlocks or SandBlocks) { MoveBlock(x, y); return; }
-        if (game == 0 && !turned && !(dx == -x && dy == -y)) { dx = x; dy = y; turned = true; }
+        if (game == 0) {
+            if (turned || dx == -x && dy == -y) return;
+            dx = x; dy = y; turned = true;
+        }
         if (game == 2 && !MoveTiles(x, y)) return;
-        if (game == 5) paddle = Math.Clamp(paddle + x * 25, 45, 435);
-        if (game == 7) paddle = Math.Clamp(paddle + y * 25, 45, 435);
+        if (game is 5 or 7) {
+            var next = Math.Clamp(paddle + (game == 5 ? x : y) * 25, 45, 435);
+            if (paddle == next) return;
+            paddle = next;
+        }
         if (game == MazeChase) arcade.WantedDirection = x > 0 ? 1 : y > 0 ? 2 : x < 0 ? 3 : 4;
         Draw();
         SaveCurrent();
@@ -341,11 +367,18 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
     void PlayAt(double px, double py, bool right = false)
     {
         Focus(FocusState.Pointer); if (ended || paused) return;
+        if (game == 0) return;
         var point = new Windows.Foundation.Point(px, py);
         if (game is 1 or 4 && !PlayerBoardMove((int)px, (int)py)) return;
         if (game >= 8) { var columns = game == 8 ? 5 : game == 9 ? 2 : 4; PuzzleClick((int)(py / (480.0 / columns)) * columns + (int)(px / (480.0 / columns))); return; }
-        if (game is 5 or 7) { paddle = (int)Math.Clamp(game == 5 ? point.X : point.Y, 45, 435); SaveCurrent(); return; }
-        if (game == 3) { if (right) return; var index = (int)(point.Y / 60) * 8 + (int)(point.X / 60); if (index is < 0 or > 63 || flags[index] || revealed[index]) return; PlayGameSound(GameSound.Click); if (moves++ == 0) { var mines = Enumerable.Range(0, 64).Where(i => Math.Abs(i % 8 - index % 8) > 1 || Math.Abs(i / 8 - index / 8) > 1).OrderBy(_ => random.Next()).Take(10); foreach (var mine in mines) board[mine] = -1; } if (board[index] == -1) { revealed[index] = true; End("Mine hit"); } else { Reveal(index); if (revealed.Count(v => v) == 54) { score = 100; End("Minefield cleared", won: true); } } }
+        if (game is 5 or 7) {
+            var next = (int)Math.Clamp(game == 5 ? point.X : point.Y, 45, 435);
+            if (paddle == next) return;
+            paddle = next;
+            SaveCurrent();
+            return;
+        }
+        if (game == 3) { if (right) return; var index = (int)(point.Y / 60) * 8 + (int)(point.X / 60); if (index is < 0 or > 63 || flags[index] || revealed[index]) return; madeProgress = true; PlayGameSound(GameSound.Click); if (moves++ == 0) { var mines = Enumerable.Range(0, 64).Where(i => Math.Abs(i % 8 - index % 8) > 1 || Math.Abs(i / 8 - index / 8) > 1).OrderBy(_ => random.Next()).Take(10); foreach (var mine in mines) board[mine] = -1; } if (board[index] == -1) { revealed[index] = true; End("Mine hit"); } else { Reveal(index); if (revealed.Count(v => v) == 54) { score = 100; End("Minefield cleared", won: true); } } }
         if (game == 6) { var index = (int)(point.Y / 120) * 4 + (int)(point.X / 120); if (index is < 0 or > 15 || revealed[index] || second >= 0) return; revealed[index] = true; if (first < 0) first = index; else { if (board[first] == board[index]) { score += 10; first = -1; if (revealed.Take(16).All(v => v)) End("All pairs matched", won: true); } else { second = index; hideAt = tick + 25; } } }
         Draw();
         SaveCurrent();

@@ -12,6 +12,7 @@ const requests = []
 let revoked = false
 let signupConfirmed = false
 let browserIsolated = false
+let browserPointerReached = false
 let browserSelection = ''
 let localNoTools = false
 let localKeyIsolated = false
@@ -198,7 +199,9 @@ const server = http.createServer((request, response) => {
       if (lastUser === 'NATIVE_PLUGIN_PROOF') {
         const result = input.input.find(message => message.type === 'function_call_output' && message.call_id === 'native-node-plugin')
         if (!result) {
-          if (!input.tools?.some(tool => tool.name === 'node_inspect_package') || input.tools.some(tool => tool.name.startsWith('github_'))) {
+          const guidance = input.input.find(message => message.role === 'system')?.content
+          if (!input.tools?.some(tool => tool.name === 'node_inspect_package') || input.tools.some(tool => tool.name.startsWith('github_')) ||
+              !String(guidance).includes('Installed skill packs') || !String(guidance).includes('nearest tsconfig')) {
             complete(response, 'Unexpected native plugin tool list.'); return
           }
           response.write('data: ' + JSON.stringify({ type: 'response.output_item.done', item: { type: 'function_call', call_id: 'native-node-plugin', name: 'node_inspect_package', arguments: '{}' } }) + '\n\n')
@@ -294,6 +297,8 @@ const server = http.createServer((request, response) => {
       response.end(JSON.stringify({ user, access_token: 'native-fixture-access', refresh_token: 'native-fixture-refresh', expires_in: 3600, token_type: 'bearer' }))
     })
   } else if (request.url.startsWith('/browser-proof')) { const query = new URL(request.url, 'http://localhost').searchParams; browserIsolated = query.get('api') === 'undefined' && query.get('node') === 'undefined'; response.end('ok') }
+  else if (request.url === '/browser-pointer') { browserPointerReached = true; response.end('ok') }
+  else if (request.url === '/browser-pointer-proof') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserPointerReached })) }
   else if (request.url === '/agent-browser-proof') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ agentBrowserRan, profilesSeparate, agentCookiePresent })) }
   else if (request.url === '/tray-proof') {
     const completed = fixtureDb(db => !!db.prepare("SELECT id FROM messages WHERE role='assistant' AND content='Agent response while hidden.'").get())
@@ -316,13 +321,13 @@ const server = http.createServer((request, response) => {
   }
   else if (request.url.startsWith('/browser-selection?')) { browserSelection = new URL(request.url, 'http://localhost').searchParams.get('text'); response.end('ok') }
   else if (request.url === '/browser-selection') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserSelection })) }
-  else { response.setHeader('Content-Type', 'text/html'); if (request.url === '/probe') response.setHeader('Set-Cookie', 'KronoManual=1; Path=/; SameSite=Lax'); response.end('<title>' + (request.url === '/home' ? 'Native browser home' : 'Native browser fixture') + '</title><h1>WebView2 fixture</h1><script>fetch("/browser-proof?api="+typeof window.api+"&node="+typeof require);document.addEventListener("selectionchange",()=>fetch("/browser-selection?text="+encodeURIComponent(String(getSelection()))))</script>') }
+  else { response.setHeader('Content-Type', 'text/html'); if (request.url === '/probe') response.setHeader('Set-Cookie', 'KronoManual=1; Path=/; SameSite=Lax'); response.end('<title>' + (request.url === '/home' ? 'Native browser home' : 'Native browser fixture') + '</title><h1>WebView2 fixture</h1><a id="fixture-link" href="/fixture-destination" style="position:fixed;inset:80px 0 0;display:block">Fixture link for hover</a><script>fetch("/browser-proof?api="+typeof window.api+"&node="+typeof require);document.getElementById("fixture-link").addEventListener("pointerenter",()=>fetch("/browser-pointer"));document.addEventListener("selectionchange",()=>fetch("/browser-selection?text="+encodeURIComponent(String(getSelection()))))</script>') }
 })
 const localDiscovery = process.env.KRONO_SMOKE_SCOPE === 'local-model-ui'
 const modelServer = localDiscovery ? http.createServer((request, response) => {
   if (request.url === '/v1/models') {
     response.setHeader('Content-Type', 'application/json')
-    response.end(JSON.stringify({ data: [{ id: 'native-discovered-model:latest' }] }))
+    response.end(JSON.stringify({ data: [{ id: 'native-discovered-model:latest' }, { id: 'alpha-discovered-model:latest' }] }))
   } else if (request.url === '/v1/chat/completions') {
     let body = ''
     request.on('data', chunk => { body += chunk })

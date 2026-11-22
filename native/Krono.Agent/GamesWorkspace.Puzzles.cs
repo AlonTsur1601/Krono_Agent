@@ -55,10 +55,12 @@ public sealed partial class GamesWorkspace
     {
         if (paused || ended) return;
         if (game == 8 && index is >= 0 and < 25) {
+            madeProgress = true;
             ToggleLights(index); moves++;
             if (board.Take(25).All(value => value == 0)) { score = Math.Max(1, 1000 - moves * 10); End("All lights out", won: true); }
         }
-        if (game == 9 && index is >= 0 and < 4 && simonWaiting) {
+        else if (game == 9 && index is >= 0 and < 4 && simonWaiting) {
+            madeProgress = true;
             if (index != sequence[simonInput]) End("Pattern missed");
             else if (++simonInput == sequence.Count) {
                 score += sequence.Count * 10;
@@ -66,16 +68,18 @@ public sealed partial class GamesWorkspace
                 else { sequence.Add(random.Next(4)); simonInput = 0; simonStart = tick + 20; simonWaiting = false; simonVisual = -3; }
             }
         }
-        if (game == 10 && index is >= 0 and < 16) {
+        else if (game == 10 && index is >= 0 and < 16) {
+            madeProgress = true;
             if (index != oddCell) End("Different shade missed");
             else { PlayGameSound(GameSound.Click); score += 100; oddRound++; NextOddColor(); }
-        }
+        } else return;
         Draw();
         SaveCurrent();
     }
     void HitOrbit()
     {
         if (game != 11 || paused || ended) return;
+        madeProgress = true;
         var difference = Math.Abs((orbitAngle - orbitTarget + 540) % 360 - 180);
         if (difference > orbitWidth) End("Outside the arc");
         else {
