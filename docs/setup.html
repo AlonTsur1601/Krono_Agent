@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Setup guide · Krono Agent</title>
+  <link rel="icon" href="krono-mark.png">
+  <link rel="stylesheet" href="krono.css?v=setup">
+  <script src="buttons.js?v=hover" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="shell">
+      <a class="brand" href="./" aria-label="Krono Agent home">
+        <img src="krono-mark.png" width="34" height="34" alt="">
+        <span class="wordmark" aria-hidden="true"><strong>KRONO</strong><small>AGENT</small></span>
+      </a>
+      <a class="top-link" href="./">Home</a>
+    </div>
+  </header>
+  <main class="shell landing-content">
+    <section class="surface hero">
+      <h1>Setup guide</h1>
+      <p>Install Krono Agent on Windows, connect a model, and start your first chat.</p>
+      <div class="actions">
+        <a class="button primary" href="https://github.com/KronoAgent/Krono_Agent/releases/latest/download/Krono-Agent-Setup-x64.exe"><span>Download for Windows (x64)</span></a>
+      </div>
+    </section>
+    <nav class="footer-links" aria-label="Guide sections">
+      <a href="#install">Install</a>
+      <a href="#models">Connect a model</a>
+      <a href="#workspace">Start a conversation</a>
+      <a href="#source">Build from source</a>
+    </nav>
+    <section class="surface setup-section" id="install">
+      <h2>Install and sign in</h2>
+      <ol>
+        <li>Run the Windows x64 installer. Choose an installation folder and, if you want one, add a desktop shortcut.</li>
+        <li>Open <strong>Krono Agent</strong> from the Start menu. Sign in or create an account.</li>
+        <li>If you’re registering, open the confirmation email and follow its link. Keep Krono open on the confirmation screen so it can finish signing you in.</li>
+      </ol>
+    </section>
+    <section class="surface setup-section" id="models">
+      <h2>Connect a model</h2>
+      <ol>
+        <li>Open <strong>Settings → Models → Provider</strong>.</li>
+        <li><strong>Local.</strong> Choose <strong>Local Model</strong> to discover models in Ollama, LM Studio, or Jan. Download a model first. In LM Studio or Jan, start the local server. For a custom endpoint, use the matching provider profile and enter the address including <code>/v1</code>.</li>
+        <li><strong>Cloud.</strong> Choose your provider, save its key in Krono, then select <strong>Test connection</strong> and load the available models.</li>
+        <li>Select a model and click <strong>Use model</strong>. For a compatible endpoint, enable tool calling if the model supports it.</li>
+      </ol>
+    </section>
+    <section class="surface setup-section" id="workspace">
+      <h2>Start a conversation</h2>
+      <ol>
+        <li>Open <strong>Chats</strong>, select <strong>New chat</strong>, and send a message in <strong>Chat</strong> mode.</li>
+        <li>To work with files, create a project, add its folder, and choose it for the conversation. Select <strong>Agent</strong> and use <strong>Ask</strong> if you want to review file changes and commands before they run.</li>
+        <li>Use <strong>Workspace</strong> beside the conversation to open the browser, terminal, or files.</li>
+      </ol>
+    </section>
+    <section class="surface setup-section" id="source">
+      <h2>Build from source</h2>
+      <p>Install Node.js 24 or later and the .NET 10 SDK. Open PowerShell in the repository folder and run these commands.</p>
+      <pre><code>npm ci
+npm run dev</code></pre>
+      <p><code>npm run package:win</code> creates the Windows x64 app under <code>release/Krono-Agent</code>. Keep that folder together and launch <code>KronoAgent.exe</code>. The browser workspace uses WebView2 Evergreen Runtime.</p>
+      <p><a href="https://github.com/KronoAgent/Krono_Agent">Source repository</a></p>
+    </section>
+  </main>
+</body>
+</html>

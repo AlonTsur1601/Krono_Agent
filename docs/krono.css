@@ -126,6 +126,19 @@ p { margin: 0; color: var(--muted); }
 .feature + .feature { border-top: 1px solid var(--border); }
 .feature h2 { font-size: 1.22rem; }
 .footer-links { display: flex; flex-wrap: wrap; gap: 9px 19px; padding-block: 6px; font-size: .93rem; }
+.setup-section { padding: clamp(20px, 4vw, 32px); }
+.setup-section h2 { font-size: 1.35rem; margin-bottom: 12px; }
+.setup-section ol { margin: 0; padding-inline-start: 1.4em; color: var(--muted); }
+.setup-section li + li, .setup-section p + p { margin-top: 8px; }
+.setup-section strong { color: var(--text); }
+.setup-section code { overflow-wrap: anywhere; }
+.setup-section pre {
+  padding: 12px 16px;
+  background: var(--sidebar);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  white-space: pre-wrap;
+}
 
 .confirmation { display: none; }
 [data-confirmation] body { display: grid; place-items: center; padding: 24px; background: var(--login-backdrop); }
