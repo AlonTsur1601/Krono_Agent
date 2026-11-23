@@ -249,17 +249,20 @@ public sealed partial class GamesWorkspace
         foreach (var cells in new int[][] { [0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6] }) if (board[cells[0]] != 0 && cells.All(i => board[i] == board[cells[0]])) return cells;
         return [];
     }
-    readonly List<(int Index, Grid Surface)> pendingPreviews = [];
+    readonly List<(int Index, Grid Surface, Button Card)> pendingPreviews = [];
     readonly bool[] previewVisible = new bool[names.Length];
     bool previewQueued, previewRendering;
 
-    FrameworkElement BoardPreview(int index)
+    FrameworkElement BoardPreview(int index, Button card)
     {
         var surface = new Grid { Height = 155, Background = Ink(0x0f151e), IsHitTestVisible = false };
         AutomationProperties.SetAutomationId(surface, "GamePreview" + index);
-        pendingPreviews.Add((index, surface));
+        pendingPreviews.Add((index, surface, card));
+        surface.EffectiveViewportChanged += PreviewViewportChanged;
         return surface;
     }
+
+    void PreviewViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args) => QueueVisiblePreviews();
 
     void QueueVisiblePreviews()
     {
@@ -273,10 +276,11 @@ public sealed partial class GamesWorkspace
                 return top + item.Surface.Height >= 0 && top < viewport.ViewportHeight + 172;
             });
             if (next < 0) return;
-            var (index, surface) = pendingPreviews[next];
+            var (index, surface, card) = pendingPreviews[next];
             pendingPreviews.RemoveAt(next);
+            surface.EffectiveViewportChanged -= PreviewViewportChanged;
             previewRendering = true;
-            try { await RenderPreview(index, surface); }
+            try { await RenderPreview(index, surface, card); }
             catch (Exception error) when (error is System.Runtime.InteropServices.COMException or ArgumentException or InvalidOperationException or TimeoutException) { App.RecordFault("Game preview", error); }
             finally {
                 previewRendering = false;
@@ -285,7 +289,7 @@ public sealed partial class GamesWorkspace
         });
     }
 
-    async Task RenderPreview(int index, Grid surface)
+    async Task RenderPreview(int index, Grid surface, Button card)
     {
         var scene = new GamesWorkspace(workspace, index).canvas;
         scene.IsHitTestVisible = false;
@@ -298,6 +302,7 @@ public sealed partial class GamesWorkspace
         try {
             if (!scene.IsLoaded) await loaded.Task.WaitAsync(TimeSpan.FromSeconds(1));
             if (disposed || !surface.IsLoaded) return;
+            AutomationProperties.SetItemStatus(card, "Board preview available");
             var bitmap = new RenderTargetBitmap();
             await bitmap.RenderAsync(scene, 384, 384);
             if (disposed || bitmap.PixelWidth == 0 || !surface.IsLoaded) return;

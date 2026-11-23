@@ -191,22 +191,27 @@ function OpenAdvancedModel {
     Invoke 'Advanced…' -ByName
     Find 'ChatModelPicker' | Out-Null
 }
+function WaitForBounds([string]$Id) {
+    $deadline = (Get-Date).AddSeconds(5)
+    do {
+        $element = FindOptional $Id
+        if ($element) {
+            $bounds = $element.Current.BoundingRectangle
+            if (!$bounds.IsEmpty -and $bounds.Width -gt 0 -and $bounds.Height -gt 0) { return $bounds }
+        }
+        Start-Sleep -Milliseconds 100
+    } while ((Get-Date) -lt $deadline)
+    throw "No screen bounds for $Id"
+}
 function RightClick([string]$Id) {
-    $bounds = (Find $Id).Current.BoundingRectangle
-    if ($bounds.IsEmpty) { throw "No screen bounds for $Id" }
+    $bounds = WaitForBounds $Id
     [KronoWindowCapture]::SetCursorPos([int]($bounds.Left + $bounds.Width / 2), [int]($bounds.Top + $bounds.Height / 2)) | Out-Null
     [KronoWindowCapture]::mouse_event(8, 0, 0, 0, [UIntPtr]::Zero)
     [KronoWindowCapture]::mouse_event(16, 0, 0, 0, [UIntPtr]::Zero)
 }
 function DragGameCell([int]$From, [int]$To) {
-    $deadline = (Get-Date).AddSeconds(5)
-    do {
-        $source = (Find ('GameCell' + $From)).Current.BoundingRectangle
-        $target = (Find ('GameCell' + $To)).Current.BoundingRectangle
-        if (!$source.IsEmpty -and !$target.IsEmpty) { break }
-        Start-Sleep -Milliseconds 100
-    } while ((Get-Date) -lt $deadline)
-    if ($source.IsEmpty -or $target.IsEmpty) { throw "Puzzle squares $From and $To did not lay out before the drag" }
+    $source = WaitForBounds ('GameCell' + $From)
+    $target = WaitForBounds ('GameCell' + $To)
     $x = $source.Left + $source.Width / 2
     $y = $source.Top + $source.Height / 2
     $dx = $target.Left + $target.Width / 2 - $x
@@ -451,11 +456,20 @@ function TestGamePreviews {
     $names = 0..23 | ForEach-Object { (Find ('GameTile' + $_)).Current.Name }
     try {
         for ($index = 0; $index -lt $names.Count; $index++) {
-            $preview = 'GamePreviewImage' + $index
-            if (!(FindOptional $preview)) {
+            $tile = 'GameTile' + $index
+            if ((Find $tile).Current.ItemStatus -ne 'Board preview available') {
                 # Filtering brings lazy previews into view at any window width.
                 SetValue 'GameSearch' $names[$index]
-                Find $preview | Out-Null
+                $deadline = (Get-Date).AddSeconds(8)
+                do {
+                    $ready = (Find $tile).Current.ItemStatus -eq 'Board preview available'
+                    if ($ready) { break }
+                    Start-Sleep -Milliseconds 100
+                } while ((Get-Date) -lt $deadline)
+                if (!$ready) {
+                    Capture 'native-game-preview-failure.png'
+                    throw "The board preview for '$($names[$index])' did not render"
+                }
             }
         }
     } finally {
