@@ -1,5 +1,7 @@
 import { open, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { GoogleAuth } from 'google-auth-library'
 import { z } from 'zod'
 import type { ExecutionContext, ToolDefinition, ToolResult } from '../types'
@@ -19,7 +21,7 @@ const mcp = z.object({ id: McpId, connection: McpGrant, grantId: z.uuid() })
 export const PluginConfig = z.union([
   rest, mcp,
   z.object({ id: z.literal('node') }),
-  z.object({ id: z.literal('huggingface') }),
+  z.object({ id: z.enum(['huggingface', 'npm', 'pypi', 'microsoftlearn']) }),
   z.object({ id: z.string().refine(id => catalog.some(item => item.id === id && item.type === 'skill')), skill: z.literal(true) }),
 ])
 type Config = z.infer<typeof PluginConfig>
@@ -258,6 +260,63 @@ const hubTool: ToolDefinition = {
   },
 }
 
+const publicCapabilities = { requiresPermission: 'execute', canCancel: true, longRunning: false } as const
+
+function publicLookup<T extends z.ZodType>(
+  name: string, description: string, schema: T, lookup: (input: z.infer<T>, signal: AbortSignal) => Promise<unknown>,
+): ToolDefinition {
+  return {
+    name, description, inputSchema: schema, capabilities: publicCapabilities,
+    async execute(input, context) {
+      if (context.permissions === 'project') return { success: false, error: 'Online tools require Ask or Full permissions.' }
+      try {
+        const timeout = AbortSignal.timeout(15_000)
+        const signal = context.signal ? AbortSignal.any([context.signal, timeout]) : timeout
+        return success(await lookup(schema.parse(input), signal))
+      } catch (error) { return failure(error) }
+    },
+  }
+}
+
+async function registryMetadata(url: URL, signal: AbortSignal) {
+  const response = await fetch(url, { redirect: 'error', signal, headers: { Accept: 'application/json' } })
+  if (!response.ok) {
+    await response.body?.cancel()
+    throw new PluginError(response.status === 404 ? 'Public package not found.' : 'The package registry did not respond successfully.')
+  }
+  return boundedJson(response)
+}
+
+const npmPackage = publicLookup('npm_get_package', 'Look up the latest release of a public npm package by exact name.',
+  z.object({ package: z.string().max(214).regex(/^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/i) }), async (input, signal) => {
+    const url = new URL(encodeURIComponent(input.package) + '/latest', 'https://registry.npmjs.org/')
+    const data = object(await registryMetadata(url, signal))
+    return { ...fields(data, ['name', 'version', 'description', 'license', 'homepage']), engines: fields(data.engines, ['node', 'npm']) }
+  })
+
+const pypiPackage = publicLookup('pypi_get_package', 'Look up the latest release of a public Python package on PyPI by exact name.',
+  z.object({ package: z.string().max(200).regex(/^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/i) }), async (input, signal) => {
+    const url = new URL('/pypi/' + encodeURIComponent(input.package) + '/json', 'https://pypi.org/')
+    const data = object(await registryMetadata(url, signal))
+    return fields(data.info, ['name', 'version', 'summary', 'requires_python', 'license_expression', 'package_url'])
+  })
+
+const learnSearch = publicLookup('microsoftlearn_search_docs', 'Search public Microsoft Learn documentation for official guidance.',
+  z.object({ query: z.string().trim().min(1).max(300) }), async (input, signal) => {
+    const client = new Client({ name: 'Krono Agent', version: '1.0' })
+    try {
+      await client.connect(new StreamableHTTPClientTransport(new URL('https://learn.microsoft.com/api/mcp')), { signal })
+      const tools = await client.listTools(undefined, { signal })
+      if (!tools.tools.some(tool => tool.name === 'microsoft_docs_search'))
+        throw new PluginError('Microsoft Learn did not offer documentation search.')
+      const result = await client.callTool({ name: 'microsoft_docs_search', arguments: input }, undefined, { signal })
+      if (result.isError) throw new PluginError('Microsoft Learn could not complete the search.')
+      return { results: Array.isArray(result.content) ? result.content.slice(0, 8)
+        .map(item => object(item)).filter(item => item.type === 'text' && typeof item.text === 'string')
+        .map(item => String(item.text).slice(0, 2200)) : [] }
+    } finally { await client.close() }
+  })
+
 export function pluginTools(configs: readonly Config[], persist: PersistGrant = () => {}): ToolDefinition[] {
   return configs.flatMap(config => {
     if ('skill' in config) return []
@@ -268,6 +327,9 @@ export function pluginTools(configs: readonly Config[], persist: PersistGrant = 
       case 'firebase': return firebaseTools(config)
       case 'node': return [nodeTool]
       case 'huggingface': return [hubTool]
+      case 'npm': return [npmPackage]
+      case 'pypi': return [pypiPackage]
+      case 'microsoftlearn': return [learnSearch]
     }
   })
 }
@@ -313,6 +375,10 @@ export async function testPlugin(config: Config, signal = AbortSignal.timeout(20
         return { success: true, message: `Bundled Node.js ${process.versions.node} is available.` }
       case 'huggingface':
         return { success: true, message: 'Public model search is available.' }
+      case 'npm':
+      case 'pypi':
+      case 'microsoftlearn':
+        return { success: true, message: 'The public lookup tool is installed.' }
     }
   } catch (error) {
     return { success: false, message: failure(error).error ?? 'The connection failed.' }
