@@ -19,19 +19,32 @@ public sealed partial class MainPage
         panel.Children.Add(new TextBlock { Text = "Use connected tools in Agent and Goal modes. Installed skill packs add guidance when relevant.", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
         panel.HorizontalAlignment = HorizontalAlignment.Stretch;
         var grid = new Grid { ColumnSpacing = 12, RowSpacing = 12 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition());
-        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        panel.MaxWidth = double.PositiveInfinity;
+        int columnCount = 0;
+        void Arrange(double width)
+        {
+            var columns = Math.Clamp((int)((width + grid.ColumnSpacing) / (245 + grid.ColumnSpacing)), 1, 4);
+            if (columns == columnCount) return;
+            columnCount = columns;
+            grid.ColumnDefinitions.Clear();
+            grid.RowDefinitions.Clear();
+            for (var i = 0; i < columns; i++) grid.ColumnDefinitions.Add(new ColumnDefinition());
+            for (var i = 0; i < grid.Children.Count; i++) {
+                if (i % columns == 0) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                var card = (Border)grid.Children[i];
+                Grid.SetRow(card, i / columns);
+                Grid.SetColumn(card, i % columns);
+            }
+        }
+        grid.SizeChanged += (_, args) => Arrange(args.NewSize.Width);
         AutomationProperties.SetAutomationId(grid, "PluginCatalog");
         panel.Children.Add(grid);
         var refresh = new List<Action>();
         for (var i = 0; i < PluginCatalog.All.Length; i++) {
             var plugin = PluginCatalog.All[i];
-            if (i % 2 == 0) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             var card = new Border { Padding = new Thickness(14), CornerRadius = new CornerRadius(14), BorderThickness = new Thickness(1, 1, 1, 3) };
             AutomationProperties.SetAutomationId(card, "Plugin-" + plugin.Id);
-            Grid.SetRow(card, i / 2);
-            Grid.SetColumn(card, i % 2);
             grid.Children.Add(card);
             var contents = new Grid { RowSpacing = 10 };
             contents.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -126,7 +139,8 @@ public sealed partial class MainPage
             Render();
         }
         refreshPluginCards = () => { foreach (var render in refresh) render(); };
-        grid.Loaded += (_, _) => refreshPluginCards?.Invoke();
+        Arrange(panel.ActualWidth);
+        grid.Loaded += (_, _) => { Arrange(panel.ActualWidth); refreshPluginCards?.Invoke(); };
     }
 
     static FrameworkElement PluginIcon(PluginCatalog.Plugin plugin)

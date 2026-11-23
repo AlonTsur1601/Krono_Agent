@@ -50,7 +50,7 @@ public sealed partial class BrowserWorkspace
         await writer.StoreAsync();
         writer.DetachStream();
         stream.Seek(0);
-        var bitmap = new BitmapImage { DecodePixelWidth = 24 };
+        var bitmap = new BitmapImage();
         await bitmap.SetSourceAsync(stream);
         return bitmap;
     }
@@ -103,7 +103,7 @@ public sealed partial class BrowserWorkspace
     Button HistoryRow(BrowserVisit visit, bool privateContext, string time)
     {
         var uri = new Uri(visit.Url);
-        var icon = new Grid { Width = 20, Height = 20 };
+        var icon = new Grid { Width = 20, Height = 20, UseLayoutRounding = true, VerticalAlignment = VerticalAlignment.Center };
         icon.Children.Add(BrowserTabIcon());
         var encoded = workspace.Setting(FaviconKey(uri));
         var loading = false;
@@ -114,7 +114,7 @@ public sealed partial class BrowserWorkspace
                 try {
                     var bitmap = await DecodeFavicon(Convert.FromBase64String(encoded));
                     icon.Children.Clear();
-                    icon.Children.Add(new Image { Source = bitmap, Width = 18, Height = 18 });
+                    icon.Children.Add(new Image { Source = bitmap, Width = 16, Height = 16, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
                 } catch (Exception error) when (error is FormatException or System.Runtime.InteropServices.COMException) { }
                 finally { loading = false; }
             };

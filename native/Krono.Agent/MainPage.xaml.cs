@@ -305,7 +305,7 @@ public sealed partial class MainPage : Page
                 case "chats": ShowChats(); break;
                 case "projects": ShowProjects(); break;
                 case "settings": ShowSettings(); break;
-                case "browser": browser ??= new BrowserWorkspace(workspace, this); DetachWorkspace(browser); KronoDesign.Present(Body, browser); break;
+                case "browser": browser ??= new BrowserWorkspace(workspace, this); DetachWorkspace(browser); browser.SetBrowserHost(split: false); KronoDesign.Present(Body, browser); break;
                 case "terminal": terminal ??= new TerminalWorkspace(worker!); DetachWorkspace(terminal); KronoDesign.Present(Body, terminal); break;
                 case "games": games ??= new GamesWorkspace(workspace); KronoDesign.Present(Body, games); break;
                 case "schedule": ShowSchedules(); break;

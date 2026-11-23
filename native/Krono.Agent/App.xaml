@@ -197,6 +197,10 @@
                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Grid>
             </ControlTemplate>
+            <ControlTemplate x:Key="KronoBrowserToolbarTemplate" TargetType="ButtonBase">
+                <ContentPresenter Background="Transparent" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"
+                                  HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+            </ControlTemplate>
             <Style x:Key="KronoButtonBase" TargetType="ButtonBase">
                 <Setter Property="Template" Value="{StaticResource KronoPressTemplate}" />
                 <Setter Property="MinHeight" Value="{StaticResource KronoControlMinHeight}" />

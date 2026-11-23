@@ -61,18 +61,25 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
             var item = new Button { Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10,
                 Children = { ToolbarIcon(symbol), new TextBlock { Text = label } } }, HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Left };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, "BrowserMenu" + symbol);
             item.Click += (_, _) => { menu.Hide(); action(); };
             actions.Children.Add(item);
         }
         var more = ToolbarButton("More options", Symbol.More);
-        more.Flyout = menu;
+        more.Click += (_, _) => menu.ShowAt(more);
         bar.Children.Add(more);
         AddMenuAction("Private tab", Symbol.Permissions, () => _ = Open(DefaultHome, isPrivate: true, isHome: true));
-        AddMenuAction("Agent browser", Symbol.View, async () => await RestoreAgentTab());
+        var showAgentTabs = KronoDesign.Toggle("Show agent tabs in the main browser", ShowAgentTabsInMain);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(showAgentTabs, "BrowserShowAgentTabs");
+        showAgentTabs.Toggled += (_, _) => {
+            workspace.SetSetting("native.browser.showAgentTabs", showAgentTabs.IsOn ? "true" : "false");
+            RefreshAgentTabVisibility();
+        };
+        actions.Children.Add(showAgentTabs);
         var shareProfile = KronoDesign.Toggle("Share profile with agent", ShareAgentProfile);
         shareProfile.Toggled += (_, _) => {
             workspace.SetSetting("native.agentBrowserSharesProfile", shareProfile.IsOn ? "true" : "false");
-            if (agentView is { } view) CloseBrowserTab(views.First(tab => ReferenceEquals(tab.Value, view)).Key);
+            foreach (var tab in agentTabs.ToArray()) CloseBrowserTab(tab);
             if (tabs.TabItems.Count == 0) _ = Open(DefaultHome, isHome: true);
         };
         AddMenuAction("Find on page", Symbol.Find, async () => {
@@ -134,7 +141,7 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
             if (args.Tab is not TabViewItem tab || !closingTabs.Add(tab)) return;
             await KronoDesign.FadeTabClose(tab);
             closingTabs.Remove(tab);
-            if (disposed || !tabs.TabItems.Contains(tab)) return;
+            if (disposed || !pages.ContainsKey(tab)) return;
             CloseBrowserTab(tab);
             if (!disposed && tabs.TabItems.Count == 0) _ = Open(DefaultHome, isHome: true);
         };
@@ -173,6 +180,7 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
         }
         if (pages.Remove(tab, out var page)) pageHost.Children.Remove(page);
         privateTabs.Remove(tab);
+        agentTabs.Remove(tab);
         tabs.TabItems.Remove(tab);
     }
 
@@ -239,14 +247,33 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
     static FontIcon ToolbarIcon(Symbol symbol) => new() {
         Glyph = char.ConvertFromUtf32((int)symbol),
         FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe MDL2 Assets"),
-        FontSize = 14
+        FontSize = 14,
+        HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
     };
 
     static Button ToolbarButton(string label, Symbol symbol, Action? action = null)
     {
-        var button = new Button { Content = ToolbarIcon(symbol), Width = 26, Height = 26 };
+        var face = new Border { Child = ToolbarIcon(symbol), Width = 26, Height = 26, CornerRadius = new CornerRadius(6),
+            BackgroundTransition = new Microsoft.UI.Xaml.BrushTransition { Duration = TimeSpan.FromMilliseconds(100) } };
+        var button = new Button { Content = face, Width = 26, Height = 26 };
         KronoInputMotion.StyleButton(button);
-        button.Template = (ControlTemplate)Application.Current.Resources["KronoQuietIconTemplate"];
+        button.Template = (ControlTemplate)Application.Current.Resources["KronoBrowserToolbarTemplate"];
+        bool hovered = false, pressed = false;
+        var clear = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        void Paint() {
+            face.Background = pressed || hovered && button.IsEnabled
+                ? KronoDesign.ThemeBrush(pressed ? "ButtonBackgroundPressed" : "ButtonBackgroundPointerOver", button.ActualTheme)
+                : clear;
+            face.Opacity = button.IsEnabled ? 1 : .45;
+        }
+        face.PointerEntered += (_, _) => { hovered = true; Paint(); };
+        face.PointerExited += (_, _) => { hovered = pressed = false; Paint(); };
+        button.AddHandler(UIElement.PointerPressedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => { pressed = true; Paint(); }), true);
+        button.AddHandler(UIElement.PointerReleasedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => { pressed = false; Paint(); }), true);
+        button.PointerCaptureLost += (_, _) => { pressed = false; Paint(); };
+        button.IsEnabledChanged += (_, _) => Paint();
+        button.ActualThemeChanged += (_, _) => Paint();
+        Paint();
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, label);
         ToolTipService.SetToolTip(button, label);
         if (action is not null) button.Click += (_, _) => action();
@@ -366,7 +393,7 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
         navigators.Add(view, Navigate);
         pages.Add(tab, content);
         pageHost.Children.Add(content);
-        if (isAgent) agentView = view;
+        if (isAgent) { agentView = view; agentTabs.Add(tab); }
         views[tab] = view; if (isPrivate) privateTabs.Add(tab); tabs.TabItems.Add(tab); tabs.SelectedItem = tab;
         retry.Click += async (_, _) => { if ((lastPage ?? queuedPage) is { } target) await Navigate(target); };
         if (!builtInHome) await Navigate(new Uri(url));
@@ -408,7 +435,7 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
                         SetHomeLoading(false);
                         if (kind == CoreWebView2ProcessFailedKind.BrowserProcessExited) browserEnvironment = null;
                         readyViews.Remove(view);
-                        if (isAgent) ResetAgentPage();
+                        if (isAgent && ReferenceEquals(agentView, view)) ResetAgentPage();
                         view.Visibility = Visibility.Collapsed;
                         start.Visibility = Visibility.Visible;
                         search.Visibility = Visibility.Collapsed;
@@ -432,10 +459,10 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
                     if (isAgent) {
                         if (target is null || !CanAgentBrowse(target)) {
                             args.Cancel = true;
-                            AgentPageFinished(args.NavigationId, false);
+                            if (ReferenceEquals(agentView, view)) AgentPageFinished(args.NavigationId, false);
                             return;
                         }
-                        AgentPageStarting(args.NavigationId, target);
+                        if (ReferenceEquals(agentView, view)) AgentPageStarting(args.NavigationId, target);
                     }
                     navigationInProgress = args.NavigationId;
                     SetLoading(view, true);
@@ -470,7 +497,7 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
 
                 view.CoreWebView2.NavigationCompleted += (sender, args) => {
                     if (!views.ContainsKey(tab)) return;
-                    if (isAgent) AgentPageFinished(args.NavigationId, args.IsSuccess);
+                    if (isAgent && ReferenceEquals(agentView, view)) AgentPageFinished(args.NavigationId, args.IsSuccess);
                     if (navigationInProgress != args.NavigationId) return;
                     navigationInProgress = null;
                     SetLoading(view, false);
@@ -486,7 +513,7 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
                         startStatus.Text = "This page is unavailable. Try your home page again or enter another address.";
                         retry.Visibility = Visibility.Visible;
                     }
-                    if (isAgent) {
+                    if (isAgent && ReferenceEquals(agentView, view)) {
                         if (args.IsSuccess && view.Source is { } destination && CanAgentBrowse(destination))
                             workspace.SetSetting(AgentUrlSetting, destination.AbsoluteUri);
                     }
@@ -536,7 +563,7 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
                         retry.Visibility = Visibility.Visible;
                     }
                     App.RecordFault("Browser initialization", error);
-                    if (isAgent) ResetAgentPage();
+                    if (isAgent && ReferenceEquals(agentView, view)) ResetAgentPage();
                 }
             } finally {
                 initializingViews.Remove(view);
@@ -549,6 +576,6 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
     {
         if (disposed) return;
         disposed = true;
-        foreach (var tab in tabs.TabItems.OfType<TabViewItem>().ToArray()) CloseBrowserTab(tab);
+        foreach (var tab in pages.Keys.ToArray()) CloseBrowserTab(tab);
     }
 }

@@ -8,6 +8,27 @@ namespace Krono_Agent;
 public sealed partial class BrowserWorkspace
 {
     WebView2? agentView;
+    readonly List<TabViewItem> agentTabs = [];
+    bool isSplitBrowser;
+    bool ShowAgentTabsInMain => workspace.Setting("native.browser.showAgentTabs") == "true";
+
+    internal void SetBrowserHost(bool split)
+    {
+        isSplitBrowser = split;
+        RefreshAgentTabVisibility();
+    }
+
+    void RefreshAgentTabVisibility()
+    {
+        if (isSplitBrowser || ShowAgentTabsInMain) {
+            foreach (var tab in agentTabs.Where(tab => !tabs.TabItems.Contains(tab))) tabs.TabItems.Add(tab);
+            if (isSplitBrowser) SelectAgentTab();
+        } else {
+            foreach (var tab in agentTabs) tabs.TabItems.Remove(tab);
+            if (IsLoaded && tabs.TabItems.Count == 0) _ = Open(DefaultHome, isHome: true);
+        }
+    }
+
     AgentNavigation? agentNavigation;
     ulong? agentPageLoading;
     int agentPageVersion;
@@ -58,14 +79,6 @@ public sealed partial class BrowserWorkspace
         if (agentView is { } view) tabs.SelectedItem = views.First(tab => ReferenceEquals(tab.Value, view)).Key;
     }
 
-    async Task RestoreAgentTab()
-    {
-        if (agentView is not null) { SelectAgentTab(); return; }
-        var previous = workspace.Setting(AgentUrlSetting);
-        if (Uri.TryCreate(previous, UriKind.Absolute, out var url) && CanAgentBrowse(url)) await Open(url.AbsoluteUri, isAgent: true);
-        else await Open(DefaultHome, isHome: true, isAgent: true);
-    }
-
     internal async Task<object> RunAgentBrowser(JsonNode request)
     {
         static object Failed(string error) => new { success = false, error };
@@ -76,7 +89,7 @@ public sealed partial class BrowserWorkspace
             if (action == "visit") {
                 if (!Uri.TryCreate(request["url"]?.ToString(), UriKind.Absolute, out var url) || !CanAgentBrowse(url))
                     return Failed("Enter a valid HTTP or HTTPS page address.");
-                if (!await NavigateAgentPage(url)) return Failed("The browser could not open that page.");
+                if (!await NavigateAgentPage(url, newTab: true)) return Failed("The browser could not open that page.");
             } else if (agentView is null) {
                 var previous = workspace.Setting(AgentUrlSetting);
                 if (!Uri.TryCreate(previous, UriKind.Absolute, out var url) || !CanAgentBrowse(url) || !await NavigateAgentPage(url))
@@ -120,8 +133,12 @@ public sealed partial class BrowserWorkspace
         finally { Loaded -= Complete; }
     }
 
-    async Task<bool> NavigateAgentPage(Uri target)
+    async Task<bool> NavigateAgentPage(Uri target, bool newTab = false)
     {
+        if (newTab && agentView is { Source: { } source } && source != target) {
+            ResetAgentPage();
+            agentView = null;
+        }
         var loading = new AgentNavigation(target);
         if (agentView is { } view && readyViews.Contains(view) && navigators.TryGetValue(view, out var navigate)) {
             SelectAgentTab();
