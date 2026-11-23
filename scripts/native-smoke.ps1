@@ -236,7 +236,7 @@ function CloseApp {
         if (!$script:process.WaitForExit(5000)) { throw 'Native process did not exit' }
     }
 }
-function Capture([string]$Name) {
+function Capture([string]$Name, [switch]$Screen) {
     Start-Sleep -Milliseconds 200
     $deadline = (Get-Date).AddSeconds(5)
     do {
@@ -251,12 +251,16 @@ function Capture([string]$Name) {
     }
     $bitmap = New-Object Drawing.Bitmap([int]$bounds.Width, [int]$bounds.Height)
     $graphics = [Drawing.Graphics]::FromImage($bitmap)
-    $dc = $graphics.GetHdc()
-    try {
-        if (![KronoWindowCapture]::PrintWindow($script:process.MainWindowHandle, $dc, 2)) {
-            throw 'Could not capture the Krono window.'
-        }
-    } finally { $graphics.ReleaseHdc($dc) }
+    if ($Screen) {
+        $graphics.CopyFromScreen([int]$bounds.Left, [int]$bounds.Top, 0, 0, $bitmap.Size)
+    } else {
+        $dc = $graphics.GetHdc()
+        try {
+            if (![KronoWindowCapture]::PrintWindow($script:process.MainWindowHandle, $dc, 2)) {
+                throw 'Could not capture the Krono window.'
+            }
+        } finally { $graphics.ReleaseHdc($dc) }
+    }
     $bitmap.Save((Join-Path $ReportDirectory $Name), [Drawing.Imaging.ImageFormat]::Png)
     $graphics.Dispose(); $bitmap.Dispose()
 }
@@ -335,9 +339,10 @@ function TestWorkspaceInputs {
         } while ((Get-Date) -lt $deadline)
         if ($selection -ne 'WebView2') { throw 'Enter in Find on page did not select the requested text' }
         Invoke 'Add bookmark' -ByName
-        Find 'Remove bookmark' -ByName | Out-Null
+        Invoke 'Save bookmark' -ByName
+        Find 'Edit bookmark' -ByName | Out-Null
         Invoke 'More options' -ByName
-        Invoke 'History' -ByName
+        Invoke 'BrowserMenuClock'
         Find 'BrowserHistory' | Out-Null
         $buttons = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button)
         $historyEntry = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, $buttons) |
@@ -429,11 +434,61 @@ try {
     $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
     if ($windowPattern.Current.WindowVisualState -ne [Windows.Automation.WindowVisualState]::Maximized) { throw 'Krono did not open maximized' }
     Find 'EmailInput' | Out-Null
-    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'games-lifecycle', 'tray-lifecycle', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui', 'markdown-ui')) {
+    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'games-lifecycle', 'tray-lifecycle', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui', 'markdown-ui', 'browser-feedback', 'plugins-layout')) {
         SetValue 'EmailInput' 'native-fixture@example.com'
         SetValue 'PasswordInput' 'fixture-password'
         Invoke 'LoginButton'
         Find 'Sign out' -ByName | Out-Null
+        if ($env:KRONO_SMOKE_SCOPE -eq 'browser-feedback') {
+            SelectNav 'Browser'
+            SetValue 'BrowserAddress' ($Fixture + '/probe')
+            PressEnterOn 'BrowserAddress'
+            Find 'Native browser fixture' -ByName | Out-Null
+            Invoke 'Add bookmark' -ByName
+            Invoke 'Save bookmark' -ByName
+            Invoke 'Edit bookmark' -ByName
+            $savedLink = (Find 'BookmarkLink').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
+            if ($savedLink -ne ($Fixture + '/probe')) { throw 'The bookmark editor did not prefill the current link' }
+            SetValue 'BookmarkName' 'Renamed fixture bookmark'
+            SetValue 'BookmarkLink' ($Fixture + '/probe?bookmark=1')
+            Invoke 'Save bookmark' -ByName
+            Find 'Renamed fixture bookmark' -ByName | Out-Null
+            RightClick 'BrowserBookmark0'
+            Invoke 'Delete bookmark' -ByName
+            if (FindOptional 'BrowserBookmark0') { throw 'The bookmark remained in the bar after deletion' }
+            $add = (Find 'WorkspaceAddTab').GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)
+            1..5 | ForEach-Object { $add.Invoke() }
+            $items = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::TabItem)
+            $deadline = (Get-Date).AddSeconds(5)
+            do {
+                $tabCount = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, $items).Count
+                if ($tabCount -eq 6) { break }
+                Start-Sleep -Milliseconds 100
+            } while ((Get-Date) -lt $deadline)
+            if ($tabCount -ne 6) { throw 'Rapid add did not create all browser tabs' }
+            $toolbar = (Find 'More options' -ByName).Current.BoundingRectangle
+            [KronoWindowCapture]::SetCursorPos([int]($toolbar.Left + $toolbar.Width / 2), [int]($toolbar.Top + $toolbar.Height / 2)) | Out-Null
+            [KronoWindowCapture]::mouse_event(1, 1, 0, 0, [UIntPtr]::Zero)
+            Start-Sleep -Milliseconds 350
+            Capture 'browser-rapid-tabs.png' -Screen
+            $close = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Close tab')
+            $closeButtons = @($script:window.FindAll([Windows.Automation.TreeScope]::Descendants, $close))
+            if ($closeButtons.Count -lt 3) { throw 'The new browser tabs did not expose close controls' }
+            foreach ($button in $closeButtons[1..2]) { $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke() }
+            $deadline = (Get-Date).AddSeconds(5)
+            do {
+                $tabCount = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, $items).Count
+                if ($tabCount -eq 4) { break }
+                Start-Sleep -Milliseconds 100
+            } while ((Get-Date) -lt $deadline)
+            if ($tabCount -ne 4) { throw 'Rapid close did not remove both browser tabs' }
+            Invoke 'More options' -ByName
+            Invoke 'BrowserMenuClock'
+            Find 'BrowserHistory' | Out-Null
+            Capture 'browser-history.png'
+            Write-Output 'NATIVE_SMOKE_PASS: bookmark create/edit/delete, rapid browser tab creation and closure, and history'
+            return
+        }
         if ($env:KRONO_SMOKE_SCOPE -eq 'games-lifecycle') {
             TestGameSaveLifecycle
             Write-Output 'NATIVE_SMOKE_PASS: viewport game previews and untouched, played, and restarted save lifecycles'
@@ -453,6 +508,12 @@ try {
             if ($address -ne $restoredAddress -or !(FindOptional 'Composer') -or !(FindOptional 'AgentBrowserTab')) {
                 throw 'Reopening from tray lost the agent browser tab, address or conversation split'
             }
+            SelectNav 'Browser'
+            if (FindOptional 'AgentBrowserTab') { throw 'Agent tabs were visible in the main browser by default' }
+            Invoke 'More options' -ByName
+            $visibility = Find 'BrowserShowAgentTabs'
+            $visibility.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
+            Find 'AgentBrowserTab' | Out-Null
             Write-Output 'NATIVE_SMOKE_PASS: real agent browser navigation and shortcut restoration of the original tray window and browser split'
             return
         }
@@ -557,12 +618,19 @@ try {
             Write-Output 'NATIVE_SMOKE_PASS: first detected local model, manual selection, and routed completion'
             return
         }
-        if ($env:KRONO_SMOKE_SCOPE -eq 'plugins-ui') {
+        if ($env:KRONO_SMOKE_SCOPE -in @('plugins-ui', 'plugins-layout')) {
             SelectNav 'Settings'
             SelectSettingsCategory 'Plugins'
             $left = (Find 'PluginPrimary-github').Current.BoundingRectangle
             $right = (Find 'PluginPrimary-vercel').Current.BoundingRectangle
             if ($left.IsEmpty -or $right.IsEmpty -or $right.Left -le $left.Right) { throw 'The plugin catalog did not show two columns' }
+            if ($env:KRONO_SMOKE_SCOPE -eq 'plugins-layout') {
+                $bounds = @('github','vercel','firebase','notion') | ForEach-Object { (Find ('PluginPrimary-' + $_)).Current.BoundingRectangle.Left }
+                if (@($bounds | Sort-Object -Unique).Count -lt 3) { throw 'The catalog did not fit at least three columns in this window' }
+                Capture 'plugins-wide.png'
+                Write-Output 'NATIVE_SMOKE_PASS: responsive plugin columns'
+                return
+            }
             Invoke 'PluginPrimary-github'
             Find 'PluginOptions-github' | Out-Null
             if ((Find 'PluginPrimary-github').Current.Name -ne 'Connect') { throw 'GitHub did not offer browser connection after installation' }

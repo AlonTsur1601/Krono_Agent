@@ -290,7 +290,7 @@ public static class KronoDesign
                     if (face is null) {
                         face = new Border { Name = "KronoTabFace", CornerRadius = new CornerRadius(9, 9, 0, 0),
                             IsHitTestVisible = false, Margin = new Thickness(-header.Padding.Left, -header.Padding.Top,
-                                -header.Padding.Right, Math.Max(1, -header.Padding.Bottom + 1)),
+                                -header.Padding.Right, -header.Padding.Bottom),
                             BackgroundTransition = new BrushTransition { Duration = TimeSpan.FromMilliseconds(120) } };
                         Grid.SetColumnSpan(face, header.ColumnDefinitions.Count);
                         header.Children.Insert(0, face);
@@ -300,14 +300,8 @@ public static class KronoDesign
                     decoration.Opacity = 0;
             }
             Refresh();
-            if (firstLoad && new UISettings().AnimationsEnabled) {
-                var visual = ElementCompositionPreview.GetElementVisual(tab);
-                var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
-                animation.InsertKeyFrame(0, 0);
-                animation.InsertKeyFrame(1, 1);
-                animation.Duration = TimeSpan.FromMilliseconds(115);
-                visual.StartAnimation("Opacity", animation);
-            }
+            if (firstLoad && new UISettings().AnimationsEnabled)
+                AnimateTabOffset(tab, -12, 0, TimeSpan.FromMilliseconds(150));
             firstLoad = false;
         };
         tab.PointerEntered += (_, _) => { hovered = true; Refresh(); };
@@ -327,9 +321,22 @@ public static class KronoDesign
         var fade = visual.Compositor.CreateScalarKeyFrameAnimation();
         fade.InsertExpressionKeyFrame(0, "this.StartingValue");
         fade.InsertKeyFrame(1, 0);
-        fade.Duration = TimeSpan.FromMilliseconds(80);
+        fade.Duration = TimeSpan.FromMilliseconds(115);
         visual.StartAnimation("Opacity", fade);
+        AnimateTabOffset(tab, null, -8, fade.Duration);
         await Task.Delay(fade.Duration);
+    }
+
+    static void AnimateTabOffset(TabViewItem tab, float? from, float to, TimeSpan duration)
+    {
+        ElementCompositionPreview.SetIsTranslationEnabled(tab, true);
+        var visual = ElementCompositionPreview.GetElementVisual(tab);
+        var motion = visual.Compositor.CreateVector3KeyFrameAnimation();
+        if (from is { } offset) motion.InsertKeyFrame(0, new(offset, 0, 0));
+        else motion.InsertExpressionKeyFrame(0, "this.StartingValue");
+        motion.InsertKeyFrame(1, new(to, 0, 0));
+        motion.Duration = duration;
+        visual.StartAnimation("Translation", motion);
     }
 
     internal static Grid ScrollPage(FrameworkElement content, string background = "KronoBackground")
@@ -393,14 +400,14 @@ public static class KronoDesign
         var footer = new StackPanel {
             Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Bottom, Height = TabHeight,
-            Margin = new Thickness(0, 0, 0, TabStripInset),
+            Margin = new Thickness(0),
             Padding = new Thickness(4, 0, TabStripInset, 0), Spacing = 6
         };
         if (commands is not null) footer.Children.Add(commands);
-        var header = new Grid { Height = TabHeight + 2 * TabStripInset };
+        var header = new Grid { Height = TabHeight + TabStripInset };
         header.ColumnDefinitions.Add(new ColumnDefinition());
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var contentEdge = new Border { Height = TabStripInset, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false };
+        var contentEdge = new Border { Height = 1, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false };
         void PaintContentEdge() => contentEdge.Background = ThemeBrush(contentSurface, header.ActualTheme);
         header.Loaded += (_, _) => PaintContentEdge();
         header.ActualThemeChanged += (_, _) => PaintContentEdge();
@@ -423,6 +430,10 @@ public static class KronoDesign
             tabs.ApplyTemplate();
             var strip = KronoInputMotion.Descendants(tabs).OfType<Grid>().FirstOrDefault(part => part.Name == "TabContainerGrid");
             if (strip is null) return;
+            // The native list's group transition batches inserts made within the same layout pass.
+            // Use our per-header motion so each of those inserts has its own animation.
+            foreach (var list in KronoInputMotion.Descendants(strip).OfType<ListViewBase>())
+                list.ItemContainerTransitions = new Microsoft.UI.Xaml.Media.Animation.TransitionCollection();
             if (KronoInputMotion.Descendants(strip).OfType<Button>().FirstOrDefault(part => part.Name == "AddButton") is { } add) {
                 StyleTabButton(add, add: true);
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(add, "WorkspaceAddTab");
@@ -464,7 +475,7 @@ public static class KronoDesign
     internal static PathIcon NavigationIcon(Symbol symbol)
     {
         var data = symbol switch {
-            Symbol.World => "F0 M10,1 A9,9 0 1 0 10,19 A9,9 0 1 0 10,1 Z M10,2.8 A7.2,7.2 0 1 1 10,17.2 A7.2,7.2 0 1 1 10,2.8 Z M4.1,6.1 L6.7,4.4 L8.8,4.9 L8.5,6.4 L7,7.1 L7.4,8.7 L9.7,9.9 L9.8,11.2 L8.6,12.5 L8.3,15.9 L6.7,14.1 L6.1,11.9 L4.8,10.9 L4.5,8.6 L3.6,8 Z M11.5,4.15 L14.1,4.8 L16.2,7 L16.6,9 L14.9,9.7 L13.4,8.7 L11.8,9.6 L10,8.5 L10.9,7 L12.2,6.6 Z M13.4,11.3 L15.6,11.5 L15.7,12.9 L14.3,14.7 L12.6,14.2 L12.3,12.7 Z",
+            Symbol.World => "F0 M10,1 A9,9 0 1 0 10,19 A9,9 0 1 0 10,1 Z M10,2.8 A7.2,7.2 0 1 1 10,17.2 A7.2,7.2 0 1 1 10,2.8 Z M4.1,6.1 L6.7,4.4 L8.8,4.9 L8.5,6.4 L7,7.1 L7.4,8.7 L9.7,9.9 L9.8,11.2 L8.6,12.5 L8.3,15.9 L6.7,14.1 L6.1,11.9 L4.8,10.9 L4.5,8.6 L3.6,8 Z M4.7,6.7 L6.8,5.3 L7.9,5.55 L7.8,5.85 L6,6.7 L6.7,9.25 L8.85,10.45 L8.85,10.9 L7.8,12.1 L7.6,14 L7.4,13.7 L6.9,11.35 L5.55,10.35 L5.25,8.05 L4.6,7.65 Z M11.5,4.15 L14.1,4.8 L16.2,7 L16.6,9 L14.9,9.7 L13.4,8.7 L11.8,9.6 L10,8.5 L10.9,7 L12.2,6.6 Z M12.6,5.35 L13.65,5.65 L15.4,7.4 L15.65,8.45 L14.95,8.7 L13.45,7.7 L11.85,8.6 L11.25,8.2 L11.65,7.7 L13.2,6.9 Z M13.4,11.3 L15.6,11.5 L15.7,12.9 L14.3,14.7 L12.6,14.2 L12.3,12.7 Z M13.85,12.2 L14.8,12.35 L14.8,12.6 L13.95,13.65 L13.35,13.45 L13.2,12.95 Z",
             Symbol.Clock => "F0 M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 Z M10,3.6 A6.4,6.4 0 1 1 10,16.4 A6.4,6.4 0 1 1 10,3.6 Z M9.2,5.5 H10.8 V9.2 H14 V10.8 H9.2 Z",
             Symbol.Download => "M9.25,2 H10.75 V10.2 L13.7,7.25 L14.75,8.3 L10,13.05 L5.25,8.3 L6.3,7.25 L9.25,10.2 Z M2,12 H3.5 V16.5 H16.5 V12 H18 V18 H2 Z",
             _ => throw new ArgumentOutOfRangeException(nameof(symbol))

@@ -18,11 +18,24 @@ public sealed partial class MainPage
 
     void ShowContext(FrameworkElement? content)
     {
+        var replacing = content is not null && contextVisible && !ReferenceEquals(ContextBody.Content, content);
         if (content is not null) ContextBody.Content = content;
         ContextScroll.VerticalScrollBarVisibility = ReferenceEquals(content, chatHistory) && content is not null
             ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
         if (content is not null) KronoDesign.RefreshTypography(content);
         RefreshContextVisibility(content is not null);
+        if (replacing && new UISettings().AnimationsEnabled) AnimateContextContent();
+    }
+
+    void AnimateContextContent()
+    {
+        ElementCompositionPreview.SetIsTranslationEnabled(ContextScroll, true);
+        var visual = ElementCompositionPreview.GetElementVisual(ContextScroll);
+        var motion = visual.Compositor.CreateVector3KeyFrameAnimation();
+        motion.InsertKeyFrame(0, new(-25, 0, 0));
+        motion.InsertKeyFrame(1, System.Numerics.Vector3.Zero);
+        motion.Duration = TimeSpan.FromMilliseconds(155);
+        visual.StartAnimation("Translation", motion);
     }
 
     async void RefreshContextVisibility(bool? hasContent = null)
@@ -46,11 +59,11 @@ public sealed partial class MainPage
             ContextRail.Visibility = Visibility.Visible;
             WorkspaceSurface.CornerRadius = new CornerRadius(0);
         }
-        if (new UISettings().AnimationsEnabled && (show || wasVisible)) {
+        if (hasContent != false && new UISettings().AnimationsEnabled && (show || wasVisible)) {
             var motion = visual.Compositor.CreateVector3KeyFrameAnimation();
-            if (show && !wasVisible) motion.InsertKeyFrame(0, new(-252, 0, 0));
+            if (show && !wasVisible) motion.InsertKeyFrame(0, new(-24, 0, 0));
             else motion.InsertExpressionKeyFrame(0, "this.StartingValue");
-            motion.InsertKeyFrame(1, new(show ? 0 : -252, 0, 0),
+            motion.InsertKeyFrame(1, new(show ? 0 : -24, 0, 0),
                 visual.Compositor.CreateCubicBezierEasingFunction(new(.18f, .8f), new(.3f, 1)));
             motion.Duration = TimeSpan.FromMilliseconds(175);
             visual.StartAnimation("Translation", motion);
@@ -58,6 +71,7 @@ public sealed partial class MainPage
         }
         if (transition != contextTransition) return;
         visual.StopAnimation("Translation");
+        visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
         if (!show) {
             ContextRail.Width = 0;
             ContextRail.Visibility = Visibility.Collapsed;

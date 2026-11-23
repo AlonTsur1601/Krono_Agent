@@ -18,10 +18,10 @@ public sealed partial class BrowserWorkspace
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         bar.ColumnDefinitions.Add(new ColumnDefinition());
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        bookmarkAction = ToolbarButton("Add or remove bookmark", Symbol.Favorite, ToggleCurrentBookmark);
+        bookmarkAction = ToolbarButton("Add or remove bookmark", Symbol.Favorite, EditCurrentBookmark);
         bookmarkOverflow = ToolbarButton("More bookmarks", Symbol.More);
-        bookmarkOverflow.Content = new TextBlock { Text = "»", FontSize = 17, LineHeight = 20 };
-        bookmarkOverflow.Flyout = bookmarkOverflowMenu;
+        ((Border)bookmarkOverflow.Content).Child = new TextBlock { Text = "»", FontSize = 17, LineHeight = 20 };
+        bookmarkOverflow.Click += (_, _) => bookmarkOverflowMenu.ShowAt(bookmarkOverflow);
         bar.Children.Add(bookmarkAction);
         bar.Children.Add(bookmarkItems);
         bar.Children.Add(bookmarkOverflow);
@@ -43,20 +43,76 @@ public sealed partial class BrowserWorkspace
         if (bookmarkAction is null) return;
         var address = BookmarkAddress;
         var saved = address is not null && bookmarks.Any(item => item.Visit.Url == address.AbsoluteUri);
-        var label = saved ? "Remove bookmark" : "Add bookmark";
+        var label = saved ? "Edit bookmark" : "Add bookmark";
         bookmarkAction.IsEnabled = address is not null;
         ToolTipService.SetToolTip(bookmarkAction, label);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(bookmarkAction, label);
-        bookmarkAction.Content = ToolbarIcon(saved ? Symbol.SolidStar : Symbol.Favorite);
+        ((Border)bookmarkAction.Content).Child = ToolbarIcon(saved ? Symbol.SolidStar : Symbol.Favorite);
     }
 
-    void ToggleCurrentBookmark()
+    async void EditCurrentBookmark()
     {
         if (BookmarkAddress is not { } uri || Current is not { } view) return;
-        var key = "browser.bookmark." + uri.AbsoluteUri;
-        workspace.SetSetting(key, workspace.Setting(key).Length == 0 ? SerializeVisit(uri, view.CoreWebView2.DocumentTitle) : "");
+        var key = BookmarkKey(uri);
+        var saved = ParseVisit(workspace.Setting(key));
+        var title = view.CoreWebView2.DocumentTitle;
+        await EditBookmark(saved is null ? null : key, saved ?? new BrowserVisit(uri.AbsoluteUri,
+            string.IsNullOrWhiteSpace(title) ? uri.Host : title));
+    }
+
+    static string BookmarkKey(Uri uri) => "browser.bookmark." + uri.AbsoluteUri;
+
+    bool editingBookmark;
+    async Task EditBookmark(string? previousKey, BrowserVisit visit)
+    {
+        if (disposed || editingBookmark) return;
+        editingBookmark = true;
+        try {
+            var name = new KronoTextBox { Header = "Name", Text = visit.Title };
+            var link = new KronoTextBox { Header = "Link", Text = visit.Url };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(name, "BookmarkName");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(link, "BookmarkLink");
+            var error = new TextBlock { TextWrapping = TextWrapping.Wrap };
+            var dialog = new KronoDialog { XamlRoot = XamlRoot, Title = previousKey is null ? "Add bookmark" : "Edit bookmark",
+                Content = new StackPanel { Spacing = 8, Children = { name, link, error } },
+                PrimaryButtonText = "Save bookmark", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
+            bool TryRead(out Uri uri) => Uri.TryCreate(link.Text.Trim(), UriKind.Absolute, out uri!) &&
+                CanAgentBrowse(uri) && !string.IsNullOrWhiteSpace(name.Text);
+            dialog.PrimaryButtonClick += (_, args) => {
+                if (!TryRead(out var uri)) { args.Cancel = true; error.Text = "Enter a name and a valid HTTP or HTTPS link."; }
+                else if (BookmarkKey(uri) != previousKey && workspace.Setting(BookmarkKey(uri)).Length > 0) {
+                    args.Cancel = true;
+                    error.Text = "A bookmark already uses this link.";
+                }
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary || disposed || !TryRead(out var updated)) return;
+            var key = BookmarkKey(updated);
+            var value = SerializeVisit(updated, name.Text.Trim());
+            if (previousKey is not null && previousKey != key)
+                workspace.Execute("UPDATE OR REPLACE settings SET key=$p0, value=$p1 WHERE key=$p2", key, value, previousKey);
+            else workspace.SetSetting(key, value);
+            RefreshBookmarks();
+            RefreshBookmarkAction();
+        } catch (Exception error) { if (!disposed) owner.Error(error); }
+        finally { editingBookmark = false; }
+    }
+
+    void RemoveBookmark(BrowserVisit visit)
+    {
+        if (disposed) return;
+        workspace.Execute("DELETE FROM settings WHERE key=$p0", BookmarkKey(new Uri(visit.Url)));
         RefreshBookmarks();
         RefreshBookmarkAction();
+    }
+
+    void AddBookmarkActions(IList<MenuFlyoutItemBase> menu, BrowserVisit visit)
+    {
+        var edit = new MenuFlyoutItem { Text = "Edit bookmark" };
+        edit.Click += async (_, _) => await EditBookmark(BookmarkKey(new Uri(visit.Url)), visit);
+        var delete = new MenuFlyoutItem { Text = "Delete bookmark" };
+        delete.Click += (_, _) => RemoveBookmark(visit);
+        menu.Add(edit);
+        menu.Add(delete);
     }
 
     void RefreshBookmarks()
@@ -69,6 +125,10 @@ public sealed partial class BrowserWorkspace
                 Content = new TextBlock { Text = visit.Title, TextTrimming = TextTrimming.CharacterEllipsis },
                 MaxWidth = 140, MinHeight = 26, Padding = new Thickness(7, 2, 7, 2)
             };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(button, "BrowserBookmark" + bookmarks.Count);
+            var context = new MenuFlyout();
+            AddBookmarkActions(context.Items, visit);
+            button.ContextFlyout = context;
             ToolTipService.SetToolTip(button, visit.Title);
             button.Click += (_, _) => OpenBookmark(visit);
             bookmarks.Add((visit, button));
@@ -79,7 +139,7 @@ public sealed partial class BrowserWorkspace
     void OpenBookmark(BrowserVisit visit)
     {
         var privateTab = tabs.SelectedItem is TabViewItem selected && privateTabs.Contains(selected);
-        if (Current is { } view && !ReferenceEquals(agentView, view) && navigators.TryGetValue(view, out var navigate))
+        if (Current is { } view && tabs.SelectedItem is TabViewItem active && !agentTabs.Contains(active) && navigators.TryGetValue(view, out var navigate))
             _ = navigate(new Uri(visit.Url));
         else _ = Open(visit.Url, privateTab);
     }
@@ -104,6 +164,9 @@ public sealed partial class BrowserWorkspace
             var entry = new MenuFlyoutItem { Text = item.Visit.Title };
             entry.Click += (_, _) => OpenBookmark(item.Visit);
             bookmarkOverflowMenu.Items.Add(entry);
+            var actions = new MenuFlyoutSubItem { Text = "Manage " + item.Visit.Title };
+            AddBookmarkActions(actions.Items, item.Visit);
+            bookmarkOverflowMenu.Items.Add(actions);
         }
         bookmarkOverflow.Visibility = overflow ? Visibility.Visible : Visibility.Collapsed;
     }

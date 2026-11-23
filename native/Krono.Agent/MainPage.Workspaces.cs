@@ -55,7 +55,7 @@ public sealed partial class MainPage
         instance.PluginCredentialsChanged = data => PluginCatalog.AcceptRefresh(workspace, data);
         instance.BrowserRequest = async (_, request) => {
             browser ??= new BrowserWorkspace(workspace, this);
-            if (!ReferenceEquals(Body.Content, browser) && !ReferenceEquals(SideBody.Content, browser)) OpenWorkspace("Browser");
+            if (splitWorkspace != "Browser" || SideSurface.Visibility != Visibility.Visible) OpenWorkspace("Browser");
             return await browser.RunAgentBrowser(request);
         };
     }
@@ -79,7 +79,11 @@ public sealed partial class MainPage
         splitWorkspace = kind;
         FrameworkElement content;
         switch (kind) {
-            case "Browser": content = browser ??= new BrowserWorkspace(workspace, this); break;
+            case "Browser":
+                browser ??= new BrowserWorkspace(workspace, this);
+                browser.SetBrowserHost(split: true);
+                content = browser;
+                break;
             case "Terminal":
                 if (worker is null) return;
                 terminal ??= new TerminalWorkspace(worker);
@@ -102,6 +106,7 @@ public sealed partial class MainPage
         toolbar.Children.Add(new TextBlock { Text = kind, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
         var close = Button("Close", () => {
             splitWorkspace = null;
+            host.Children.Remove(content);
             SideBody.Content = null;
             if (sideChat is not null && sideChat.ParentChatId == chatId) KronoDesign.Present(SideBody, sideChat);
             SetSideChatVisible(SideBody.Content is not null);
@@ -118,8 +123,9 @@ public sealed partial class MainPage
 
     void DetachWorkspace(FrameworkElement content)
     {
-        if (content.Parent is not Panel parent || !ReferenceEquals(SideBody.Content, parent)) return;
+        if (content.Parent is not Panel parent) return;
         parent.Children.Remove(content);
+        if (!ReferenceEquals(SideBody.Content, parent)) return;
         SideBody.Content = null;
         splitWorkspace = null;
         SetSideChatVisible(false);
