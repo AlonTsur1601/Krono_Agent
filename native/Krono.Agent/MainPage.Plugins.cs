@@ -16,24 +16,33 @@ public sealed partial class MainPage
 
     void AddPluginSettings(StackPanel panel)
     {
-        panel.Children.Add(new TextBlock { Text = "Use connected tools in Agent and Goal modes. Installed skill packs add guidance when relevant.", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
+        panel.Children.Add(new TextBlock { Text = "Install copies the included package to this device. Connected tools are available in Agent and Goal modes.", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
         panel.HorizontalAlignment = HorizontalAlignment.Stretch;
+        var filter = new KronoComboBox { Header = "Show plugins", ItemsSource = new[] { "All", "Installed", "Not installed" },
+            SelectedIndex = 0 };
+        AutomationProperties.SetAutomationId(filter, "PluginFilter");
+        panel.Children.Add(filter);
         var grid = new Grid { ColumnSpacing = 12, RowSpacing = 12 };
         panel.MaxWidth = double.PositiveInfinity;
+        var cards = new List<(PluginCatalog.Plugin Plugin, Border Card)>();
         int columnCount = 0;
-        void Arrange(double width)
+        void Arrange(double width, bool refresh = false)
         {
             var columns = Math.Clamp((int)((width + grid.ColumnSpacing) / (245 + grid.ColumnSpacing)), 1, 4);
-            if (columns == columnCount) return;
+            if (columns == columnCount && !refresh) return;
             columnCount = columns;
             grid.ColumnDefinitions.Clear();
             grid.RowDefinitions.Clear();
             for (var i = 0; i < columns; i++) grid.ColumnDefinitions.Add(new ColumnDefinition());
-            for (var i = 0; i < grid.Children.Count; i++) {
-                if (i % columns == 0) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                var card = (Border)grid.Children[i];
-                Grid.SetRow(card, i / columns);
-                Grid.SetColumn(card, i % columns);
+            int position = 0;
+            foreach (var (plugin, card) in cards) {
+                var visible = filter.SelectedIndex <= 0 || PluginCatalog.Installed(workspace, plugin) == (filter.SelectedIndex == 1);
+                card.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+                if (!visible) continue;
+                if (position % columns == 0) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                Grid.SetRow(card, position / columns);
+                Grid.SetColumn(card, position % columns);
+                position++;
             }
         }
         grid.SizeChanged += (_, args) => Arrange(args.NewSize.Width);
@@ -46,6 +55,7 @@ public sealed partial class MainPage
             var card = new Border { Padding = new Thickness(14), CornerRadius = new CornerRadius(14), BorderThickness = new Thickness(1, 1, 1, 3) };
             AutomationProperties.SetAutomationId(card, "Plugin-" + plugin.Id);
             grid.Children.Add(card);
+            cards.Add((plugin, card));
             var contents = new Grid { RowSpacing = 10 };
             contents.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             contents.RowDefinitions.Add(new RowDefinition());
@@ -68,22 +78,23 @@ public sealed partial class MainPage
             var footer = new StackPanel { Spacing = 6 };
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             var status = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .76 };
-            AutomationProperties.SetAutomationId(status, "PluginStatus-" + plugin.Id);
+            AutomationProperties.SetAutomationId(status, "PluginProgress-" + plugin.Id);
             footer.Children.Add(actions);
-            footer.Children.Add(status);
+            var badge = new TextBlock { Text = "Installed", VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Opacity = .8 };
+            AutomationProperties.SetAutomationId(badge, "PluginStatus-" + plugin.Id);
             Grid.SetRow(footer, 2);
             contents.Children.Add(footer);
 
             var primary = Button("Install", async () => {
                 if (pluginOperation is { Plugin: var current } && current == plugin.Id) { await CancelPluginConnection(); return; }
                 if (pluginOperation is not null) return;
-                if (!PluginCatalog.Installed(workspace, plugin)) { workspace.SetSetting(plugin.Setting, "true"); refreshPluginCards?.Invoke(); return; }
+                if (!PluginCatalog.Installed(workspace, plugin)) { PluginCatalog.Install(workspace, plugin); refreshPluginCards?.Invoke(); return; }
                 if (plugin.RequiresAccount) await ConnectPlugin(plugin);
             });
             AutomationProperties.SetAutomationId(primary, "PluginPrimary-" + plugin.Id);
             actions.Children.Add(primary);
 
-            var options = new MenuFlyout();
+            var options = KronoDesign.CreateMenu();
             var reconnect = new MenuFlyoutItem { Text = "Reconnect" };
             reconnect.Click += async (_, _) => await ConnectPlugin(plugin);
             var check = new MenuFlyoutItem { Text = plugin.RequiresAccount ? "Check connection" : "Check runtime" };
@@ -111,6 +122,8 @@ public sealed partial class MainPage
             AutomationProperties.SetName(more, plugin.Name + " options");
             AutomationProperties.SetAutomationId(more, "PluginOptions-" + plugin.Id);
             actions.Children.Add(more);
+            actions.Children.Add(badge);
+            footer.Children.Add(status);
 
             void Render()
             {
@@ -124,7 +137,9 @@ public sealed partial class MainPage
                 more.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
                 reconnect.Visibility = connected && !connecting ? Visibility.Visible : Visibility.Collapsed;
                 check.Visibility = installed && (connected || plugin.Id == "node") && !connecting ? Visibility.Visible : Visibility.Collapsed;
-                status.Text = connecting ? pluginProgress : connected ? "Connected" : installed && !plugin.RequiresAccount ? "Installed" : "";
+                badge.Visibility = installed && !connecting ? Visibility.Visible : Visibility.Collapsed;
+                badge.Text = connected ? "Connected" : "Installed";
+                status.Text = connecting ? pluginProgress : "";
                 status.Visibility = status.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
             }
 
@@ -138,7 +153,11 @@ public sealed partial class MainPage
             refresh.Add(Render);
             Render();
         }
-        refreshPluginCards = () => { foreach (var render in refresh) render(); };
+        refreshPluginCards = () => {
+            foreach (var render in refresh) render();
+            Arrange(grid.ActualWidth, refresh: true);
+        };
+        filter.SelectionChanged += (_, _) => Arrange(grid.ActualWidth, refresh: true);
         Arrange(panel.ActualWidth);
         grid.Loaded += (_, _) => { Arrange(panel.ActualWidth); refreshPluginCards?.Invoke(); };
     }

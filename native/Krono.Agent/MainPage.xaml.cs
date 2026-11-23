@@ -259,6 +259,7 @@ public sealed partial class MainPage : Page
             if (previousModel.Length > 0 && workspace.Setting(key).Length == 0) workspace.SetSetting(key, "true");
             workspace.SetSetting("native.tools." + id, "");
         }
+        PluginCatalog.RestoreInstallations(workspace);
         workspace.FlushSideTransfers(); ShowChats();
         if (workspace.IsOfflineSession) progress.Text = "Offline · local workspace restored; account validation will retry.";
         sessionTimer.Start();
@@ -412,7 +413,7 @@ public sealed partial class MainPage : Page
                 chatList.SelectedItem = null;
                 if (!ReferenceEquals(Body.Content, chatView)) ShowChats();
                 else LoadChat();
-                composer.Focus(FocusState.Programmatic);
+                NativeMarkdown.Focus(composer);
             }));
             InitializeChatRail();
             Grid.SetRow(chatList, 1);
@@ -482,7 +483,7 @@ public sealed partial class MainPage : Page
             Grid.SetRow(live, 2); conversation.Children.Add(live);
             var input = new StackPanel { Spacing = 4 };
             input.Children.Add(attachmentTray);
-            input.Children.Add(NativeMarkdown.Editor(composer));
+            input.Children.Add(NativeMarkdown.Editor(composer, workspace, TryPasteComposerImage));
             send.Click += async (_, _) => {
                 if (!ComposerCanStop) await SendMessage();
                 else if (scheduledRun is not null) await StopScheduledRun();
@@ -503,7 +504,7 @@ public sealed partial class MainPage : Page
             modelChoice.MaxWidth = 240;
             toolbar.Children.Add(currentModelLabel);
             toolbar.Children.Add(modelChoice);
-            var toolsMenu = new MenuFlyout();
+            var toolsMenu = KronoDesign.CreateMenu();
             foreach (var name in new[] { "Files", "Browser", "Terminal" }) {
                 var entry = new MenuFlyoutItem { Text = name };
                 entry.Click += (_, _) => OpenWorkspace(name);
@@ -892,35 +893,82 @@ public sealed partial class MainPage : Page
         var textFont = FontChoice("Text font", "native.textFont", ["Rubik", "Space Grotesk", "Segoe UI", "Segoe UI Variable", "Arial", "Verdana", "Georgia", "Tahoma", "Trebuchet MS"]);
         var codeFont = FontChoice("Code font", "native.codeFont", ["JetBrains Mono", "Cascadia Code", "Cascadia Mono", "Consolas", "Courier New", "Lucida Console"]);
         AutomationProperties.SetAutomationId(textFont, "TextFontFamily"); AutomationProperties.SetAutomationId(codeFont, "CodeFontFamily");
-        var textSize = new NumberBox { Header = "Text size", Minimum = 11, Maximum = 28, Value = KronoDesign.TextSize };
-        var codeSize = new NumberBox { Header = "Code size", Minimum = 10, Maximum = 26, Value = KronoDesign.CodeSize };
+        var textSize = FontSizeField("Text size", KronoDesign.TextSize);
+        var codeSize = FontSizeField("Code size", KronoDesign.CodeSize);
         AutomationProperties.SetAutomationId(textSize, "TextFontSize"); AutomationProperties.SetAutomationId(codeSize, "CodeFontSize");
         AddFontRow(textFont, textSize);
         AddFontRow(codeFont, codeSize);
-        void AddFontRow(KronoComboBox family, NumberBox size)
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        KronoTextBox FontSizeField(string title, double value) => new() {
+            Header = title, Text = value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            MinHeight = 32, Padding = new Thickness(12, 4, 12, 4),
+            Style = (Style)Application.Current.Resources["KronoCompactTextInput"],
+            InputScope = new Microsoft.UI.Xaml.Input.InputScope {
+                Names = { new Microsoft.UI.Xaml.Input.InputScopeName(Microsoft.UI.Xaml.Input.InputScopeNameValue.Number) }
+            }
+        };
+        void AddFontRow(KronoComboBox family, KronoTextBox size)
         {
-            KronoInputMotion.Attach(size);
             var row = new Grid { ColumnSpacing = 12 };
             row.ColumnDefinitions.Add(new ColumnDefinition());
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             size.Width = 110;
-            Grid.SetColumn(size, 1);
-            row.Children.Add(family);
-            row.Children.Add(size);
+            var familyField = LabeledField(family, family.Header?.ToString());
+            var sizeField = LabeledField(size, size.Header?.ToString());
+            family.Header = size.Header = null;
+            Grid.SetColumn(sizeField, 1);
+            row.Children.Add(familyField);
+            row.Children.Add(sizeField);
             panel.Children.Add(row);
+
+            static StackPanel LabeledField(Control field, string? label)
+            {
+                var title = new TextBlock { Text = label };
+                AutomationProperties.SetLabeledBy(field, title);
+                field.Height = field.MinHeight = 32;
+                field.VerticalContentAlignment = VerticalAlignment.Center;
+                return new StackPanel { Spacing = 8, Children = { title, field } };
+            }
         }
         panel.Children.Add(Choices("Code palette", ["classic", "mint", "halloween"], workspace.Setting("native.codePalette") is { Length: > 0 } palette ? palette : "classic", value => workspace.SetSetting("native.codePalette", value)));
         void SaveTypography() {
             workspace.SetSetting("native.textFont", textFont.SelectedItem?.ToString() ?? "Rubik");
             workspace.SetSetting("native.codeFont", codeFont.SelectedItem?.ToString() ?? "JetBrains Mono");
-            workspace.SetSetting("native.textSize", (double.IsFinite(textSize.Value) ? Math.Clamp(textSize.Value, 11, 28) : 14).ToString(System.Globalization.CultureInfo.InvariantCulture));
-            workspace.SetSetting("native.codeSize", (double.IsFinite(codeSize.Value) ? Math.Clamp(codeSize.Value, 10, 26) : 14).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            SaveSize(textSize, "native.textSize", 11, 28);
+            SaveSize(codeSize, "native.codeSize", 10, 26);
             KronoDesign.ApplyTypography(workspace, this);
         }
         textFont.SelectionChanged += (_, _) => SaveTypography();
         codeFont.SelectionChanged += (_, _) => SaveTypography();
-        textSize.ValueChanged += (_, _) => SaveTypography();
-        codeSize.ValueChanged += (_, _) => SaveTypography();
+        void SaveSize(KronoTextBox field, string key, double minimum, double maximum)
+        {
+            if (double.TryParse(field.Text, System.Globalization.NumberStyles.AllowDecimalPoint, culture, out var value) &&
+                double.IsFinite(value) && value >= minimum && value <= maximum)
+                workspace.SetSetting(key, value.ToString(culture));
+        }
+        void AttachSize(KronoTextBox field, string key, double minimum, double maximum)
+        {
+            void Commit()
+            {
+                if (double.TryParse(field.Text, System.Globalization.NumberStyles.AllowDecimalPoint, culture, out var value) &&
+                    double.IsFinite(value)) workspace.SetSetting(key, Math.Clamp(value, minimum, maximum).ToString(culture));
+                field.Text = workspace.Setting(key) is { Length: > 0 } saved ? saved : "14";
+                SaveTypography();
+            }
+            field.LostFocus += (_, _) => Commit();
+            field.PreviewKeyDown += (_, args) => {
+                if (args.Key == Windows.System.VirtualKey.Enter) { args.Handled = true; Commit(); }
+            };
+        }
+        AttachSize(textSize, "native.textSize", 11, 28);
+        AttachSize(codeSize, "native.codeSize", 10, 26);
+        var liveMarkdown = KronoDesign.Toggle("Live Markdown while editing", workspace.Setting(NativeMarkdown.LiveEditorSetting) == "true");
+        AutomationProperties.SetAutomationId(liveMarkdown, "LiveMarkdownEditing");
+        liveMarkdown.Toggled += (_, _) => {
+            workspace.SetSetting(NativeMarkdown.LiveEditorSetting, liveMarkdown.IsOn ? "true" : "false");
+            NativeMarkdown.RefreshEditors(workspace);
+        };
+        panel.Children.Add(liveMarkdown);
         var instructions = BuildInstructionsSettings();
         AddCategory("Plugins");
         AddUpdateSettings(AddCategory("Updates"));

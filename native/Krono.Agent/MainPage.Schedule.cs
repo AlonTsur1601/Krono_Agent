@@ -109,7 +109,7 @@ public sealed partial class MainPage
         foreach (var task in tasks) {
             var item = Button(task.Name, () => ShowSchedules(task.Id));
             item.HorizontalAlignment = HorizontalAlignment.Stretch;
-            var menu = new MenuFlyout();
+            var menu = KronoDesign.CreateMenu();
             var edit = new MenuFlyoutItem { Text = "Edit task" };
             edit.Click += (_, _) => ShowSchedules(task.Id, true);
             menu.Items.Add(edit);
@@ -131,7 +131,7 @@ public sealed partial class MainPage
                 var timing = task.State is "active" or "paused" ? $"  /  Next run {next.ToString(ScheduleDateFormat, CultureInfo.InvariantCulture)}" : "";
                 panel.Children.Add(new TextBlock { Text = $"{ScheduleState(task.State)}  /  {recurrence}{timing}", TextWrapping = TextWrapping.Wrap });
                 panel.Children.Add(new TextBlock { Text = ProviderCatalog.Name(task.Provider) + " / " + task.Model, TextWrapping = TextWrapping.Wrap });
-                panel.Children.Add(new TextBlock { Text = task.Prompt, TextWrapping = TextWrapping.Wrap });
+                panel.Children.Add(Markdown(task.Prompt));
                 var taskActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
                 taskActions.Children.Add(Button("Edit task", () => ShowSchedules(task.Id, true)));
                 if (task.State is "active" or "paused") taskActions.Children.Add(Button(task.State == "paused" ? "Resume task" : "Pause task", () => {
@@ -210,7 +210,7 @@ public sealed partial class MainPage
         }
         Load();
         panel.Children.Add(title);
-        panel.Children.Add(NativeMarkdown.Editor(prompt));
+        panel.Children.Add(NativeMarkdown.Editor(prompt, workspace));
         panel.Children.Add(Heading("When to run"));
         panel.Children.Add(first);
         panel.Children.Add(repeat);
@@ -240,7 +240,7 @@ public sealed partial class MainPage
             modelField.SelectedItem = preferred;
             try {
                 var models = await DiscoverModels(id);
-                if (request != modelRequest || !modelOptions.IsExpanded || !modelOptions.IsLoaded) return;
+                if (request != modelRequest) return;
                 modelField.ItemsSource = ModelChoices(id, models, preferred);
                 modelField.SelectedItem = preferred;
             } catch (Exception error) { if (request == modelRequest && modelOptions.IsLoaded) Error(error); }

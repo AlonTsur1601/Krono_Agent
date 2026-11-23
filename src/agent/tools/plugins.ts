@@ -22,8 +22,8 @@ export const PluginConfig = z.union([
   rest, mcp,
   z.object({ id: z.literal('node') }),
   z.object({ id: z.enum(['huggingface', 'npm', 'pypi', 'microsoftlearn']) }),
-  z.object({ id: z.string().refine(id => catalog.some(item => item.id === id && item.type === 'skill')), skill: z.literal(true) }),
-])
+  z.object({ id: z.string().refine(id => catalog.some(item => item.id === id && item.type === 'skill')), skill: z.literal(true), guidance: z.string().max(2_000).optional() }),
+]).and(z.object({ tools: z.array(z.string().regex(/^[a-z0-9_]+$/)).max(20).optional() }))
 type Config = z.infer<typeof PluginConfig>
 type RestConfig = z.infer<typeof rest>
 type FirebaseConfig = Extract<RestConfig, { id: 'firebase' }> & { auth?: GoogleAuth }
@@ -318,7 +318,7 @@ const learnSearch = publicLookup('microsoftlearn_search_docs', 'Search public Mi
   })
 
 export function pluginTools(configs: readonly Config[], persist: PersistGrant = () => {}): ToolDefinition[] {
-  return configs.flatMap(config => {
+  function available(config: Config): ToolDefinition[] {
     if ('skill' in config) return []
     if ('connection' in config) return mcpTools(config.id, config.connection, grant => persist(config.id, config.grantId, grant))
     switch (config.id) {
@@ -331,12 +331,18 @@ export function pluginTools(configs: readonly Config[], persist: PersistGrant = 
       case 'pypi': return [pypiPackage]
       case 'microsoftlearn': return [learnSearch]
     }
+  }
+  return configs.flatMap(config => {
+    const exported = available(config)
+    const installed = config.tools
+    return installed === undefined ? exported : exported.filter(tool => installed.includes(tool.name))
   })
 }
 
 export function pluginGuidance(configs: readonly Config[]) {
-  const installed = new Set(configs.filter(item => 'skill' in item).map(item => item.id))
-  return catalog.filter(item => installed.has(item.id) && item.guidance).map(item => `${item.name}: ${item.guidance}`).join('\n')
+  const installed = new Map(configs.filter(item => 'skill' in item).map(item => [item.id, item.guidance]))
+  return catalog.filter(item => installed.has(item.id) && item.guidance &&
+    (installed.get(item.id) ?? item.guidance) === item.guidance).map(item => `${item.name}: ${installed.get(item.id) ?? item.guidance}`).join('\n')
 }
 
 export const PluginConnect = z.union([

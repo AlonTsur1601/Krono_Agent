@@ -203,6 +203,21 @@ public static class KronoDesign
         }
     }
 
+    internal static MenuFlyout CreateMenu()
+    {
+        var menu = new MenuFlyout();
+        menu.Closed += (_, _) => ResetItems(menu.Items);
+        return menu;
+
+        static void ResetItems(IEnumerable<MenuFlyoutItemBase> items)
+        {
+            foreach (var item in items) {
+                VisualStateManager.GoToState(item, "Normal", false);
+                if (item is MenuFlyoutSubItem submenu) ResetItems(submenu.Items);
+            }
+        }
+    }
+
     internal static void AnimateMenuOpening(FrameworkElement surface)
     {
         if (!new UISettings().AnimationsEnabled) return;
@@ -464,7 +479,6 @@ public static class KronoDesign
     static void StyleTabButton(Button button, bool add)
     {
         KronoInputMotion.StyleButton(button);
-        button.Template = (ControlTemplate)Application.Current.Resources["KronoQuietIconTemplate"];
         button.Width = button.Height = TabButtonSize;
         button.CornerRadius = new CornerRadius(7);
         button.HorizontalContentAlignment = HorizontalAlignment.Center;
@@ -475,7 +489,7 @@ public static class KronoDesign
     internal static PathIcon NavigationIcon(Symbol symbol)
     {
         var data = symbol switch {
-            Symbol.World => "F0 M10,1 A9,9 0 1 0 10,19 A9,9 0 1 0 10,1 Z M10,2.8 A7.2,7.2 0 1 1 10,17.2 A7.2,7.2 0 1 1 10,2.8 Z M4.1,6.1 L6.7,4.4 L8.8,4.9 L8.5,6.4 L7,7.1 L7.4,8.7 L9.7,9.9 L9.8,11.2 L8.6,12.5 L8.3,15.9 L6.7,14.1 L6.1,11.9 L4.8,10.9 L4.5,8.6 L3.6,8 Z M4.7,6.7 L6.8,5.3 L7.9,5.55 L7.8,5.85 L6,6.7 L6.7,9.25 L8.85,10.45 L8.85,10.9 L7.8,12.1 L7.6,14 L7.4,13.7 L6.9,11.35 L5.55,10.35 L5.25,8.05 L4.6,7.65 Z M11.5,4.15 L14.1,4.8 L16.2,7 L16.6,9 L14.9,9.7 L13.4,8.7 L11.8,9.6 L10,8.5 L10.9,7 L12.2,6.6 Z M12.6,5.35 L13.65,5.65 L15.4,7.4 L15.65,8.45 L14.95,8.7 L13.45,7.7 L11.85,8.6 L11.25,8.2 L11.65,7.7 L13.2,6.9 Z M13.4,11.3 L15.6,11.5 L15.7,12.9 L14.3,14.7 L12.6,14.2 L12.3,12.7 Z M13.85,12.2 L14.8,12.35 L14.8,12.6 L13.95,13.65 L13.35,13.45 L13.2,12.95 Z",
+            Symbol.World => "F0 M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 Z M10,3.85 A6.15,6.15 0 1 1 10,16.15 A6.15,6.15 0 1 1 10,3.85 Z M9.075,3.85 H10.925 V9.075 H16.15 V10.925 H10.925 V16.15 H9.075 V10.925 H3.85 V9.075 H9.075 Z",
             Symbol.Clock => "F0 M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 Z M10,3.6 A6.4,6.4 0 1 1 10,16.4 A6.4,6.4 0 1 1 10,3.6 Z M9.2,5.5 H10.8 V9.2 H14 V10.8 H9.2 Z",
             Symbol.Download => "M9.25,2 H10.75 V10.2 L13.7,7.25 L14.75,8.3 L10,13.05 L5.25,8.3 L6.3,7.25 L9.25,10.2 Z M2,12 H3.5 V16.5 H16.5 V12 H18 V18 H2 Z",
             _ => throw new ArgumentOutOfRangeException(nameof(symbol))

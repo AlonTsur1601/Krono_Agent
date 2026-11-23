@@ -40,7 +40,6 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
     {
         this.workspace = workspace; this.owner = owner;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(address, "BrowserAddress");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(linkDestination, "BrowserLinkDestination");
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
         bar.Children.Add(ToolbarButton("Back", Symbol.Back, () => { if (Current is { } view && readyViews.Contains(view) && view.CanGoBack) view.GoBack(); }));
         bar.Children.Add(ToolbarButton("Forward", Symbol.Forward, () => { if (Current is { } view && readyViews.Contains(view) && view.CanGoForward) view.GoForward(); }));
@@ -56,16 +55,19 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
             KronoDesign.RefreshTypography(actions);
             KronoDesign.AnimateMenuOpening(actions);
         };
+        menu.Closed += (_, _) => KronoInputMotion.ResetFlatButtons(actions);
         void AddMenuAction(string label, Symbol symbol, Action action)
         {
             var item = new Button { Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10,
                 Children = { ToolbarIcon(symbol), new TextBlock { Text = label } } }, HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Left };
+            KronoInputMotion.AttachFlatHover(item);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, "BrowserMenu" + symbol);
             item.Click += (_, _) => { menu.Hide(); action(); };
             actions.Children.Add(item);
         }
         var more = ToolbarButton("More options", Symbol.More);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(more, "BrowserMoreOptions");
         more.Click += (_, _) => menu.ShowAt(more);
         bar.Children.Add(more);
         AddMenuAction("Private tab", Symbol.Permissions, () => _ = Open(DefaultHome, isPrivate: true, isHome: true));
@@ -75,7 +77,6 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
             workspace.SetSetting("native.browser.showAgentTabs", showAgentTabs.IsOn ? "true" : "false");
             RefreshAgentTabVisibility();
         };
-        actions.Children.Add(showAgentTabs);
         var shareProfile = KronoDesign.Toggle("Share profile with agent", ShareAgentProfile);
         shareProfile.Toggled += (_, _) => {
             workspace.SetSetting("native.agentBrowserSharesProfile", shareProfile.IsOn ? "true" : "false");
@@ -106,11 +107,12 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
             if (Current?.Source is { Scheme: "http" or "https" } uri)
                 Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true })?.Dispose();
         });
+        actions.Children.Add(showAgentTabs);
         actions.Children.Add(shareProfile);
         browserContent.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         browserContent.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         browserContent.RowDefinitions.Add(new RowDefinition());
-        address.Margin = new Thickness(6, 0, 6, 4);
+        address.Margin = new Thickness(6, 5, 6, 4);
         browserContent.Children.Add(address);
         var bookmarks = CreateBookmarkBar();
         Grid.SetRow(bookmarks, 1);
@@ -149,7 +151,7 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
             if (activePage is not null) activePage.Visibility = Visibility.Collapsed;
             activePage = tabs.SelectedItem is TabViewItem selected ? pages.GetValueOrDefault(selected) : null;
             if (activePage is not null) activePage.Visibility = Visibility.Visible;
-            linkStatus.Visibility = Visibility.Collapsed;
+            SetLinkStatus("");
             UpdateAddress();
         };
         Loaded += async (_, _) => {
@@ -227,8 +229,9 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
 
     static (TextBlock Title, ContentControl Icon) CreateBrowserTabHeader(TabViewItem tab, string titleText, IconElement glyph)
     {
-        var icon = new ContentControl { Content = glyph, Width = 20, Height = 20,
+        var icon = new ContentControl { Content = glyph, Width = 20, Height = 22,
             HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
+        if (glyph is PathIcon path) path.Width = path.Height = 18;
         var title = new TextBlock { Text = titleText, TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center };
         var header = new Grid { ColumnSpacing = 6 };
@@ -253,27 +256,8 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
 
     static Button ToolbarButton(string label, Symbol symbol, Action? action = null)
     {
-        var face = new Border { Child = ToolbarIcon(symbol), Width = 26, Height = 26, CornerRadius = new CornerRadius(6),
-            BackgroundTransition = new Microsoft.UI.Xaml.BrushTransition { Duration = TimeSpan.FromMilliseconds(100) } };
-        var button = new Button { Content = face, Width = 26, Height = 26 };
+        var button = new Button { Content = ToolbarIcon(symbol), Width = 26, Height = 26 };
         KronoInputMotion.StyleButton(button);
-        button.Template = (ControlTemplate)Application.Current.Resources["KronoBrowserToolbarTemplate"];
-        bool hovered = false, pressed = false;
-        var clear = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        void Paint() {
-            face.Background = pressed || hovered && button.IsEnabled
-                ? KronoDesign.ThemeBrush(pressed ? "ButtonBackgroundPressed" : "ButtonBackgroundPointerOver", button.ActualTheme)
-                : clear;
-            face.Opacity = button.IsEnabled ? 1 : .45;
-        }
-        face.PointerEntered += (_, _) => { hovered = true; Paint(); };
-        face.PointerExited += (_, _) => { hovered = pressed = false; Paint(); };
-        button.AddHandler(UIElement.PointerPressedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => { pressed = true; Paint(); }), true);
-        button.AddHandler(UIElement.PointerReleasedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => { pressed = false; Paint(); }), true);
-        button.PointerCaptureLost += (_, _) => { pressed = false; Paint(); };
-        button.IsEnabledChanged += (_, _) => Paint();
-        button.ActualThemeChanged += (_, _) => Paint();
-        Paint();
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, label);
         ToolTipService.SetToolTip(button, label);
         if (action is not null) button.Click += (_, _) => action();
@@ -454,7 +438,7 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
                 }
                 view.CoreWebView2.NavigationStarting += (_, args) => {
                     if (!views.ContainsKey(tab)) { args.Cancel = true; return; }
-                    if (Current == view) linkStatus.Visibility = Visibility.Collapsed;
+                    if (Current == view) SetLinkStatus("");
                     Uri.TryCreate(args.Uri, UriKind.Absolute, out var target);
                     if (isAgent) {
                         if (target is null || !CanAgentBrowse(target)) {

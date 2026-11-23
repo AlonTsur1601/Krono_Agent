@@ -38,6 +38,8 @@ public static class KronoWindowCapture {
     public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
 }
 "@
 $script:process = $null
@@ -96,16 +98,19 @@ function SelectSettingsCategory([string]$Name) {
 function SelectChoice([string]$Id, [string]$Name) {
     $box = Find $Id
     $popup = $box.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
-    $popup.Expand()
     $condition = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, $Name)
     $deadline = (Get-Date).AddSeconds(10)
     do {
+        if ($popup.Current.ExpandCollapseState -ne [Windows.Automation.ExpandCollapseState]::Expanded) { $popup.Expand() }
         foreach ($item in $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)) {
             $selection = $null
             if (!$item.Current.IsOffscreen -and $item.Current.ClassName -like '*ComboBoxItem' -and $item.TryGetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern, [ref]$selection)) {
                 $selection.Select()
-                if ($popup.Current.ExpandCollapseState -eq [Windows.Automation.ExpandCollapseState]::Expanded) { $popup.Collapse() }
-                return
+                $selected = $box.GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
+                if ($selected.Count -eq 1 -and $selected[0].Current.Name -eq $Name) {
+                    if ($popup.Current.ExpandCollapseState -eq [Windows.Automation.ExpandCollapseState]::Expanded) { $popup.Collapse() }
+                    return
+                }
             }
         }
         Start-Sleep -Milliseconds 100
@@ -133,6 +138,52 @@ function UseFixtureModel {
         Start-Sleep -Milliseconds 100
     } while ((Get-Date) -lt $deadline)
     SelectChoice 'ModelSelector' 'gpt-native-fixture-model'
+}
+function TestLiveMarkdown {
+    SelectSettingsCategory 'Instructions'
+    $markdown = "# Title`n`n**Bold phrase** and *italic phrase*`n`n++Underlined phrase++"
+    SetValue 'GlobalInstructions' $markdown
+    SelectSettingsCategory 'Appearance'
+    SetToggle 'LiveMarkdownEditing' On
+    SelectSettingsCategory 'Instructions'
+    $editor = Find 'GlobalInstructions'
+    $pattern = $editor.GetCurrentPattern([Windows.Automation.TextPattern]::Pattern)
+    $bold = $null
+    $deadline = (Get-Date).AddSeconds(5)
+    do {
+        $bold = $pattern.DocumentRange.FindText('Bold phrase', $false, $false)
+        if ($bold -and $bold.GetAttributeValue([Windows.Automation.TextPattern]::FontWeightAttribute) -ge 600) { break }
+        Start-Sleep -Milliseconds 100
+    } while ((Get-Date) -lt $deadline)
+    if (!$bold -or $bold.GetAttributeValue([Windows.Automation.TextPattern]::FontWeightAttribute) -lt 600) { throw 'Bold Markdown was not rendered inside the editor' }
+    $italic = $pattern.DocumentRange.FindText('italic phrase', $false, $false)
+    if (!$italic -or $italic.GetAttributeValue([Windows.Automation.TextPattern]::IsItalicAttribute) -ne $true) { throw 'Italic Markdown was not rendered' }
+    $underline = $pattern.DocumentRange.FindText('Underlined phrase', $false, $false)
+    if (!$underline -or $underline.GetAttributeValue([Windows.Automation.TextPattern]::UnderlineStyleAttribute).ToString() -eq 'None') { throw 'Underline Markdown was not rendered' }
+    Capture 'native-markdown-editor.png'
+    if (!(New-Object -ComObject WScript.Shell).AppActivate($script:process.Id)) { throw 'Could not activate the live Markdown editor' }
+    $editor.SetFocus()
+    $caret = $bold.Clone()
+    $caret.MoveEndpointByRange([Windows.Automation.Text.TextPatternRangeEndpoint]::End, $bold, [Windows.Automation.Text.TextPatternRangeEndpoint]::Start)
+    $caret.Move([Windows.Automation.Text.TextUnit]::Character, 3) | Out-Null
+    $caret.Select()
+    Capture 'native-markdown-caret.png'
+    (New-Object -ComObject WScript.Shell).SendKeys('X')
+    $deadline = (Get-Date).AddSeconds(5)
+    do {
+        $typed = $pattern.DocumentRange.FindText('BolXd phrase', $false, $false)
+        if ($typed -and $typed.GetAttributeValue([Windows.Automation.TextPattern]::FontWeightAttribute) -ge 600) { break }
+        Start-Sleep -Milliseconds 100
+    } while ((Get-Date) -lt $deadline)
+    if (!$typed -or $typed.GetAttributeValue([Windows.Automation.TextPattern]::FontWeightAttribute) -lt 600) { throw ('Typing did not preserve the live Markdown formatting. Editor: ' + ($pattern.DocumentRange.GetText(-1) | ConvertTo-Json -Compress)) }
+    $markdown = $markdown.Replace('Bold phrase', 'BolXd phrase')
+    SelectSettingsCategory 'Appearance'
+    SetToggle 'LiveMarkdownEditing' Off
+    SelectSettingsCategory 'Instructions'
+    $plain = (Find 'GlobalInstructions').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
+    if (($plain -replace "`r`n?", "`n") -ne $markdown) { throw ('Toggling live Markdown changed the editable source from ' + ($markdown | ConvertTo-Json -Compress) + ' to ' + ($plain | ConvertTo-Json -Compress)) }
+    Invoke 'Save global instructions' -ByName
+    Capture 'native-markdown-saved.png'
 }
 function OpenAdvancedModel {
     Invoke 'Choose model' -ByName
@@ -197,6 +248,22 @@ function SelectGame([string]$Name) {
     OpenGameTile $index
 }
 function Toggle([string]$Id) { (Find $Id).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle(); Start-Sleep -Milliseconds 150 }
+function SetToggle([string]$Id, [Windows.Automation.ToggleState]$State) {
+    $deadline = (Get-Date).AddSeconds(5)
+    do {
+        try {
+            $element = Find $Id
+            $pattern = $element.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+            if ($pattern.Current.ToggleState -eq $State) { return }
+            $pattern.Toggle()
+        } catch {
+            if ($_.Exception.InnerException -isnot [Windows.Automation.ElementNotAvailableException] -and
+                $_.Exception.InnerException -isnot [ObjectDisposedException]) { throw }
+        }
+        Start-Sleep -Milliseconds 150
+    } while ((Get-Date) -lt $deadline)
+    throw "Toggle '$Id' did not reach '$State'"
+}
 function WaitColorInput([int]$Round) {
     $deadline = (Get-Date).AddSeconds(15)
     do { Start-Sleep -Milliseconds 100; $ready = (Find 'Use color' -ByName).Current.IsEnabled } while (!$ready -and (Get-Date) -lt $deadline)
@@ -317,18 +384,38 @@ function TestWorkspaceInputs {
     do { Start-Sleep -Milliseconds 100; $assertions = Invoke-RestMethod ($Fixture + '/assertions') } while (!$assertions.browserIsolated -and (Get-Date) -lt $deadline)
     if (!$assertions.browserIsolated) { throw 'Browser fixture did not prove host API / Node isolation' }
     if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces')) {
-        $bounds = (Find 'BrowserAddress').Current.BoundingRectangle
-        [KronoWindowCapture]::SetCursorPos([int]($bounds.Left + $bounds.Width / 2), [int]($bounds.Bottom + 145)) | Out-Null
-        $deadline = (Get-Date).AddSeconds(4)
-        do {
-            $pointer = (Invoke-RestMethod ($Fixture + '/browser-pointer-proof')).browserPointerReached
-            if (!$pointer) { Start-Sleep -Milliseconds 100 }
-        } while (!$pointer -and (Get-Date) -lt $deadline)
-        if (!$pointer) { throw 'The fixture did not receive the pointer on its browser link' }
-        $destination = Find 'BrowserLinkDestination'
-        if ($destination.Current.Name -notlike '*/fixture-destination') { throw 'The native link hover did not show the destination' }
-        Invoke 'More options' -ByName
-        Invoke 'Find on page' -ByName
+        if (!(New-Object -ComObject WScript.Shell).AppActivate($script:process.Id)) { throw 'Could not activate the browser for pointer input' }
+        $addressControl = Find 'BrowserAddress'
+        $address = $addressControl.Current.BoundingRectangle
+        $windowBounds = $script:window.Current.BoundingRectangle
+        $pageX = [int]($address.Left + $address.Width / 2)
+        # The fixture link covers the browser document below its heading.
+        $pageY = [int](($address.Bottom + $windowBounds.Bottom) / 2)
+        $deadline = (Get-Date).AddSeconds(5)
+        $handle = $script:process.MainWindowHandle
+        [KronoWindowCapture]::SetWindowPos($handle, [IntPtr](-1), 0, 0, 0, 0, 0x13) | Out-Null
+        try {
+            if ([KronoWindowCapture]::GetForegroundWindow() -ne $handle) { throw 'The browser lost foreground focus before the pointer test' }
+            # Leave the link before re-entering it, even if the cursor was already over it at navigation.
+            [KronoWindowCapture]::SetCursorPos($pageX, [int]$address.Top) | Out-Null
+            Start-Sleep -Milliseconds 100
+            if (![KronoWindowCapture]::SetCursorPos($pageX, $pageY)) { throw 'Could not move the pointer into the browser document' }
+            [KronoWindowCapture]::mouse_event(1, 2, 2, 0, [UIntPtr]::Zero)
+            do {
+                $pointer = (Invoke-RestMethod ($Fixture + '/browser-pointer-proof')).browserPointerReached
+                $destination = $addressControl.Current.ItemStatus
+                if ($pointer -and $destination -like '*/fixture-destination') { break }
+                Start-Sleep -Milliseconds 100
+            } while ((Get-Date) -lt $deadline)
+        } finally { [KronoWindowCapture]::SetWindowPos($handle, [IntPtr](-2), 0, 0, 0, 0, 0x13) | Out-Null }
+        if (!$pointer -or $destination -notlike '*/fixture-destination') {
+            Capture 'browser-pointer-window.png'
+            if (!$pointer) { throw "The fixture did not receive the pointer on its browser link at screen point ($pageX, $pageY)" }
+            throw 'The page received pointer input but the browser link destination was missing'
+        }
+        Capture 'native-browser-link-status.png'
+        Invoke 'BrowserMoreOptions'
+        Invoke 'BrowserMenuFind'
         SetValue 'BrowserFindInput' 'WebView2'
         PressEnterOn 'BrowserFindInput'
         $deadline = (Get-Date).AddSeconds(5)
@@ -341,7 +428,7 @@ function TestWorkspaceInputs {
         Invoke 'Add bookmark' -ByName
         Invoke 'Save bookmark' -ByName
         Find 'Edit bookmark' -ByName | Out-Null
-        Invoke 'More options' -ByName
+        Invoke 'BrowserMoreOptions'
         Invoke 'BrowserMenuClock'
         Find 'BrowserHistory' | Out-Null
         $buttons = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button)
@@ -434,7 +521,7 @@ try {
     $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
     if ($windowPattern.Current.WindowVisualState -ne [Windows.Automation.WindowVisualState]::Maximized) { throw 'Krono did not open maximized' }
     Find 'EmailInput' | Out-Null
-    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'games-lifecycle', 'tray-lifecycle', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui', 'markdown-ui', 'browser-feedback', 'plugins-layout')) {
+    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'games-lifecycle', 'tray-lifecycle', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui', 'markdown-ui', 'browser-feedback', 'plugins-layout', 'plugins-install-ui', 'appearance-layout', 'dropdown-empty-ui')) {
         SetValue 'EmailInput' 'native-fixture@example.com'
         SetValue 'PasswordInput' 'fixture-password'
         Invoke 'LoginButton'
@@ -466,7 +553,7 @@ try {
                 Start-Sleep -Milliseconds 100
             } while ((Get-Date) -lt $deadline)
             if ($tabCount -ne 6) { throw 'Rapid add did not create all browser tabs' }
-            $toolbar = (Find 'More options' -ByName).Current.BoundingRectangle
+            $toolbar = (Find 'BrowserMoreOptions').Current.BoundingRectangle
             [KronoWindowCapture]::SetCursorPos([int]($toolbar.Left + $toolbar.Width / 2), [int]($toolbar.Top + $toolbar.Height / 2)) | Out-Null
             [KronoWindowCapture]::mouse_event(1, 1, 0, 0, [UIntPtr]::Zero)
             Start-Sleep -Milliseconds 350
@@ -482,11 +569,24 @@ try {
                 Start-Sleep -Milliseconds 100
             } while ((Get-Date) -lt $deadline)
             if ($tabCount -ne 4) { throw 'Rapid close did not remove both browser tabs' }
-            Invoke 'More options' -ByName
+            Invoke 'BrowserMoreOptions'
             Invoke 'BrowserMenuClock'
             Find 'BrowserHistory' | Out-Null
             Capture 'browser-history.png'
             Write-Output 'NATIVE_SMOKE_PASS: bookmark create/edit/delete, rapid browser tab creation and closure, and history'
+            return
+        }
+        if ($env:KRONO_SMOKE_SCOPE -eq 'dropdown-empty-ui') {
+            SelectNav 'Scheduled tasks'
+            Invoke '+ New task' -ByName
+            $provider = (Find 'ScheduleProvider').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
+            if ($provider.Count -ne 1 -or $provider[0].Current.Name -ne 'OpenAI') { SelectChoice 'ScheduleProvider' 'OpenAI' }
+            $picker = (Find 'ScheduleModel').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
+            $picker.Expand()
+            $empty = (Find 'EmptyDropdownMessage').Current.BoundingRectangle
+            Capture 'native-empty-dropdown.png'
+            if ($empty.IsEmpty -or $empty.Height -lt 15) { throw 'Empty dropdown did not leave room for its label' }
+            Write-Output 'NATIVE_SMOKE_PASS: empty dropdown label is readable'
             return
         }
         if ($env:KRONO_SMOKE_SCOPE -eq 'games-lifecycle') {
@@ -510,7 +610,7 @@ try {
             }
             SelectNav 'Browser'
             if (FindOptional 'AgentBrowserTab') { throw 'Agent tabs were visible in the main browser by default' }
-            Invoke 'More options' -ByName
+            Invoke 'BrowserMoreOptions'
             $visibility = Find 'BrowserShowAgentTabs'
             $visibility.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
             Find 'AgentBrowserTab' | Out-Null
@@ -573,18 +673,7 @@ try {
             if ($editor.Width -lt 440 -or $editor.Height -lt 220 -or $save.Bottom -gt $script:window.Current.BoundingRectangle.Bottom) {
                 throw 'Global editor did not use the available settings viewport'
             }
-            SetValue 'GlobalInstructions' '# Preview instructions'
-            Invoke 'Preview Markdown' -ByName
-            $deadline = (Get-Date).AddSeconds(4)
-            do {
-                $heading = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) |
-                    Where-Object { $_.Current.Name.Trim() -eq 'Preview instructions' } | Select-Object -First 1
-                if ($heading) { break }
-                Start-Sleep -Milliseconds 100
-            } while ((Get-Date) -lt $deadline)
-            if (!$heading) { throw 'Markdown heading did not appear in preview' }
-            Invoke 'Edit Markdown' -ByName
-            Invoke 'Save global instructions' -ByName
+            TestLiveMarkdown
             Write-Output 'NATIVE_SMOKE_PASS: inline reasoning panel and viewport-sized Markdown instructions editor'
             return
         }
@@ -618,7 +707,7 @@ try {
             Write-Output 'NATIVE_SMOKE_PASS: first detected local model, manual selection, and routed completion'
             return
         }
-        if ($env:KRONO_SMOKE_SCOPE -in @('plugins-ui', 'plugins-layout')) {
+        if ($env:KRONO_SMOKE_SCOPE -in @('plugins-ui', 'plugins-layout', 'plugins-install-ui')) {
             SelectNav 'Settings'
             SelectSettingsCategory 'Plugins'
             $left = (Find 'PluginPrimary-github').Current.BoundingRectangle
@@ -631,8 +720,14 @@ try {
                 Write-Output 'NATIVE_SMOKE_PASS: responsive plugin columns'
                 return
             }
+            $package = Join-Path $ReportDirectory 'native-installed-plugins/33333333-3333-4333-8333-333333333333/github.json'
+            if (Test-Path -LiteralPath $package) { throw 'GitHub was installed before Install was clicked' }
             Invoke 'PluginPrimary-github'
             Find 'PluginOptions-github' | Out-Null
+            if (!(Test-Path -LiteralPath $package)) { throw 'Installing GitHub did not write its plugin package' }
+            SelectChoice 'PluginFilter' 'Installed'
+            if (FindOptional 'PluginPrimary-vercel') { throw 'Installed filter shows an uninstalled plugin' }
+            SelectChoice 'PluginFilter' 'All'
             if ((Find 'PluginPrimary-github').Current.Name -ne 'Connect') { throw 'GitHub did not offer browser connection after installation' }
             Invoke 'PluginOptions-github'
             Invoke 'PluginRemove-github'
@@ -650,6 +745,13 @@ try {
             } while ((Get-Date) -lt $deadline)
             if ($action -ne 'Install') { throw 'Removing GitHub did not restore Install' }
             if (FindOptional 'PluginToken-github') { throw 'GitHub exposed a manual credential field' }
+            if (Test-Path -LiteralPath $package) { throw 'Removing GitHub left its plugin package behind' }
+            if ($env:KRONO_SMOKE_SCOPE -eq 'plugins-install-ui') {
+                SelectChoice 'PluginFilter' 'Not installed'
+                Find 'PluginPrimary-github' | Out-Null
+                Write-Output 'NATIVE_SMOKE_PASS: real plugin package installation, filtering, and removal'
+                return
+            }
             Invoke 'PluginPrimary-node'
             Find 'PluginOptions-node' | Out-Null
             if ((Find 'PluginStatus-node').Current.Name -ne 'Installed') { throw 'The local runtime required a cloud connection' }
@@ -765,16 +867,23 @@ try {
             Write-Output 'NATIVE_SMOKE_PASS: compact layout captures'
             return
         }
-        if ($env:KRONO_SMOKE_SCOPE -eq 'settings-ui') {
+        if ($env:KRONO_SMOKE_SCOPE -in @('settings-ui','appearance-layout')) {
             SelectNav 'Settings'
             SelectSettingsCategory 'Appearance'
             Capture 'native-appearance-typography.png'
+            $familyHeight = (Find 'TextFontFamily').Current.BoundingRectangle.Height
+            $sizeHeight = (Find 'TextFontSize').Current.BoundingRectangle.Height
+            if ([Math]::Abs($familyHeight - $sizeHeight) -gt 3) { throw 'Font family and size fields did not match in height' }
             foreach ($prefix in @('Text', 'Code')) {
                 $family = (Find ($prefix + 'FontFamily')).Current.BoundingRectangle
                 $size = (Find ($prefix + 'FontSize')).Current.BoundingRectangle
                 if ($family.IsEmpty -or $size.IsEmpty -or [Math]::Abs($family.Top - $size.Top) -gt 2 -or $size.Left -lt $family.Right) {
                     throw "$prefix font and size did not share a row"
                 }
+            }
+            if ($env:KRONO_SMOKE_SCOPE -eq 'appearance-layout') {
+                Write-Output 'NATIVE_SMOKE_PASS: font family and size fields match in height'
+                return
             }
             SelectChoice 'CodeFontFamily' 'Consolas'
             $deadline = (Get-Date).AddSeconds(5)
@@ -831,18 +940,7 @@ try {
             $selected = (Find 'ModelSelector').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
             if ($selected.Count -ne 1 -or $selected[0].Current.Name -ne 'native-keyboard-model') { throw 'Manual model selection did not persist' }
             SelectSettingsCategory 'Instructions'
-            SetValue 'GlobalInstructions' '# Preview instructions'
-            Invoke 'Preview Markdown' -ByName
-            $deadline = (Get-Date).AddSeconds(4)
-            do {
-                $heading = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) |
-                    Where-Object { $_.Current.Name.Trim() -eq 'Preview instructions' } | Select-Object -First 1
-                if ($heading) { break }
-                Start-Sleep -Milliseconds 100
-            } while ((Get-Date) -lt $deadline)
-            if (!$heading) { throw 'Markdown heading did not appear in preview' }
-            Invoke 'Edit Markdown' -ByName
-            Invoke 'Save global instructions' -ByName
+            TestLiveMarkdown
             SelectNav 'Chats'
             Find 'native-keyboard-model' -ByName | Out-Null
             Write-Output 'NATIVE_SMOKE_PASS: Typography, manual model preference, keyboard credential submission, and Markdown editor'

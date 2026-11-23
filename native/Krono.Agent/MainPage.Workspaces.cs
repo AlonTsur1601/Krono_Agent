@@ -253,9 +253,10 @@ public sealed partial class MainPage
         var preview = text.ReplaceLineEndings(" ").Trim();
         if (preview.Length > 110) preview = preview[..109] + "…";
         var mark = new Button { Width = 20, Height = 16, MinWidth = 0, MinHeight = 0, Padding = new Thickness(0),
-            CornerRadius = new CornerRadius(5), Template = (ControlTemplate)Application.Current.Resources["KronoQuietIconTemplate"],
+            CornerRadius = new CornerRadius(5),
             Content = new Border { Width = user ? 13 : 8, Height = 3, CornerRadius = new CornerRadius(2),
                 Background = KronoDesign.ThemeBrush(user ? "KronoAccentForeground" : "KronoMuted", ActualTheme) } };
+        KronoInputMotion.AttachFlatHover(mark);
         AutomationProperties.SetName(mark, preview.Length > 0 ? preview : "Message");
         ToolTipService.SetToolTip(mark, preview);
         mark.Click += (_, _) => bubble.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = true, VerticalAlignmentRatio = 0 });

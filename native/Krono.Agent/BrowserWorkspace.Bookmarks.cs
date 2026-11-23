@@ -6,7 +6,7 @@ namespace Krono_Agent;
 public sealed partial class BrowserWorkspace
 {
     readonly StackPanel bookmarkItems = new() { Orientation = Orientation.Horizontal, Spacing = 3 };
-    readonly MenuFlyout bookmarkOverflowMenu = new();
+    readonly MenuFlyout bookmarkOverflowMenu = KronoDesign.CreateMenu();
     readonly List<(BrowserVisit Visit, Button Button)> bookmarks = new();
     Button? bookmarkOverflow;
     Button? bookmarkAction;
@@ -20,7 +20,7 @@ public sealed partial class BrowserWorkspace
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         bookmarkAction = ToolbarButton("Add or remove bookmark", Symbol.Favorite, EditCurrentBookmark);
         bookmarkOverflow = ToolbarButton("More bookmarks", Symbol.More);
-        ((Border)bookmarkOverflow.Content).Child = new TextBlock { Text = "»", FontSize = 17, LineHeight = 20 };
+        bookmarkOverflow.Content = new TextBlock { Text = "»", FontSize = 17, LineHeight = 20 };
         bookmarkOverflow.Click += (_, _) => bookmarkOverflowMenu.ShowAt(bookmarkOverflow);
         bar.Children.Add(bookmarkAction);
         bar.Children.Add(bookmarkItems);
@@ -47,7 +47,7 @@ public sealed partial class BrowserWorkspace
         bookmarkAction.IsEnabled = address is not null;
         ToolTipService.SetToolTip(bookmarkAction, label);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(bookmarkAction, label);
-        ((Border)bookmarkAction.Content).Child = ToolbarIcon(saved ? Symbol.SolidStar : Symbol.Favorite);
+        bookmarkAction.Content = ToolbarIcon(saved ? Symbol.SolidStar : Symbol.Favorite);
     }
 
     async void EditCurrentBookmark()
@@ -126,7 +126,7 @@ public sealed partial class BrowserWorkspace
                 MaxWidth = 140, MinHeight = 26, Padding = new Thickness(7, 2, 7, 2)
             };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(button, "BrowserBookmark" + bookmarks.Count);
-            var context = new MenuFlyout();
+            var context = KronoDesign.CreateMenu();
             AddBookmarkActions(context.Items, visit);
             button.ContextFlyout = context;
             ToolTipService.SetToolTip(button, visit.Title);
