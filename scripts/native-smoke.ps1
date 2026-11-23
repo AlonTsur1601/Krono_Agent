@@ -119,9 +119,19 @@ function OpenProviderConnection {
 function UseFixtureModel {
     SelectNav 'Settings'
     SelectSettingsCategory 'Models'
+    # Make the cloud fixture selection explicit even when OpenAI is already displayed during local discovery.
+    SelectChoice 'Provider' 'Anthropic'
+    SelectChoice 'Provider' 'OpenAI'
     OpenProviderConnection
     SetValue 'ProviderKey' 'fixture-provider-key'
     Invoke 'Save key' -ByName
+    $model = Find 'ModelSelector'
+    $selection = $model.GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern)
+    $deadline = (Get-Date).AddSeconds(10)
+    do {
+        if ($selection.Current.GetSelection().Count -gt 0) { break }
+        Start-Sleep -Milliseconds 100
+    } while ((Get-Date) -lt $deadline)
     SelectChoice 'ModelSelector' 'gpt-native-fixture-model'
 }
 function OpenAdvancedModel {
@@ -435,6 +445,7 @@ try {
                 throw 'The iframe link did not relay its destination to the browser status'
             }
             $address = (Find 'BrowserAddress').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
+            if ($address -notlike '*/agent-browser-next') { throw 'Agent Browser did not display the followed page address' }
             $hwnd = $script:process.MainWindowHandle
             $windowPattern.Close()
             $deadline = (Get-Date).AddSeconds(5)

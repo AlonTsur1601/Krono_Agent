@@ -260,7 +260,6 @@ public sealed partial class MainPage : Page
             workspace.SetSetting("native.tools." + id, "");
         }
         workspace.FlushSideTransfers(); ShowChats();
-        _ = SelectInitialModel();
         if (workspace.IsOfflineSession) progress.Text = "Offline · local workspace restored; account validation will retry.";
         sessionTimer.Start();
         accountSyncTimer.Start(); _ = SyncAccount(false);
@@ -544,6 +543,7 @@ public sealed partial class MainPage : Page
         SetSideChatVisible(splitWorkspace is not null || sideChat is not null && sideChat.ParentChatId == chatId);
         Nav.SelectedItem = Nav.MenuItems.OfType<NavigationViewItem>().First(item => item.Tag?.ToString() == "chats");
         UpdateActivityVisibility();
+        _ = SelectInitialModel();
     }
     bool ComposerCanStop => (runId is not null || scheduledRun is not null) && string.IsNullOrWhiteSpace(composer.Text);
     void RefreshComposerAction()
