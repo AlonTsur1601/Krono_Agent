@@ -249,25 +249,62 @@ public sealed partial class GamesWorkspace
         foreach (var cells in new int[][] { [0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6] }) if (board[cells[0]] != 0 && cells.All(i => board[i] == board[cells[0]])) return cells;
         return [];
     }
+    readonly List<(int Index, Grid Surface)> pendingPreviews = [];
+    readonly bool[] previewVisible = new bool[names.Length];
+    bool previewQueued, previewRendering;
+
     FrameworkElement BoardPreview(int index)
     {
-        var scene = new GamesWorkspace(workspace, index).canvas;
-        scene.IsHitTestVisible = false; AutomationProperties.SetAccessibilityView(scene, AccessibilityView.Raw);
-        var surface = new Grid { Height = 155, Background = scene.Background, IsHitTestVisible = false };
+        var surface = new Grid { Height = 155, Background = Ink(0x0f151e), IsHitTestVisible = false };
         AutomationProperties.SetAutomationId(surface, "GamePreview" + index);
-        var view = new Viewbox { Child = scene, Stretch = Stretch.Uniform, Margin = new Thickness(8), HorizontalAlignment = HorizontalAlignment.Center };
-        surface.Children.Add(view);
-        scene.Loaded += Render;
-        async void Render(object sender, RoutedEventArgs args) {
-            scene.Loaded -= Render;
-            try {
-                var bitmap = new RenderTargetBitmap(); await bitmap.RenderAsync(scene, 384, 384);
-                if (bitmap.PixelWidth == 0 || !surface.IsLoaded) return;
-                var picture = new Image { Source = bitmap, Width = 480, Height = 480, Stretch = Stretch.Uniform, IsHitTestVisible = false };
-                AutomationProperties.SetAutomationId(picture, "GamePreviewImage" + index); view.Child = picture;
-            } catch (Exception error) when (error is System.Runtime.InteropServices.COMException or ArgumentException or InvalidOperationException) { /* Retain the original game scene when snapshotting is unavailable. */ }
-        }
+        pendingPreviews.Add((index, surface));
         return surface;
+    }
+
+    void QueueVisiblePreviews()
+    {
+        if (previewQueued || previewRendering || disposed || pendingPreviews.Count == 0 || libraryScroll?.IsLoaded != true) return;
+        previewQueued = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, async () => {
+            previewQueued = false;
+            if (disposed || library?.Visibility != Visibility.Visible || libraryScroll is not { IsLoaded: true } viewport || viewport.ViewportHeight <= 0) return;
+            var next = pendingPreviews.FindIndex(item => {
+                if (!previewVisible[item.Index] || !item.Surface.IsLoaded || item.Surface.ActualWidth <= 0) return false;
+                var top = item.Surface.TransformToVisual(viewport).TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+                return top + item.Surface.Height >= 0 && top < viewport.ViewportHeight + 172;
+            });
+            if (next < 0) return;
+            var (index, surface) = pendingPreviews[next];
+            pendingPreviews.RemoveAt(next);
+            previewRendering = true;
+            try { await RenderPreview(index, surface); }
+            catch (Exception error) when (error is System.Runtime.InteropServices.COMException or ArgumentException or InvalidOperationException or TimeoutException) { App.RecordFault("Game preview", error); }
+            finally {
+                previewRendering = false;
+                QueueVisiblePreviews();
+            }
+        });
+    }
+
+    async Task RenderPreview(int index, Grid surface)
+    {
+        var scene = new GamesWorkspace(workspace, index).canvas;
+        scene.IsHitTestVisible = false;
+        AutomationProperties.SetAccessibilityView(scene, AccessibilityView.Raw);
+        var view = new Viewbox { Child = scene, Stretch = Stretch.Uniform, Margin = new Thickness(8), HorizontalAlignment = HorizontalAlignment.Center };
+        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Ready(object sender, RoutedEventArgs args) => loaded.TrySetResult();
+        scene.Loaded += Ready;
+        surface.Children.Add(view);
+        try {
+            if (!scene.IsLoaded) await loaded.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            if (disposed || !surface.IsLoaded) return;
+            var bitmap = new RenderTargetBitmap();
+            await bitmap.RenderAsync(scene, 384, 384);
+            if (disposed || bitmap.PixelWidth == 0 || !surface.IsLoaded) return;
+            var picture = new Image { Source = bitmap, Width = 480, Height = 480, Stretch = Stretch.Uniform, IsHitTestVisible = false };
+            AutomationProperties.SetAutomationId(picture, "GamePreviewImage" + index);
+            view.Child = picture;
+        } finally { scene.Loaded -= Ready; }
     }
     void SeedPreview()
     {

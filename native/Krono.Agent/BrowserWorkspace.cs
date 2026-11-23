@@ -22,6 +22,10 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
         Margin = new Thickness(8, 0, 8, 8), Padding = new Thickness(9, 4, 9, 4),
         CornerRadius = new CornerRadius(6), IsHitTestVisible = false, Visibility = Visibility.Collapsed
     };
+    readonly ProgressBar browserLoading = new() { Height = 2, VerticalAlignment = VerticalAlignment.Top,
+        Visibility = Visibility.Collapsed, IsHitTestVisible = false };
+    readonly HashSet<WebView2> loadingViews = new();
+    readonly HashSet<TabViewItem> closingTabs = new();
     Grid? activePage;
     Task<CoreWebView2Environment>? browserEnvironment;
     readonly HashSet<TabViewItem> privateTabs = new();
@@ -32,26 +36,6 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
     bool disposed;
     WebView2? Current => tabs.SelectedItem is TabViewItem tab ? views.GetValueOrDefault(tab) : null;
     const string DefaultHome = "https://www.google.com/?hl=en";
-    const string LinkMessage = "krono:link-preview:";
-    const string LinkPreviewScript = """
-        (() => {
-            const send = href => window.chrome?.webview?.postMessage('krono:link-preview:' + href);
-            let hovered = null;
-            addEventListener('pointerover', event => {
-                const link = event.composedPath().find(node => node instanceof Element && node.matches('a[href], area[href]'));
-                if (link === hovered) return;
-                hovered = link;
-                const href = link?.getAttribute('href');
-                try { send(href ? new URL(href, document.baseURI).href : ''); }
-                catch { send(''); }
-            }, true);
-            addEventListener('pointerout', event => {
-                if (!hovered || hovered.contains(event.relatedTarget)) return;
-                hovered = null;
-                send('');
-            }, true);
-        })();
-        """;
     public BrowserWorkspace(Workspace workspace, MainPage owner)
     {
         this.workspace = workspace; this.owner = owner;
@@ -65,25 +49,32 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
                 view.Reload();
         }));
         address.PreviewKeyDown += (_, e) => { if (e.Key == Windows.System.VirtualKey.Enter) { e.Handled = true; Go(); } };
-        var menu = new MenuFlyout();
+        var menu = new Flyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.BottomEdgeAlignedRight };
+        var actions = new StackPanel { MinWidth = 180, Spacing = 3 };
+        menu.Content = actions;
+        menu.Opened += (_, _) => {
+            KronoDesign.RefreshTypography(actions);
+            KronoDesign.AnimateMenuOpening(actions);
+        };
         void AddMenuAction(string label, Symbol symbol, Action action)
         {
-            var item = new MenuFlyoutItem { Text = label, Icon = ToolbarIcon(symbol) };
-            item.Click += (_, _) => action();
-            menu.Items.Add(item);
+            var item = new Button { Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10,
+                Children = { ToolbarIcon(symbol), new TextBlock { Text = label } } }, HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left };
+            item.Click += (_, _) => { menu.Hide(); action(); };
+            actions.Children.Add(item);
         }
         var more = ToolbarButton("More options", Symbol.More);
         more.Flyout = menu;
         bar.Children.Add(more);
         AddMenuAction("Private tab", Symbol.Permissions, () => _ = Open(DefaultHome, isPrivate: true, isHome: true));
         AddMenuAction("Agent browser", Symbol.View, async () => await RestoreAgentTab());
-        var shareProfile = new ToggleMenuFlyoutItem { Text = "Share my browser profile with the agent", IsChecked = ShareAgentProfile };
-        shareProfile.Click += (_, _) => {
-            workspace.SetSetting("native.agentBrowserSharesProfile", shareProfile.IsChecked ? "true" : "false");
+        var shareProfile = KronoDesign.Toggle("Share profile with agent", ShareAgentProfile);
+        shareProfile.Toggled += (_, _) => {
+            workspace.SetSetting("native.agentBrowserSharesProfile", shareProfile.IsOn ? "true" : "false");
             if (agentView is { } view) CloseBrowserTab(views.First(tab => ReferenceEquals(tab.Value, view)).Key);
             if (tabs.TabItems.Count == 0) _ = Open(DefaultHome, isHome: true);
         };
-        menu.Items.Add(shareProfile);
         AddMenuAction("Find on page", Symbol.Find, async () => {
             var input = new KronoTextBox { PlaceholderText = "Find text" };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(input, "BrowserFindInput");
@@ -103,43 +94,30 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
                 catch (Exception) when (disposed || !readyViews.Contains(view)) { }
             }
         });
-        AddMenuAction("Bookmark", Symbol.Favorite, () => {
-            if (tabs.SelectedItem is TabViewItem tab && !privateTabs.Contains(tab) &&
-                Current is { Source: { Scheme: "http" or "https" } uri } view)
-                workspace.SetSetting("browser.bookmark." + uri.AbsoluteUri, SerializeVisit(uri, view.CoreWebView2.DocumentTitle));
+        AddMenuAction("History", Symbol.Clock, OpenHistory);
+        AddMenuAction("Open externally", Symbol.OpenWith, () => {
+            if (Current?.Source is { Scheme: "http" or "https" } uri)
+                Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true })?.Dispose();
         });
-        AddMenuAction("History & bookmarks", Symbol.Library, OpenHistory);
-        AddMenuAction("Open externally", Symbol.OpenWith, () => { if (Current?.Source is Uri uri && uri.Scheme is "https" or "http") Process.Start(new ProcessStartInfo(uri.ToString()) { UseShellExecute = true }); });
-        AddMenuAction("Google account", Symbol.Contact, async () => {
-            try {
-                if (workspace.GoogleEmail is { } email) {
-                    var dialog = new KronoDialog {
-                        XamlRoot = XamlRoot, Title = "Google account",
-                        Content = new TextBlock { Text = email, TextWrapping = TextWrapping.Wrap },
-                        PrimaryButtonText = "Open Google Account", CloseButtonText = "Close"
-                    };
-                    if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-                        Process.Start(new ProcessStartInfo("https://myaccount.google.com/?authuser=" + Uri.EscapeDataString(email)) { UseShellExecute = true })?.Dispose();
-                } else if (await owner.Confirm("Link Google to Krono?", "Choose the Google account you want to link to this Krono account.")) {
-                    await owner.AuthorizeGoogle(true);
-                }
-            }
-            catch (Exception error) { owner.Error(error); }
-        });
-        AddMenuAction("Zoom in", Symbol.ZoomIn, () => _ = Current?.ExecuteScriptAsync("document.body.style.zoom=(parseFloat(document.body.style.zoom)||1)+0.1"));
-        AddMenuAction("Zoom out", Symbol.ZoomOut, () => _ = Current?.ExecuteScriptAsync("document.body.style.zoom=Math.max(.3,(parseFloat(document.body.style.zoom)||1)-0.1)"));
+        actions.Children.Add(shareProfile);
+        browserContent.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         browserContent.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         browserContent.RowDefinitions.Add(new RowDefinition());
         address.Margin = new Thickness(6, 0, 6, 4);
         browserContent.Children.Add(address);
+        var bookmarks = CreateBookmarkBar();
+        Grid.SetRow(bookmarks, 1);
+        browserContent.Children.Add(bookmarks);
+        browserContent.Children.Add(browserLoading);
         browserContent.Children.Add(pageHost);
-        Grid.SetRow(pageHost, 1);
+        Grid.SetRow(pageHost, 2);
         linkStatus.Child = linkDestination;
         browserContent.Children.Add(linkStatus);
-        Grid.SetRow(linkStatus, 1);
+        Grid.SetRow(linkStatus, 2);
         void PaintBrowser()
         {
             browserContent.Background = KronoDesign.ThemeBrush("KronoSurface", ActualTheme);
+            browserLoading.Foreground = KronoDesign.ThemeBrush("KronoAccentFill", ActualTheme);
             linkStatus.Background = KronoDesign.ThemeBrush("KronoSidebar", ActualTheme);
         }
         ActualThemeChanged += (_, _) => PaintBrowser();
@@ -152,8 +130,11 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
         frame.Children.Add(browserContent);
         Grid.SetRow(browserContent, 1);
         Children.Add(KronoDesign.FrameTabContent(frame, "KronoSidebar"));
-        tabs.TabCloseRequested += (sender, args) => {
-            if (args.Tab is not TabViewItem tab) return;
+        tabs.TabCloseRequested += async (sender, args) => {
+            if (args.Tab is not TabViewItem tab || !closingTabs.Add(tab)) return;
+            await KronoDesign.FadeTabClose(tab);
+            closingTabs.Remove(tab);
+            if (disposed || !tabs.TabItems.Contains(tab)) return;
             CloseBrowserTab(tab);
             if (!disposed && tabs.TabItems.Count == 0) _ = Open(DefaultHome, isHome: true);
         };
@@ -167,11 +148,6 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
         Loaded += async (_, _) => {
             if (disposed || tabs.TabItems.Count != 0) return;
             await Open(DefaultHome, isHome: true);
-            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, async () => {
-                if (disposed) return;
-                try { await GetBrowserEnvironment(); }
-                catch (Exception error) { App.RecordFault("Browser startup", error); }
-            });
         };
     }
 
@@ -186,6 +162,7 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
     void CloseBrowserTab(TabViewItem tab)
     {
         if (views.Remove(tab, out var view)) {
+            SetLoading(view, false);
             if (ReferenceEquals(agentView, view)) {
                 agentView = null;
                 ResetAgentPage();
@@ -238,11 +215,11 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
 
     internal static IconElement BrowserTabIcon(bool isPrivate = false) => isPrivate
         ? new SymbolIcon(Symbol.Permissions)
-        : new FontIcon { Glyph = "\uE774", FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe Fluent Icons"), FontSize = 16 };
+        : KronoDesign.NavigationIcon(Symbol.World);
 
     static (TextBlock Title, ContentControl Icon) CreateBrowserTabHeader(TabViewItem tab, string titleText, IconElement glyph)
     {
-        var icon = new ContentControl { Content = glyph, Width = 18, Height = 18,
+        var icon = new ContentControl { Content = glyph, Width = 20, Height = 20,
             HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
         var title = new TextBlock { Text = titleText, TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center };
@@ -269,6 +246,7 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
     {
         var button = new Button { Content = ToolbarIcon(symbol), Width = 26, Height = 26 };
         KronoInputMotion.StyleButton(button);
+        button.Template = (ControlTemplate)Application.Current.Resources["KronoQuietIconTemplate"];
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, label);
         ToolTipService.SetToolTip(button, label);
         if (action is not null) button.Click += (_, _) => action();
@@ -278,7 +256,24 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
     {
         address.Text = Current?.Source is { Scheme: "http" or "https" } source ? source.ToString() : "";
         address.IsEnabled = Current is { } view && navigators.ContainsKey(view);
+        RefreshLoading();
+        RefreshBookmarkAction();
     }
+    void SetLoading(WebView2 view, bool active)
+    {
+        if (active) loadingViews.Add(view);
+        else loadingViews.Remove(view);
+        RefreshLoading();
+        if (Current == view) RefreshBookmarkAction();
+    }
+
+    void RefreshLoading()
+    {
+        var visible = Current is { } current && loadingViews.Contains(current);
+        browserLoading.IsIndeterminate = visible;
+        browserLoading.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     async void Go()
     {
         var input = address.Text.Trim();
@@ -313,11 +308,23 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
             Go();
         };
         var searchSlot = new Grid { MinHeight = 40 };
+        search.SizeChanged += (_, args) => {
+            if (args.NewSize.Height > 0) searchSlot.MinHeight = args.NewSize.Height;
+        };
         searchSlot.Children.Add(search);
         var startStatus = new TextBlock { Text = "Opening page…", TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Opacity = .72, MaxWidth = 320,
             VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
             Visibility = builtInHome ? Visibility.Collapsed : Visibility.Visible };
         searchSlot.Children.Add(startStatus);
+        var spinner = new ProgressRing { Width = 17, Height = 17, HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Bottom, RenderTransform = new Microsoft.UI.Xaml.Media.TranslateTransform { Y = 13 },
+            Visibility = Visibility.Collapsed, IsHitTestVisible = false };
+        searchSlot.Children.Add(spinner);
+        void SetHomeLoading(bool loading)
+        {
+            spinner.IsActive = loading;
+            spinner.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+        }
         start.Children.Add(searchSlot);
         var retry = new Button { Content = "Retry home page", Visibility = Visibility.Collapsed, HorizontalAlignment = HorizontalAlignment.Center };
 
@@ -349,6 +356,8 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
                 return;
             }
             queuedPage = target;
+            SetLoading(view, true);
+            SetHomeLoading(true);
             search.Visibility = Visibility.Collapsed;
             startStatus.Visibility = Visibility.Visible;
             startStatus.Text = "Opening page…";
@@ -361,7 +370,10 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
         views[tab] = view; if (isPrivate) privateTabs.Add(tab); tabs.TabItems.Add(tab); tabs.SelectedItem = tab;
         retry.Click += async (_, _) => { if ((lastPage ?? queuedPage) is { } target) await Navigate(target); };
         if (!builtInHome) await Navigate(new Uri(url));
-        else if (Current == view && search.IsLoaded) search.Focus(FocusState.Programmatic);
+        else {
+            if (Current == view && search.IsLoaded) search.Focus(FocusState.Programmatic);
+            QueueFirstBrowserWarmup(view, () => initialization ??= Initialize(), isPrivate || isAgent);
+        }
 
         async Task Initialize()
         {
@@ -369,36 +381,16 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
             try {
                 var environment = await GetBrowserEnvironment();
                 if (!views.ContainsKey(tab)) return;
-                var options = environment.CreateCoreWebView2ControllerOptions();
-                options.IsInPrivateModeEnabled = isPrivate;
-                options.ProfileName = isPrivate ? "Private" : isAgent && !ShareAgentProfile ? "Agent" : "Default";
-                await view.EnsureCoreWebView2Async(environment, options);
-                if (!views.ContainsKey(tab)) return;
-                view.CoreWebView2.Settings.IsStatusBarEnabled = false;
-                view.CoreWebView2.Settings.IsWebMessageEnabled = true;
-                void UpdateLinkPreview(CoreWebView2WebMessageReceivedEventArgs args)
-                {
-                    if (Current != view) return;
-                    string message;
-                    try { message = args.TryGetWebMessageAsString(); }
-                    catch (ArgumentException) { return; }
-                    if (message is null || !message.StartsWith(LinkMessage, StringComparison.Ordinal) || message.Length > 8192) return;
-                    var destination = message[LinkMessage.Length..];
-                    if (destination.Length > 0 && (!Uri.TryCreate(destination, UriKind.Absolute, out var target) ||
-                        target.Scheme is not ("http" or "https" or "mailto" or "tel" or "file"))) return;
-                    linkDestination.Text = destination;
-                    linkStatus.MaxWidth = Math.Max(0, pageHost.ActualWidth - 16);
-                    linkStatus.Visibility = linkDestination.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+                if (isPrivate || isAgent && !ShareAgentProfile) {
+                    var options = environment.CreateCoreWebView2ControllerOptions();
+                    options.IsInPrivateModeEnabled = isPrivate;
+                    options.ProfileName = isPrivate ? "Private" : "Agent";
+                    await view.EnsureCoreWebView2Async(environment, options);
+                } else {
+                    await view.EnsureCoreWebView2Async(environment);
                 }
-                void TrackFrame(CoreWebView2Frame frame)
-                {
-                    frame.WebMessageReceived += (_, args) => UpdateLinkPreview(args);
-                    frame.FrameCreated += (_, args) => TrackFrame(args.Frame);
-                }
-                view.CoreWebView2.WebMessageReceived += (_, args) => UpdateLinkPreview(args);
-                view.CoreWebView2.FrameCreated += (_, args) => TrackFrame(args.Frame);
-                await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(LinkPreviewScript);
                 if (!views.ContainsKey(tab)) return;
+                TrackBrowserLinkStatus(view, view.CoreWebView2);
                 int faviconGeneration = 0;
                 void RefreshTabIcon()
                 {
@@ -412,6 +404,8 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
                     DispatcherQueue.TryEnqueue(() => {
                         if (disposed || !views.ContainsKey(tab)) return;
                         restartRequired = true;
+                        SetLoading(view, false);
+                        SetHomeLoading(false);
                         if (kind == CoreWebView2ProcessFailedKind.BrowserProcessExited) browserEnvironment = null;
                         readyViews.Remove(view);
                         if (isAgent) ResetAgentPage();
@@ -444,6 +438,7 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
                         AgentPageStarting(args.NavigationId, target);
                     }
                     navigationInProgress = args.NavigationId;
+                    SetLoading(view, true);
                     if (target?.Scheme is "http" or "https") {
                         isHome = false;
                         lastPage = target;
@@ -466,12 +461,20 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
                 }
                 view.CoreWebView2.DocumentTitleChanged += (_, _) => { UpdateTabTitle(); UpdateVisit(); };
                 view.CoreWebView2.FaviconChanged += (_, _) => RefreshTabIcon();
+                view.CoreWebView2.DOMContentLoaded += (_, args) => {
+                    if (!views.ContainsKey(tab) || navigationInProgress != args.NavigationId) return;
+                    SetHomeLoading(false);
+                    start.Visibility = Visibility.Collapsed;
+                    view.Visibility = Visibility.Visible;
+                };
 
                 view.CoreWebView2.NavigationCompleted += (sender, args) => {
                     if (!views.ContainsKey(tab)) return;
                     if (isAgent) AgentPageFinished(args.NavigationId, args.IsSuccess);
                     if (navigationInProgress != args.NavigationId) return;
                     navigationInProgress = null;
+                    SetLoading(view, false);
+                    SetHomeLoading(false);
                     UpdateTabTitle();
                     if (Current == view && view.Source?.ToString() != "about:blank") address.Text = view.Source?.ToString() ?? "";
                     if (args.IsSuccess) {
@@ -525,9 +528,13 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
             } catch (Exception error) {
                 if (!disposed && views.ContainsKey(tab)) {
                     restartRequired = true;
-                    startStatus.Text = "The browser could not open this tab.";
-                    retry.Content = "Reopen tab";
-                    retry.Visibility = Visibility.Visible;
+                    SetLoading(view, false);
+                    SetHomeLoading(false);
+                    if (queuedPage is not null) {
+                        startStatus.Text = "The browser could not open this tab.";
+                        retry.Content = "Reopen tab";
+                        retry.Visibility = Visibility.Visible;
+                    }
                     App.RecordFault("Browser initialization", error);
                     if (isAgent) ResetAgentPage();
                 }

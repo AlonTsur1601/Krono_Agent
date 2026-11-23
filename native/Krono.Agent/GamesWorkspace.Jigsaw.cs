@@ -127,6 +127,7 @@ public sealed partial class GamesWorkspace
     {
         if (paused || ended || jigsawPreview.IsChecked == true || source is < 0 or >= 16 || !AdjacentPieces(source, target)) return;
         (board[source], board[target]) = (board[target], board[source]);
+        madeProgress = true;
         moves++;
         if (Enumerable.Range(0, 16).All(cell => board[cell] == cell)) { score = Math.Max(1, 1000 - moves * 15); End("Picture complete", won: true); }
         Draw();

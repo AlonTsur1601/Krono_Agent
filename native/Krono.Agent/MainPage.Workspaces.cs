@@ -52,6 +52,7 @@ public sealed partial class MainPage
 
     void ConfigureWorkspaceWorker(AgentWorker instance)
     {
+        instance.PluginCredentialsChanged = data => PluginCatalog.AcceptRefresh(workspace, data);
         instance.BrowserRequest = async (_, request) => {
             browser ??= new BrowserWorkspace(workspace, this);
             if (!ReferenceEquals(Body.Content, browser) && !ReferenceEquals(SideBody.Content, browser)) OpenWorkspace("Browser");
@@ -127,7 +128,7 @@ public sealed partial class MainPage
     FrameworkElement BuildFileWorkspace()
     {
         fileChanges = new StackPanel { Spacing = 5 };
-        fileText = new TextBlock { FontFamily = KronoDesign.CodeFont, FontSize = KronoDesign.CodeSize,
+        fileText = new TextBlock { Tag = "code", FontFamily = KronoDesign.CodeFont, FontSize = KronoDesign.CodeSize,
             TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
         var layout = new Grid { RowSpacing = 8 };
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });

@@ -44,7 +44,7 @@ public sealed class SideChatPanel : Grid, IDisposable
         header.Children.Add(new TextBlock { Text = "Context snapshot · Chat only · No tools or automatic memories", FontSize = 12, Opacity = .6, TextWrapping = TextWrapping.Wrap }); Children.Add(header);
         scroll = new ScrollViewer { Content = transcript, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }; Grid.SetRow(scroll, 1); Children.Add(scroll);
         Grid.SetRow(status, 2); Children.Add(status);
-        var footer = new StackPanel { Spacing = 8 }; footer.Children.Add(input);
+        var footer = new StackPanel { Spacing = 8 }; footer.Children.Add(NativeMarkdown.Editor(input));
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 }; buttons.Children.Add(send); buttons.Children.Add(stop); footer.Children.Add(buttons);
         footer.Children.Add(ActionButton("Keep as independent chat", Keep)); footer.Children.Add(ActionButton("Transfer latest reply…", Transfer)); Grid.SetRow(footer, 3); Children.Add(footer);
         AutomationProperties.SetAutomationId(input, "SideComposer"); AutomationProperties.SetAutomationId(send, "SideSend"); AutomationProperties.SetAutomationId(status, "SideStatus"); AutomationProperties.SetAutomationId(expiry, "SideExpiry"); AutomationProperties.SetAutomationId(saved, "SideChatSelector");
@@ -112,7 +112,7 @@ public sealed class SideChatPanel : Grid, IDisposable
         var latest = workspace.Query("SELECT content FROM messages WHERE chat_id=$p0 AND role='assistant' AND deleted_at IS NULL ORDER BY created_at DESC,rowid DESC LIMIT 1", chatId).FirstOrDefault()?["content"]?.ToString();
         if (string.IsNullOrWhiteSpace(latest)) { status.Text = "There is no assistant reply to transfer."; return; }
         var preview = new KronoTextBox { Text = latest, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 320, MinWidth = 320 }; AutomationProperties.SetAutomationId(preview, "SideTransferPreview");
-        var dialog = new KronoDialog { XamlRoot = XamlRoot, Title = "Append context to parent", Content = preview, PrimaryButtonText = "Transfer", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close }; transferDialog = dialog;
+        var dialog = new KronoDialog { XamlRoot = XamlRoot, Title = "Append context to parent", Content = NativeMarkdown.Editor(preview), PrimaryButtonText = "Transfer", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close }; transferDialog = dialog;
         var accepted = await dialog.ShowAsync(); transferDialog = null;
         if (accepted != ContentDialogResult.Primary || disposed || !Available() || string.IsNullOrWhiteSpace(preview.Text)) return;
         workspace.QueueSideTransfer(parent, preview.Text); transferQueued(); status.Text = "Transfer accepted · appended when the parent's current run finishes.";

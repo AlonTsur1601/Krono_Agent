@@ -1,10 +1,15 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.Windows.AppLifecycle;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Krono_Agent;
 public partial class App : Application
 {
     static readonly object faultLock = new();
-    Window? window;
+    MainWindow? window;
+    AppInstance? activation;
     public App()
     {
         var english = System.Globalization.CultureInfo.GetCultureInfo("en-US");
@@ -36,8 +41,24 @@ public partial class App : Application
     [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
     static extern bool SetThreadPreferredUILanguages(uint flags, string languages, out uint count);
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
+        var profile = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Workspace.Home)).ToUpperInvariant();
+        var key = "Krono-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(profile)).AsSpan(0, 16));
+        activation = AppInstance.FindOrRegisterForKey(key);
+        if (!activation.IsCurrent) {
+            try {
+                await activation.RedirectActivationToAsync(AppInstance.GetCurrent().GetActivatedEventArgs());
+                Exit();
+                return;
+            } catch (Exception error) {
+                RecordFault("Window activation", error);
+                activation = AppInstance.FindOrRegisterForKey(key);
+                if (!activation.IsCurrent) { Exit(); return; }
+            }
+        }
+        var dispatcher = DispatcherQueue.GetForCurrentThread();
+        activation.Activated += (_, _) => dispatcher.TryEnqueue(() => window?.RestoreFromTray());
         window = new MainWindow();
         window.Activate();
     }

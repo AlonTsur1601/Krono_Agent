@@ -73,7 +73,7 @@ public sealed partial class MainPage
             ConfigureWorkspaceWorker(scheduledWorker);
             var request = System.Text.Json.JsonSerializer.SerializeToNode(new { providerId = task.Provider, apiKey = credential, endpoint, toolsEnabled, modelId = task.Model,
                 mode = task.Mode, permissions = task.Permissions, messages = history, projectDirs = dirs, instructions, memories, fastMode = options?.FastMode == true,
-                plugins = (task.Mode is "agent" or "goal") && toolsEnabled ? PluginCatalog.Enabled(workspace) : [] })!.AsObject();
+                plugins = PluginCatalog.Enabled(workspace, (task.Mode is "agent" or "goal") && toolsEnabled) })!.AsObject();
             if (effort is not null) request["reasoningEffort"] = effort;
             await scheduledWorker.Request(run.Id, "run", request);
             if (generation != sessionGeneration) return;
@@ -210,7 +210,7 @@ public sealed partial class MainPage
         }
         Load();
         panel.Children.Add(title);
-        panel.Children.Add(prompt);
+        panel.Children.Add(NativeMarkdown.Editor(prompt));
         panel.Children.Add(Heading("When to run"));
         panel.Children.Add(first);
         panel.Children.Add(repeat);

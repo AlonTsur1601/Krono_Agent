@@ -32,6 +32,7 @@ public sealed partial class MainWindow : Window
         AppWindow.Closing += (_, args) => {
             if (closeApproved || !tray.IsAvailable || Environment.GetEnvironmentVariable("KRONO_SMOKE_CLOSE_WINDOW") == "1") return;
             args.Cancel = true;
+            if (RootFrame.Content is MainPage page) page.PauseGames("Krono was hidden to the tray");
             AppWindow.Hide();
         };
         Activated += (_, args) => { if (args.WindowActivationState == WindowActivationState.Deactivated && RootFrame.Content is MainPage page) page.PauseGames("Krono lost window focus"); };
@@ -40,9 +41,11 @@ public sealed partial class MainWindow : Window
             if (RootFrame.Content is MainPage page) page.PauseGames("Krono window closed");
         };
     }
-    void RestoreFromTray()
+    internal void RestoreFromTray()
     {
-        AppWindow.Show();
+        if (!AppWindow.IsVisible) AppWindow.Show();
+        if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: Microsoft.UI.Windowing.OverlappedPresenterState.Minimized } presenter)
+            presenter.Restore();
         Activate();
     }
 

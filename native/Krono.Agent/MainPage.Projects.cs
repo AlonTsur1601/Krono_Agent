@@ -146,25 +146,35 @@ public sealed partial class MainPage
         return (await picker.PickSingleFolderAsync())?.Path;
     }
 
-    void AddInstructionsSettings(StackPanel panel)
+    Grid BuildInstructionsSettings()
     {
-        panel.Children.Add(Heading("Global"));
+        var panel = new Grid { RowSpacing = 8 };
+        panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        panel.RowDefinitions.Add(new RowDefinition());
+        panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var headers = new StackPanel { Children = { Heading("Instructions"), Heading("Global") } };
+        panel.Children.Add(headers);
         var global = new KronoTextBox {
-            PlaceholderText = "Instructions for every conversation", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 210,
+            PlaceholderText = "Instructions for every conversation", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
             Text = workspace.Setting("instructions.global")
         };
         AutomationProperties.SetAutomationId(global, "GlobalInstructions");
-        panel.Children.Add(global);
-        panel.Children.Add(Button("Save global instructions", () => workspace.SetSetting("instructions.global", global.Text.Trim())));
-
-        panel.Children.Add(Heading("Projects"));
+        var globalEditor = NativeMarkdown.Editor(global);
+        Grid.SetRow(globalEditor, 1);
+        panel.Children.Add(globalEditor);
+        var footer = new StackPanel { Spacing = 8 };
+        footer.Children.Add(Button("Save global instructions", () => workspace.SetSetting("instructions.global", global.Text.Trim())));
+        Grid.SetRow(footer, 2);
+        panel.Children.Add(footer);
+        var projectsPanel = new StackPanel { Spacing = 6 };
+        footer.Children.Add(new Expander { Header = "Projects", Content = projectsPanel, HorizontalAlignment = HorizontalAlignment.Stretch });
         var projects = workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name,id");
         if (projects.Count == 0) {
-            panel.Children.Add(new TextBlock { Text = "No projects created." });
-            return;
+            projectsPanel.Children.Add(new TextBlock { Text = "No projects created." });
+            return panel;
         }
         var picker = new KronoComboBox { Header = "Project", ItemsSource = projects.Select(row => row["name"]!.ToString()).ToArray() };
-        var instructions = new KronoTextBox { PlaceholderText = "Instructions for this project", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 210 };
+        var instructions = new KronoTextBox { PlaceholderText = "Instructions for this project", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 70, MaxHeight = 125 };
         AutomationProperties.SetAutomationId(picker, "InstructionsProject");
         AutomationProperties.SetAutomationId(instructions, "ProjectInstructions");
         string SelectedProject() => projects[picker.SelectedIndex]["id"]!.ToString();
@@ -172,14 +182,15 @@ public sealed partial class MainPage
             if (picker.SelectedIndex >= 0) instructions.Text = workspace.ProjectPreferences(SelectedProject())["instructions"]?.ToString() ?? "";
         };
         picker.SelectedIndex = 0;
-        panel.Children.Add(picker);
-        panel.Children.Add(instructions);
-        panel.Children.Add(Button("Save project instructions", () => {
+        projectsPanel.Children.Add(picker);
+        projectsPanel.Children.Add(NativeMarkdown.Editor(instructions));
+        projectsPanel.Children.Add(Button("Save project instructions", () => {
             if (picker.SelectedIndex < 0) return;
             var id = SelectedProject();
             var config = workspace.ProjectPreferences(id);
             config["instructions"] = instructions.Text.Trim();
             workspace.SetSetting("project." + id, config.ToJsonString());
         }));
+        return panel;
     }
 }

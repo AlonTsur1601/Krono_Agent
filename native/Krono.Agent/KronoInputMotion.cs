@@ -140,7 +140,6 @@ public sealed class KronoComboBox : ComboBox
         KronoInputMotion.RegisterPaletteRefresh(this, RefreshPalette);
         ActualThemeChanged += (_, _) => RefreshPalette();
         DropDownOpened += (_, _) => {
-            RefreshPalette();
             RefreshEmptyOptions();
             if (GetTemplateChild("Popup") is not Popup dropdown) return;
             // WinUI inserts a canvas in front of the page to eat the first outside click.
@@ -151,6 +150,8 @@ public sealed class KronoComboBox : ComboBox
             while (scope is not null && scope is not ContentDialog) scope = VisualTreeHelper.GetParent(scope);
             outsideRoot = scope as UIElement ?? XamlRoot?.Content;
             outsideRoot?.AddHandler(UIElement.PointerPressedEvent, outsidePress, true);
+            if (GetTemplateChild("PopupBorder") is FrameworkElement surface)
+                KronoDesign.AnimateMenuOpening(surface);
         };
         Items.VectorChanged += (_, _) => RefreshEmptyOptions();
         DropDownClosed += (_, _) => DetachOutsidePress();
@@ -181,9 +182,8 @@ public sealed class KronoComboBox : ComboBox
                 popup.Child = surface;
                 RefreshEmptyOptions();
             }
-            if (GetTemplateChild("Popup") is Popup flyout && new UISettings().AnimationsEnabled)
-                flyout.ChildTransitions = new TransitionCollection { new PopupThemeTransition() };
         }
+        RefreshPalette();
     }
 
     void RefreshEmptyOptions()

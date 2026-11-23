@@ -67,6 +67,18 @@ public sealed partial class MainPage : Page
                 !Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down)) return;
             if (TryPasteComposerImage()) args.Handled = true;
         };
+        AddHandler(UIElement.PointerPressedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, args) => {
+            if (reasoningPanel.Visibility != Visibility.Visible) return;
+            for (var source = args.OriginalSource as DependencyObject; source is not null; source = VisualTreeHelper.GetParent(source))
+                if (ReferenceEquals(source, reasoningPanel) || ReferenceEquals(source, modelChoice)) return;
+            reasoningPanel.Visibility = Visibility.Collapsed;
+        }), true);
+        PreviewKeyDown += (_, args) => {
+            if (args.Key != Windows.System.VirtualKey.Escape || reasoningPanel.Visibility != Visibility.Visible) return;
+            reasoningPanel.Visibility = Visibility.Collapsed;
+            modelChoice.Focus(FocusState.Keyboard);
+            args.Handled = true;
+        };
         modelChoice.Click += async (_, _) => { try { await ChooseChatModel(); } catch (Exception error) { Error(error); } };
         sessionTimer.Tick += async (_, _) => {
             if (refreshingSession || workspace.AccountId.Length == 0) return;
@@ -248,6 +260,7 @@ public sealed partial class MainPage : Page
             workspace.SetSetting("native.tools." + id, "");
         }
         workspace.FlushSideTransfers(); ShowChats();
+        _ = SelectInitialModel();
         if (workspace.IsOfflineSession) progress.Text = "Offline · local workspace restored; account validation will retry.";
         sessionTimer.Start();
         accountSyncTimer.Start(); _ = SyncAccount(false);
@@ -470,7 +483,7 @@ public sealed partial class MainPage : Page
             Grid.SetRow(live, 2); conversation.Children.Add(live);
             var input = new StackPanel { Spacing = 4 };
             input.Children.Add(attachmentTray);
-            input.Children.Add(composer);
+            input.Children.Add(NativeMarkdown.Editor(composer));
             send.Click += async (_, _) => {
                 if (!ComposerCanStop) await SendMessage();
                 else if (scheduledRun is not null) await StopScheduledRun();
@@ -518,10 +531,12 @@ public sealed partial class MainPage : Page
             primaryActions.Children.Add(send);
             Grid.SetColumn(primaryActions, 1);
             actions.Children.Add(primaryActions);
+            input.Children.Add(reasoningPanel);
             input.Children.Add(actions);
             Grid.SetRow(input, 3);
             conversation.Children.Add(input);
         }
+        reasoningPanel.Visibility = Visibility.Collapsed;
         if (backToChats is not null) backToChats.Visibility = Visibility.Collapsed;
         ShowContext(chatHistory);
         RefreshChatModelLabel();
@@ -644,7 +659,7 @@ public sealed partial class MainPage : Page
             var history = workspace.Query("SELECT role,content FROM messages WHERE chat_id=$p0 AND deleted_at IS NULL ORDER BY id=$p1,created_at,rowid", chatId, messageId).Select(p => new { role = p["role"]!.ToString(), content = p["content"]!.ToString() }).ToArray();
             if (workspace.Setting("native.chatContext") == "Recent messages") history = history.TakeLast(20).ToArray();
             var request = JsonSerializer.SerializeToNode(new { providerId = provider, apiKey, endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled, modelId = model, mode, permissions, messages = history, projectDirs = dirs, instructions = workspace.Instructions(project), memories, fastMode,
-                plugins = (mode is "agent" or "goal") && ProviderToolsEnabled ? PluginCatalog.Enabled(workspace) : [] })!.AsObject();
+                plugins = PluginCatalog.Enabled(workspace, (mode is "agent" or "goal") && ProviderToolsEnabled) })!.AsObject();
             if (image is not null) request["messages"]!.AsArray()[^1]!["imagePng"] = image;
             if (IsReasoningEffort(reasoning)) request["reasoningEffort"] = reasoning;
             await worker!.Request(runId, "run", request);
@@ -679,8 +694,14 @@ public sealed partial class MainPage : Page
         var dialog = new KronoDialog { XamlRoot = XamlRoot, Title = "Action details", Content = details, CloseButtonText = "Close details" }; approvalDialog = dialog;
         try { await dialog.ShowAsync(); } catch (Exception error) { Error(error); } finally { if (ReferenceEquals(approvalDialog, dialog)) approvalDialog = null; }
     }
-    void ApplyTheme(string value, bool animate = false)
+    int themeTransition;
+    async void ApplyTheme(string value, bool animate = false)
     {
+        var transition = ++themeTransition;
+        var session = sessionGeneration;
+        if (animate) await KronoDesign.BeginThemeChange(this);
+        if (transition != themeTransition) return;
+        if (session != sessionGeneration) { KronoDesign.FinishThemeChange(this); return; }
         KronoDesign.ApplyPalette(value == "halloween");
         RequestedTheme = value == "light" ? ElementTheme.Light : value is "dark" or "halloween" ? ElementTheme.Dark : ElementTheme.Default;
         if (MainWindow.Instance?.Content is FrameworkElement root) root.RequestedTheme = RequestedTheme;
@@ -689,7 +710,7 @@ public sealed partial class MainPage : Page
             backdrop.SetHalloween(value == "halloween");
         MainWindow.Instance?.ShowHalloween(value == "halloween");
         KronoInputMotion.RefreshPalette(this);
-        if (animate) KronoDesign.AnimateThemeChange(this);
+        KronoDesign.FinishThemeChange(this);
     }
     bool CompatibleEndpoint => ProviderCatalog.Compatible(provider);
     string ProviderEndpoint => workspace.Setting("native.endpoint." + provider) is { Length: > 0 } endpoint ? endpoint : ProviderCatalog.Endpoint(provider);
@@ -727,19 +748,23 @@ public sealed partial class MainPage : Page
         panel.Children.Add(Button("Sign out on all devices", async () => { if (await Confirm("Sign out on all devices?", "You’ll need to sign in again on each device.", "Sign out everywhere")) await Leave(true); }));
         AddSyncSettings(panel);
         panel = AddCategory("Models");
-        var secret = new PasswordBox { Header = "Provider API key · optional for local servers", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var secret = new PasswordBox { Header = "Provider API key", HorizontalAlignment = HorizontalAlignment.Stretch };
         KronoInputMotion.Attach(secret, "KronoPasswordInput");
         var endpoint = new KronoTextBox { Header = "Server base URL · include /v1", Text = ProviderEndpoint };
         AutomationProperties.SetAutomationId(endpoint, "ProviderEndpoint");
-        var tools = new KronoCheckBox { Content = "This model supports tool calling", IsChecked = ProviderToolsEnabled };
+        var tools = new KronoCheckBox { Content = "Enable tool calling for this model", IsChecked = ProviderToolsEnabled };
         AutomationProperties.SetAutomationId(tools, "ProviderTools");
         var connectionStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .7 }; AutomationProperties.SetAutomationId(connectionStatus, "ProviderConnectionStatus");
         var models = new KronoComboBox { Header = "Model", HorizontalAlignment = HorizontalAlignment.Stretch,
             PlaceholderText = "Choose an available model", ItemsSource = ModelChoices(provider, [], model, false), SelectedItem = model };
         var profileHelp = new TextBlock { Text = ProviderCatalog.Help(provider), TextWrapping = TextWrapping.Wrap, Opacity = .65 };
         var modelSettings = new StackPanel { Spacing = 8 };
-        var modelVisibility = new StackPanel { Spacing = 2 };
+        var remoteConnection = new StackPanel { Spacing = 10 };
         var modelStatus = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        var advanced = new Expander { Header = "Advanced connection settings", HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetAutomationId(advanced, "ProviderConnectionOptions");
+        var connectionFields = new StackPanel { Spacing = 10 };
+        advanced.Content = connectionFields;
         int modelRequest = 0;
         var saveKey = Button("Save key", SaveKey);
         void SaveEndpoint() { try {
@@ -755,24 +780,43 @@ public sealed partial class MainPage : Page
             modelRequest++;
             modelStatus.Text = "";
             modelSettings.Visibility = !ProviderCatalog.RequiresKey(provider) || workspace.Key(provider).Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-            modelVisibility.Children.Clear();
         }
         void EndpointVisibility()
         {
             var automatic = ProviderCatalog.AutomaticLocal(provider);
             endpoint.Visibility = saveEndpoint.Visibility = CompatibleEndpoint && !automatic ? Visibility.Visible : Visibility.Collapsed;
             secret.Visibility = saveKey.Visibility = automatic ? Visibility.Collapsed : Visibility.Visible;
+            remoteConnection.Visibility = automatic ? Visibility.Collapsed : Visibility.Visible;
+            advanced.Visibility = !automatic || model.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            advanced.IsExpanded = !automatic && ProviderCatalog.RequiresKey(provider) && workspace.Key(provider).Length == 0;
             tools.Visibility = CompatibleEndpoint ? Visibility.Visible : Visibility.Collapsed;
             tools.IsEnabled = model.Length > 0;
             RefreshModelVisibility();
         }
-        ToolTipService.SetToolTip(tools, "Choose Use model first. Tool support is saved separately for each provider and model.");
+        ToolTipService.SetToolTip(tools, "Override tool support for a custom provider and model.");
+        var updatingModels = false;
         var providerIds = ProviderCatalog.Ids; var providerNames = providerIds.Select(ProviderCatalog.Name).ToArray();
         panel.Children.Add(Choices("Provider", providerNames, ProviderCatalog.Name(provider), value => {
-            provider = providerIds[Array.IndexOf(providerNames, value)]; workspace.SetSetting("native.provider", provider); secret.Password = ""; model = workspace.Setting("native.model." + provider); models.ItemsSource = ModelChoices(provider, [], model, false); models.SelectedItem = model; endpoint.Text = ProviderEndpoint; tools.IsChecked = ProviderToolsEnabled; connectionStatus.Text = ""; profileHelp.Text = ProviderCatalog.Help(provider); EndpointVisibility(); _ = LoadProviderModels();
+            provider = providerIds[Array.IndexOf(providerNames, value)];
+            workspace.SetSetting("native.provider", provider);
+            secret.Password = "";
+            model = workspace.Setting("native.model." + provider);
+            updatingModels = true;
+            models.ItemsSource = ModelChoices(provider, [], model, false);
+            models.SelectedItem = model;
+            updatingModels = false;
+            RefreshChatModelLabel();
+            endpoint.Text = ProviderEndpoint;
+            tools.IsChecked = ProviderToolsEnabled;
+            connectionStatus.Text = "";
+            profileHelp.Text = ProviderCatalog.Help(provider);
+            EndpointVisibility();
+            _ = LoadProviderModels();
         }));
         tools.Checked += (_, _) => { if (CompatibleEndpoint && model.Length > 0) workspace.SetSetting(ModelToolsSetting, "true"); }; tools.Unchecked += (_, _) => { if (CompatibleEndpoint && model.Length > 0) workspace.SetSetting(ModelToolsSetting, "false"); };
-        EndpointVisibility(); panel.Children.Add(endpoint); panel.Children.Add(saveEndpoint); panel.Children.Add(secret);
+        EndpointVisibility();
+        connectionFields.Children.Add(remoteConnection);
+        remoteConnection.Children.Add(endpoint); remoteConnection.Children.Add(saveEndpoint); remoteConnection.Children.Add(secret);
         AutomationProperties.SetAutomationId(secret, "ProviderKey");
         void SaveKey()
         {
@@ -781,26 +825,27 @@ public sealed partial class MainPage : Page
             catch (Exception error) { Error(error); }
         }
         secret.PreviewKeyDown += (_, args) => { if (args.Key == Windows.System.VirtualKey.Enter) { args.Handled = true; SaveKey(); } };
-        panel.Children.Add(saveKey);
-        panel.Children.Add(Button("Test connection", async () => {
+        remoteConnection.Children.Add(saveKey);
+        remoteConnection.Children.Add(Button("Test connection", async () => {
             var id = provider;
-            var automatic = ProviderCatalog.AutomaticLocal(id);
-            var key = automatic ? "" : workspace.Key(id);
-            if (!automatic && key.Length == 0 && (ProviderCatalog.RequiresKey(id) || CompatibleEndpoint && !ProviderCatalog.Local(ProviderCatalog.ParseEndpoint(ProviderEndpoint))))
+            var key = workspace.Key(id);
+            if (key.Length == 0 && (ProviderCatalog.RequiresKey(id) || CompatibleEndpoint && !ProviderCatalog.Local(ProviderCatalog.ParseEndpoint(ProviderEndpoint))))
                 throw new InvalidOperationException("Save the provider’s API key before testing the connection.");
             var result = await worker!.Request(Guid.NewGuid().ToString(), "test", new { providerId = id, apiKey = key, endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled });
             if (provider != id) return;
             if (result?["success"]?.GetValue<bool>() != true)
-                throw new InvalidOperationException(automatic ? "No local models found. Start your model server and refresh." : "Connection failed. Check the server, endpoint and credentials.");
+                throw new InvalidOperationException("Connection failed. Check the server, endpoint and credentials.");
             connectionStatus.Text = "Connected · " + result["latencyMs"] + " ms";
         }));
-        panel.Children.Add(connectionStatus);
+        remoteConnection.Children.Add(connectionStatus);
+        remoteConnection.Children.Add(profileHelp);
+        connectionFields.Children.Add(tools);
         panel.Children.Add(modelSettings);
         modelSettings.Children.Add(models);
         AutomationProperties.SetAutomationId(models, "ModelSelector");
-        modelSettings.Children.Add(Button("Load available models", () => LoadProviderModels(true)));
+        modelSettings.Children.Add(Button("Refresh models", () => LoadProviderModels(true)));
         modelSettings.Children.Add(modelStatus);
-        modelSettings.Children.Add(modelVisibility);
+        panel.Children.Add(advanced);
         async Task LoadProviderModels(bool refresh = false)
         {
             var selectedProvider = provider;
@@ -812,54 +857,31 @@ public sealed partial class MainPage : Page
             try {
                 var result = await DiscoverModels(selectedProvider, refresh);
                 if (request != modelRequest || generation != sessionGeneration || provider != selectedProvider) return;
+                ChooseDefaultModel(result);
                 var ids = ModelChoices(selectedProvider, result, model, false);
-                var hidden = HiddenModels(selectedProvider);
-                models.ItemsSource = ids;
-                if (ProviderCatalog.AutomaticLocal(selectedProvider) && model.Length == 0 && ids.Length == 1) {
-                    SelectChatModel(ids[0]);
+                updatingModels = true;
+                try {
+                    models.ItemsSource = ids;
+                    models.SelectedItem = model;
+                    models.IsEnabled = ids.Length > 0;
                     tools.IsChecked = ProviderToolsEnabled;
-                    tools.IsEnabled = true;
-                }
-                models.SelectedItem = model;
-                modelVisibility.Children.Clear();
-                modelStatus.Text = ids.Length == 0 ? (ProviderCatalog.AutomaticLocal(selectedProvider)
-                    ? "No local models found. Start your model server and refresh." : "This provider returned no models.") : "Show in the chat model picker";
-                foreach (var id in ids) {
-                    var checkbox = new KronoCheckBox { Content = id, IsChecked = !hidden.Contains(id) };
-                    void SaveVisibility()
-                    {
-                        if (provider != selectedProvider || generation != sessionGeneration) return;
-                        var selection = HiddenModels(selectedProvider);
-                        if (checkbox.IsChecked == true) selection.Remove(id);
-                        else selection.Add(id);
-                        workspace.SetSetting("native.hiddenModels." + selectedProvider, JsonSerializer.Serialize(selection));
-                    }
-                    checkbox.Checked += (_, _) => SaveVisibility();
-                    checkbox.Unchecked += (_, _) => SaveVisibility();
-                    modelVisibility.Children.Add(checkbox);
-                }
+                    tools.IsEnabled = model.Length > 0;
+                    if (ProviderCatalog.AutomaticLocal(selectedProvider)) advanced.Visibility = model.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+                } finally { updatingModels = false; }
+                modelStatus.Text = ids.Length == 0
+                    ? ProviderCatalog.AutomaticLocal(selectedProvider) ? "No local models found. Start your model server and refresh." : "This provider returned no models."
+                    : "";
             } catch (Exception) {
                 if (request == modelRequest && generation == sessionGeneration && provider == selectedProvider)
                     modelStatus.Text = "Could not load this provider’s models.";
             }
         }
-        void UseModel()
-        {
-            if (models.SelectedItem is not string selected) return;
+        models.SelectionChanged += (_, _) => {
+            if (updatingModels || models.SelectedItem is not string selected) return;
             SelectChatModel(selected);
             tools.IsChecked = ProviderToolsEnabled;
-            tools.IsEnabled = model.Length > 0;
-        }
-        models.PreviewKeyDown += (_, args) => {
-            if (args.Key != Windows.System.VirtualKey.Enter || models.IsDropDownOpen) return;
-            args.Handled = true;
-            UseModel();
+            tools.IsEnabled = true;
         };
-        modelSettings.Children.Add(Button("Use model", UseModel));
-        modelSettings.Children.Add(tools);
-        _ = LoadProviderModels();
-        panel.Children.Add(profileHelp);
-        panel.Children.Add(new TextBlock { Text = "API keys are encrypted for this Windows account. Provider usage and billing follow your provider account.", TextWrapping = TextWrapping.Wrap });
         panel = AddCategory("Appearance");
         panel.Children.Add(Choices("Appearance", ["system", "dark", "light", "halloween"], workspace.Setting("native.theme") is { Length: > 0 } t ? t : "system", value => { workspace.SetSetting("native.theme", value); ApplyTheme(value, animate: true); }));
         KronoComboBox FontChoice(string header, string key, string[] choices) {
@@ -899,10 +921,12 @@ public sealed partial class MainPage : Page
         codeFont.SelectionChanged += (_, _) => SaveTypography();
         textSize.ValueChanged += (_, _) => SaveTypography();
         codeSize.ValueChanged += (_, _) => SaveTypography();
-        AddInstructionsSettings(AddCategory("Instructions"));
-        AddPluginSettings(AddCategory("Plugins"));
+        var instructions = BuildInstructionsSettings();
+        AddCategory("Plugins");
         AddUpdateSettings(AddCategory("Updates"));
-        var categories = new ListView { ItemsSource = pages.Keys.ToArray(), SelectionMode = ListViewSelectionMode.Single };
+        var names = pages.Keys.ToList();
+        names.Insert(names.IndexOf("Plugins"), "Instructions");
+        var categories = new ListView { ItemsSource = names, SelectionMode = ListViewSelectionMode.Single };
         AutomationProperties.SetAutomationId(categories, "SettingsCategories");
         var sidebar = new StackPanel { Spacing = 4 };
         sidebar.Children.Add(Heading("Settings"));
@@ -910,8 +934,19 @@ public sealed partial class MainPage : Page
         ShowContext(sidebar);
         var page = new ContentControl { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
         var views = pages.ToDictionary(entry => entry.Key, entry => KronoDesign.ScrollPage(entry.Value));
+        views.Add("Instructions", instructions);
+        var pluginsLoaded = false;
+        var modelsLoaded = false;
         categories.SelectionChanged += (_, _) => {
             if (categories.SelectedItem is not string selected) return;
+            if (selected == "Models" && !modelsLoaded) {
+                modelsLoaded = true;
+                _ = LoadProviderModels();
+            }
+            if (selected == "Plugins" && !pluginsLoaded) {
+                pluginsLoaded = true;
+                AddPluginSettings(pages[selected]);
+            }
             KronoDesign.Present(page, views[selected]);
         };
         categories.SelectedIndex = 0;

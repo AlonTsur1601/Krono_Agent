@@ -87,7 +87,7 @@
             <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#10231F" />
             <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#10231F" />
             <FontFamily x:Key="KronoTextFont">ms-appx:///Assets/Fonts/Rubik.ttf#Rubik</FontFamily>
-            <FontFamily x:Key="KronoDisplayFont">ms-appx:///Assets/Fonts/SpaceGrotesk.ttf#Space Grotesk</FontFamily>
+            <FontFamily x:Key="KronoDisplayFont">ms-appx:///Assets/Fonts/Rubik.ttf#Rubik</FontFamily>
             <FontFamily x:Key="KronoCodeFont">ms-appx:///Assets/Fonts/JetBrainsMono.ttf#JetBrains Mono</FontFamily>
             <FontFamily x:Key="ContentControlThemeFontFamily">ms-appx:///Assets/Fonts/Rubik.ttf#Rubik</FontFamily>
             <x:Double x:Key="KronoTextSize">14</x:Double>
@@ -259,7 +259,7 @@
                 <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
                 <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
                 <Setter Property="CornerRadius" Value="10" />
-                <Setter Property="Padding" Value="12,8" />
+                <Setter Property="Padding" Value="12,4" />
                 <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoInputRim}" />
             </Style>

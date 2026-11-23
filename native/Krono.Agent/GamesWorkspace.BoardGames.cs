@@ -130,10 +130,11 @@ public sealed partial class GamesWorkspace
             if (index >= column.Count - 1) moved = cards.ToTableau(pile);
             if (!moved) cards.Select(kind, pile, index);
         }
-        if (moved) moves++;
+        if (moved) { moves++; madeProgress = true; }
         score = cards.Foundations.Sum() * 10;
         if (score == 520) End("Solitaire complete", won: true);
-        Draw(); SaveCurrent();
+        Draw();
+        if (moved) SaveCurrent();
     }
     void DrawBoardGames()
     {
@@ -258,7 +259,7 @@ public sealed partial class GamesWorkspace
             else if (card is { } faceCard) {
                 var art = new Canvas { Width = 48, Height = 68, IsHitTestVisible = false };
                 var paint = KlondikeRound.Red(faceCard) ? Ink(0xa63350) : Ink(0x28364c);
-                var corner = new TextBlock { Text = Face(faceCard), FontFamily = KronoDesign.CodeFont, FontSize = 15, Foreground = paint, FontWeight = Microsoft.UI.Text.FontWeights.Bold };
+                var corner = new TextBlock { Tag = "game-code", Text = Face(faceCard), FontFamily = KronoDesign.CodeFont, FontSize = 15, Foreground = paint, FontWeight = Microsoft.UI.Text.FontWeights.Bold };
                 Canvas.SetLeft(corner, 0); Canvas.SetTop(corner, 0); art.Children.Add(corner);
                 var emblem = new TextBlock { Text = suits[KlondikeRound.Suit(faceCard)], FontSize = 35, Foreground = paint, Opacity = .75 };
                 Canvas.SetLeft(emblem, 9); Canvas.SetTop(emblem, 23); art.Children.Add(emblem); face = art;

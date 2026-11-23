@@ -17,6 +17,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
     readonly ContentControl selectedTerminal = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
     readonly Dictionary<string, Session> terminals = new();
     readonly DispatcherTimer renderTimer = new() { Interval = TimeSpan.FromMilliseconds(25) };
+    readonly HashSet<string> closing = new();
     bool hasOpened;
     bool disposed;
 
@@ -64,9 +65,13 @@ public sealed class TerminalWorkspace : Grid, IDisposable
             if (tabs.SelectedItem is TabViewItem { Tag: string id } && terminals.TryGetValue(id, out var terminal) && terminal.NeedsRender)
                 Render(terminal);
         };
-        tabs.TabCloseRequested += async (_, args) => {
-            if (args.Tab is not TabViewItem { Tag: string id } || !terminals.Remove(id, out var terminal)) return;
-            tabs.TabItems.Remove(args.Tab);
+        tabs.TabCloseRequested += async (sender, args) => {
+            if (args.Tab is not TabViewItem { Tag: string id } tab || !closing.Add(id)) return;
+            await KronoDesign.FadeTabClose(tab);
+            closing.Remove(id);
+            if (disposed || !terminals.Remove(id, out var terminal)) return;
+            tabs.TabItems.Remove(tab);
+            if (tabs.TabItems.Count == 0) _ = Create();
             if (terminal.Ready) {
                 try { await worker.Request(Guid.NewGuid().ToString(), "terminal:close", new { id }); }
                 catch (Exception error) when (error is InvalidOperationException or IOException) { /* The shell may have exited while closing. */ }

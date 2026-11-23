@@ -16,6 +16,39 @@ public static class NativeMarkdown
     static readonly Regex CodeTokens = new(
         """(?<comment>//[^\n]*|#[^\n]*)|(?<literal>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(?<keyword>\b(?:const|let|var|function|class|return|if|else|for|while|import|from|export|public|private|async|await|def|true|false|null|None|new|using|void|int|string)\b)|(?<number>\b\d+(?:\.\d+)?\b)""",
         RegexOptions.NonBacktracking | RegexOptions.CultureInvariant);
+    internal static Grid Editor(TextBox input)
+    {
+        var editor = new Grid { RowSpacing = 5 };
+        editor.RowDefinitions.Add(new RowDefinition());
+        editor.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var preview = new ScrollViewer { Visibility = Visibility.Collapsed, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Padding = new Thickness(10, 5, 10, 5) };
+        var toggle = new Button { Content = "Preview Markdown", HorizontalAlignment = HorizontalAlignment.Right, Tag = "caption" };
+        input.TextChanged += (_, _) => {
+            if (preview.Visibility == Visibility.Visible)
+                preview.Content = Render(input.Text, KronoDesign.TextFont.Source, KronoDesign.TextSize,
+                    KronoDesign.CodeFont.Source, KronoDesign.CodeSize);
+        };
+        toggle.Click += (_, _) => {
+            var showing = preview.Visibility == Visibility.Visible;
+            if (!showing) {
+                preview.MinHeight = input.ActualHeight;
+                preview.MaxHeight = Math.Max(input.ActualHeight, 1);
+                preview.Content = Render(input.Text, KronoDesign.TextFont.Source, KronoDesign.TextSize,
+                    KronoDesign.CodeFont.Source, KronoDesign.CodeSize);
+            }
+            preview.Visibility = showing ? Visibility.Collapsed : Visibility.Visible;
+            input.Visibility = showing ? Visibility.Visible : Visibility.Collapsed;
+            toggle.Content = showing ? "Preview Markdown" : "Edit Markdown";
+            if (showing) input.Focus(FocusState.Programmatic);
+        };
+        Grid.SetRow(toggle, 1);
+        editor.Children.Add(input);
+        editor.Children.Add(preview);
+        editor.Children.Add(toggle);
+        return editor;
+    }
+
     public static RichTextBlock Render(string source, string textFont, double textSize, string codeFont, double codeSize, string palette = "classic")
     {
         var resolvedCodeFont = KronoDesign.ResolveFont(codeFont);

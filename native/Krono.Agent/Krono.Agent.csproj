@@ -20,6 +20,7 @@
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="..\..\src\agent\tools\plugin-catalog.json" LogicalName="KronoAgent.PluginCatalog.json" />
     <PackageReference Include="Markdig" Version="1.5.1" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />
@@ -29,6 +30,7 @@
   <ItemGroup>
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Fonts\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Plugins\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\GameAudio\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\Jigsaw\*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\dist\sidecar\**\*" Link="Engine\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

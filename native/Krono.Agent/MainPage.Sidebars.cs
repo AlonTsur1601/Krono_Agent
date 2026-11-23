@@ -3,8 +3,6 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Animation;
 using Windows.UI.ViewManagement;
 
 namespace Krono_Agent;
@@ -17,7 +15,6 @@ public sealed partial class MainPage
     bool contextOpen = true;
     bool contextVisible;
     int contextTransition;
-    Storyboard? contextMotion;
 
     void ShowContext(FrameworkElement? content)
     {
@@ -28,7 +25,7 @@ public sealed partial class MainPage
         RefreshContextVisibility(content is not null);
     }
 
-    void RefreshContextVisibility(bool? hasContent = null)
+    async void RefreshContextVisibility(bool? hasContent = null)
     {
         var show = contextOpen && (hasContent ?? ContextBody.Content is not null);
         if (show == contextVisible) {
@@ -37,42 +34,36 @@ public sealed partial class MainPage
         }
         contextVisible = show;
         var transition = ++contextTransition;
-        var from = ContextRail.Visibility == Visibility.Visible ? ContextRail.ActualWidth : 0;
-        contextMotion?.Stop();
-        ContextRail.Width = from;
-
-        void CommitLayout(bool visible)
-        {
-            contextMotion?.Stop();
-            ContextRail.Width = visible ? 252 : 0;
-            ContextRail.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-            WorkspaceSurface.CornerRadius = new CornerRadius(visible ? 0 : 14, 0, 0, 0);
-            if (!visible && hasContent == false) ContextBody.Content = null;
-        }
+        var wasVisible = ContextRail.Visibility == Visibility.Visible;
+        var visual = ElementCompositionPreview.GetElementVisual(ContextScroll);
+        ElementCompositionPreview.SetIsTranslationEnabled(ContextScroll, true);
+        var railVisual = ElementCompositionPreview.GetElementVisual(ContextRail);
+        railVisual.Clip ??= railVisual.Compositor.CreateInsetClip();
 
         ContextRail.IsHitTestVisible = show;
-        if (!new UISettings().AnimationsEnabled || from == (show ? 252 : 0)) {
-            CommitLayout(show);
-            return;
+        if (show) {
+            ContextRail.Width = 252;
+            ContextRail.Visibility = Visibility.Visible;
+            WorkspaceSurface.CornerRadius = new CornerRadius(0);
         }
-
-        ContextRail.Visibility = Visibility.Visible;
-        WorkspaceSurface.CornerRadius = new CornerRadius(0);
-        var animation = new DoubleAnimation { From = from, To = show ? 252 : 0,
-            Duration = new Duration(TimeSpan.FromMilliseconds(165)), EnableDependentAnimation = true,
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
-        Storyboard.SetTarget(animation, ContextRail);
-        Storyboard.SetTargetProperty(animation, "Width");
-        contextMotion = new Storyboard { Children = { animation } };
-        contextMotion.Completed += (_, _) => { if (transition == contextTransition) CommitLayout(show); };
-        var clip = ContextRail.Clip as RectangleGeometry;
-        if (clip is null) {
-            clip = new RectangleGeometry();
-            ContextRail.Clip = clip;
-            var railClip = clip;
-            ContextRail.SizeChanged += (_, args) => railClip.Rect = new Windows.Foundation.Rect(0, 0, args.NewSize.Width, args.NewSize.Height);
+        if (new UISettings().AnimationsEnabled && (show || wasVisible)) {
+            var motion = visual.Compositor.CreateVector3KeyFrameAnimation();
+            if (show && !wasVisible) motion.InsertKeyFrame(0, new(-252, 0, 0));
+            else motion.InsertExpressionKeyFrame(0, "this.StartingValue");
+            motion.InsertKeyFrame(1, new(show ? 0 : -252, 0, 0),
+                visual.Compositor.CreateCubicBezierEasingFunction(new(.18f, .8f), new(.3f, 1)));
+            motion.Duration = TimeSpan.FromMilliseconds(175);
+            visual.StartAnimation("Translation", motion);
+            await Task.Delay(motion.Duration);
         }
-        contextMotion.Begin();
+        if (transition != contextTransition) return;
+        visual.StopAnimation("Translation");
+        if (!show) {
+            ContextRail.Width = 0;
+            ContextRail.Visibility = Visibility.Collapsed;
+            WorkspaceSurface.CornerRadius = new CornerRadius(14, 0, 0, 0);
+            if (hasContent == false) ContextBody.Content = null;
+        }
     }
 
     void InitializeNavigationIconMotion()
@@ -80,6 +71,11 @@ public sealed partial class MainPage
         foreach (var item in Nav.MenuItems.Concat(Nav.FooterMenuItems).OfType<NavigationViewItem>()) {
             if (item.Tag is "chats" or "settings")
                 AutomationProperties.SetAutomationId(item, "Nav-" + item.Tag);
+            if (item.Icon is PathIcon icon) {
+                icon.Width = icon.Height = 20;
+                icon.HorizontalAlignment = HorizontalAlignment.Center;
+                icon.VerticalAlignment = VerticalAlignment.Center;
+            }
             var pointerInside = false;
             var pressing = false;
             var pressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };

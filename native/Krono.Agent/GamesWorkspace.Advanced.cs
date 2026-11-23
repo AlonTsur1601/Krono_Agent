@@ -56,7 +56,12 @@ public sealed partial class GamesWorkspace
     void AdvancedClick(int index)
     {
         if (paused || ended) return;
-        if (game == 13) { selectedSquare = index; gameMessage = clues[index] ? "This clue is fixed" : "Choose a digit, or press 1–9"; }
+        if (game == 13) {
+            selectedSquare = index;
+            gameMessage = clues[index] ? "This clue is fixed" : "Choose a digit, or press 1–9";
+            Draw();
+            return;
+        }
         if (game == 12) {
             if (botAt > 0 || !NativeGameRules.ReversiPlace(board, index, 1)) return;
             QueueBot();
@@ -88,6 +93,7 @@ public sealed partial class GamesWorkspace
     void PlaceStack()
     {
         if (game != 14 || paused || ended) return;
+        madeProgress = true;
         var last = tower[^1]; var placed = NativeGameRules.StackPlace(stackX, stackWidth, last[0], last[1], stackCombo);
         if (placed.Width <= 0) End("No overlap");
         else {
