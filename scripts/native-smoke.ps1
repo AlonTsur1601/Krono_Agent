@@ -199,9 +199,14 @@ function RightClick([string]$Id) {
     [KronoWindowCapture]::mouse_event(16, 0, 0, 0, [UIntPtr]::Zero)
 }
 function DragGameCell([int]$From, [int]$To) {
-    $source = (Find ('GameCell' + $From)).Current.BoundingRectangle
-    $target = (Find ('GameCell' + $To)).Current.BoundingRectangle
-    if ($source.IsEmpty -or $target.IsEmpty) { throw 'Puzzle squares do not have screen bounds' }
+    $deadline = (Get-Date).AddSeconds(5)
+    do {
+        $source = (Find ('GameCell' + $From)).Current.BoundingRectangle
+        $target = (Find ('GameCell' + $To)).Current.BoundingRectangle
+        if (!$source.IsEmpty -and !$target.IsEmpty) { break }
+        Start-Sleep -Milliseconds 100
+    } while ((Get-Date) -lt $deadline)
+    if ($source.IsEmpty -or $target.IsEmpty) { throw "Puzzle squares $From and $To did not lay out before the drag" }
     $x = $source.Left + $source.Width / 2
     $y = $source.Top + $source.Height / 2
     $dx = $target.Left + $target.Width / 2 - $x
