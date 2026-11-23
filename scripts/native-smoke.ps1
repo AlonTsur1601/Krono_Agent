@@ -457,7 +457,8 @@ function TestGamePreviews {
     try {
         for ($index = 0; $index -lt $names.Count; $index++) {
             $tile = 'GameTile' + $index
-            if ((Find $tile).Current.ItemStatus -ne 'Board preview available') {
+            $card = FindOptional $tile
+            if (!$card -or $card.Current.ItemStatus -ne 'Board preview available') {
                 # Filtering brings lazy previews into view at any window width.
                 SetValue 'GameSearch' $names[$index]
                 $deadline = (Get-Date).AddSeconds(8)
