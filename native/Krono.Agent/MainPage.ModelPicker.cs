@@ -55,12 +55,12 @@ public sealed partial class MainPage
         var initialProvider = provider;
         var generation = sessionGeneration;
         var useLocalIfAvailable = workspace.Setting("native.provider").Length == 0;
-        if (model.Length > 0) return;
+        if (model.Length > 0 || chatId is not null || !ReferenceEquals(Body.Content, chatView)) return;
         var candidate = useLocalIfAvailable ? "local" : initialProvider;
         try {
             var available = await DiscoverModels(candidate);
             if (generation != sessionGeneration || provider != initialProvider || model.Length > 0 ||
-                available.Count == 0 || chatId is not null || useLocalIfAvailable && workspace.Setting("native.provider").Length != 0) return;
+                available.Count == 0 || chatId is not null || !ReferenceEquals(Body.Content, chatView) || useLocalIfAvailable && workspace.Setting("native.provider").Length != 0) return;
             provider = candidate;
             ChooseDefaultModel(available);
         } catch (Exception error) when (error is InvalidOperationException or IOException or OperationCanceledException) { }

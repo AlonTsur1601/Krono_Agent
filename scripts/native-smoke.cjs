@@ -317,7 +317,12 @@ const server = http.createServer((request, response) => {
   else if (request.url === '/agent-browser-next') {
     agentCookiePresent = request.headers.cookie?.includes('KronoAgent=1') === true
     response.writeHead(200, { 'Content-Type': 'text/html' })
-    response.end('<title>Native agent browser next</title><h1>AGENT_BROWSER_NEXT_PAGE</h1>')
+    const frame = process.env.KRONO_SMOKE_SCOPE === 'tray-lifecycle' ? '<iframe src="/browser-hover-frame" title="Hover fixture"></iframe>' : ''
+    response.end('<title>Native agent browser next</title><h1>AGENT_BROWSER_NEXT_PAGE</h1>' + frame)
+  }
+  else if (request.url === '/browser-hover-frame') {
+    response.writeHead(200, { 'Content-Type': 'text/html' })
+    response.end('<a id="hover" href="/fixture-destination">Frame link</a><script>setTimeout(() => document.getElementById("hover").dispatchEvent(new PointerEvent("pointerover", { bubbles: true, composed: true })), 1000)</script>')
   }
   else if (request.url.startsWith('/browser-selection?')) { browserSelection = new URL(request.url, 'http://localhost').searchParams.get('text'); response.end('ok') }
   else if (request.url === '/browser-selection') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserSelection })) }
@@ -344,7 +349,7 @@ server.listen(0, '127.0.0.1', () => {
   const root = `http://127.0.0.1:${server.address().port}`
   fs.writeFileSync(path.join(home, 'account-service.json'), JSON.stringify({ url: root, anonKey: 'native-public-fixture' }))
   const exe = process.env.KRONO_SMOKE_EXE || path.resolve('native/Krono.Agent/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/KronoAgent.exe')
-  const closeWindow = process.env.KRONO_SMOKE_SCOPE === 'runtime-workspaces' ? '0' : '1'
+  const closeWindow = ['runtime-workspaces', 'tray-lifecycle'].includes(process.env.KRONO_SMOKE_SCOPE) ? '0' : '1'
   const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/native-smoke.ps1'), '-Executable', exe, '-Fixture', root, '-ReportDirectory', home], { env: { ...process.env, KRONO_USER_DATA: home, KRONO_SMOKE_CLOSE_WINDOW: closeWindow, OPENAI_BASE_URL: root + '/v1' }, stdio: 'inherit', windowsHide: true })
   child.on('exit', code => { server.close(); modelServer?.close(); console.log('Native smoke artifacts:', home); process.exitCode = code ?? 1 })
 })
