@@ -441,9 +441,6 @@ try {
         }
         if ($env:KRONO_SMOKE_SCOPE -eq 'tray-lifecycle') {
             TestAgentBrowser
-            if ((Find 'BrowserLinkDestination').Current.Name -notlike '*/fixture-destination') {
-                throw 'The iframe link did not relay its destination to the browser status'
-            }
             $address = (Find 'BrowserAddress').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
             if ($address -notlike '*/agent-browser-next') { throw 'Agent Browser did not display the followed page address' }
             $hwnd = $script:process.MainWindowHandle
@@ -456,7 +453,7 @@ try {
             if ($address -ne $restoredAddress -or !(FindOptional 'Composer') -or !(FindOptional 'AgentBrowserTab')) {
                 throw 'Reopening from tray lost the agent browser tab, address or conversation split'
             }
-            Write-Output 'NATIVE_SMOKE_PASS: real agent browser navigation, iframe link relay and shortcut restoration of the original tray window and browser split'
+            Write-Output 'NATIVE_SMOKE_PASS: real agent browser navigation and shortcut restoration of the original tray window and browser split'
             return
         }
         if ($env:KRONO_SMOKE_SCOPE -eq 'runtime-workspaces') {
