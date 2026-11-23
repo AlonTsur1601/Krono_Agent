@@ -1,0 +1,313 @@
+using System.Runtime.CompilerServices;
+using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
+using Microsoft.UI.Text;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
+using Windows.ApplicationModel.DataTransfer;
+
+namespace Krono_Agent;
+
+public static partial class NativeMarkdown
+{
+    internal const string LiveEditorSetting = "native.liveMarkdown";
+    static readonly ConditionalWeakTable<TextBox, LiveEditor> liveEditors = new();
+
+    internal static FrameworkElement Editor(TextBox input, Workspace workspace, Func<bool>? pasteImage = null)
+        => liveEditors.GetValue(input, field => new(field, workspace, pasteImage)).View;
+
+    internal static void Focus(TextBox input)
+    {
+        if (liveEditors.TryGetValue(input, out var editor) && editor.Rich.Visibility == Visibility.Visible)
+            editor.Rich.Focus(FocusState.Programmatic);
+        else input.Focus(FocusState.Programmatic);
+    }
+
+    internal static void ShowSaved(TextBox input)
+    {
+        if (liveEditors.TryGetValue(input, out var editor)) editor.ShowSaved();
+    }
+
+    internal static void RefreshEditors(Workspace workspace)
+    {
+        foreach (var (_, editor) in liveEditors)
+            if (ReferenceEquals(editor.Workspace, workspace) && editor.View.IsLoaded) editor.RefreshMode();
+    }
+
+    sealed class LiveEditor
+    {
+        readonly TextBox source;
+        readonly DispatcherTimer refresh = new() { Interval = TimeSpan.FromMilliseconds(35) };
+        MarkdownDecoration[] decorations = [];
+        string parsedSource = "";
+        string? formattedText;
+        HashSet<MarkdownDecoration> shownMarkers = [];
+        double formattedSize;
+        string formattedFont = "";
+        bool syncing, showingSaved;
+        public Workspace Workspace { get; }
+        public Grid View { get; } = new();
+        public RichEditBox Rich { get; }
+
+        public LiveEditor(TextBox input, Workspace workspace, Func<bool>? pasteImage)
+        {
+            source = input;
+            Workspace = workspace;
+            Rich = new RichEditBox {
+                Header = input.Header, PlaceholderText = input.PlaceholderText,
+                TextWrapping = input.TextWrapping, MinHeight = input.MinHeight, MaxHeight = input.MaxHeight,
+                Padding = new Thickness(12, 8, 12, 8), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10),
+                FlowDirection = input.FlowDirection, IsEnabled = input.IsEnabled,
+                HorizontalAlignment = input.HorizontalAlignment, VerticalAlignment = input.VerticalAlignment,
+                Visibility = Visibility.Collapsed
+            };
+            AutomationProperties.SetAutomationId(Rich, AutomationProperties.GetAutomationId(input));
+            AutomationProperties.SetName(Rich, input.Header?.ToString() ?? input.PlaceholderText);
+            void Paint()
+            {
+                Rich.Background = KronoDesign.ThemeBrush("KronoInputFace", Rich.ActualTheme);
+                Rich.BorderBrush = KronoDesign.ThemeBrush("KronoInputRim", Rich.ActualTheme);
+            }
+            KronoInputMotion.Attach(Rich);
+            KronoInputMotion.RegisterPaletteRefresh(Rich, () => { formattedFont = ""; QueueFormat(); });
+            Rich.ActualThemeChanged += (_, _) => { Paint(); formattedFont = ""; QueueFormat(); };
+            Paint();
+            View.Children.Add(source);
+            View.Children.Add(Rich);
+            View.Loaded += (_, _) => RefreshMode();
+            View.Unloaded += (_, _) => refresh.Stop();
+            refresh.Tick += (_, _) => { refresh.Stop(); ApplyFormat(); };
+            source.TextChanged += (_, _) => {
+                if (!syncing && Rich.Visibility == Visibility.Visible) SetDocument();
+            };
+            source.IsEnabledChanged += (_, _) => Rich.IsEnabled = source.IsEnabled;
+            Rich.TextChanged += (_, _) => {
+                if (syncing || Rich.Visibility != Visibility.Visible) return;
+                Rich.Document.GetText(TextGetOptions.UseLf, out var text);
+                if (text != Normalize(source.Text)) {
+                    syncing = true;
+                    try { source.Text = text.Length <= source.MaxLength || source.MaxLength == 0 ? text : text[..source.MaxLength]; }
+                    finally { syncing = false; }
+                    if (Normalize(source.Text) != text) SetDocument();
+                }
+                QueueFormat();
+            };
+            Rich.SelectionChanged += (_, _) => { if (!syncing) QueueFormat(); };
+            Rich.GotFocus += (_, _) => {
+                if (showingSaved) {
+                    showingSaved = false;
+                    RefreshMode();
+                    if (source.Visibility == Visibility.Visible) source.Focus(FocusState.Programmatic);
+                } else QueueFormat();
+            };
+            Rich.LostFocus += (_, _) => QueueFormat();
+            Rich.Paste += async (_, args) => {
+                args.Handled = true;
+                if (pasteImage?.Invoke() == true) return;
+                try {
+                    var clipboard = Clipboard.GetContent();
+                    if (!clipboard.Contains(StandardDataFormats.Text)) return;
+                    var text = Normalize(await clipboard.GetTextAsync());
+                    if (Rich.FocusState != FocusState.Unfocused)
+                        Rich.Document.Selection.SetText(TextSetOptions.Unhide | TextSetOptions.Unlink, text);
+                } catch (System.Runtime.InteropServices.COMException) { }
+            };
+        }
+
+        public void ShowSaved()
+        {
+            if (Workspace.Setting(LiveEditorSetting) == "true" || string.IsNullOrEmpty(source.Text)) return;
+            showingSaved = true;
+            RefreshMode();
+        }
+
+        public void RefreshMode()
+        {
+            var live = Workspace.Setting(LiveEditorSetting) == "true";
+            if (live) showingSaved = false;
+            var enabled = live || showingSaved;
+            Rich.IsReadOnly = showingSaved;
+            if (enabled == (Rich.Visibility == Visibility.Visible)) return;
+            var focus = enabled ? source.FocusState != FocusState.Unfocused : Rich.FocusState != FocusState.Unfocused;
+            if (enabled) {
+                Rich.Visibility = Visibility.Visible;
+                source.Visibility = Visibility.Collapsed;
+                SetDocument();
+                if (focus && !showingSaved) Rich.Focus(FocusState.Programmatic);
+            } else {
+                refresh.Stop();
+                source.Visibility = Visibility.Visible;
+                Rich.Visibility = Visibility.Collapsed;
+                if (focus) source.Focus(FocusState.Programmatic);
+            }
+        }
+
+        void SetDocument()
+        {
+            syncing = true;
+            try {
+                var text = Normalize(source.Text);
+                var paragraph = Rich.Document.GetDefaultParagraphFormat();
+                paragraph.Alignment = source.TextAlignment switch {
+                    Microsoft.UI.Xaml.TextAlignment.Right => ParagraphAlignment.Right,
+                    Microsoft.UI.Xaml.TextAlignment.Center => ParagraphAlignment.Center,
+                    _ => ParagraphAlignment.Left
+                };
+                Rich.Document.SetDefaultParagraphFormat(paragraph);
+                Rich.Document.SetText(TextSetOptions.Unhide | TextSetOptions.Unlink, text);
+                formattedText = null;
+                Rich.Document.GetRange(0, text.Length).ParagraphFormat.Alignment = paragraph.Alignment;
+                Rich.Document.Selection.SetRange(text.Length, text.Length);
+            } finally { syncing = false; }
+            QueueFormat();
+        }
+
+        void QueueFormat()
+        {
+            if (View.IsLoaded && Rich.Visibility == Visibility.Visible && !refresh.IsEnabled) refresh.Start();
+        }
+
+        void ApplyFormat()
+        {
+            if (syncing || Rich.Visibility != Visibility.Visible) return;
+            var document = Rich.Document;
+            var text = Normalize(source.Text);
+            var font = KronoDesign.TextFont.Source;
+            var size = KronoDesign.TextSize;
+            if (text != parsedSource) {
+                decorations = ReadDecorations(text);
+                parsedSource = text;
+            }
+            var selection = document.Selection;
+            var start = selection.StartPosition;
+            var end = selection.EndPosition;
+            var editing = !showingSaved && Rich.FocusState != FocusState.Unfocused;
+            var active = editing && start == end ? decorations.Where(span => span.Start <= start && span.End >= start)
+                .MinBy(span => span.End - span.Start) : null;
+            var revealed = active is not null ? new HashSet<MarkdownDecoration> { active }
+                : editing && start != end
+                    ? decorations.Where(span => span.Start < end && span.End > start).ToHashSet()
+                    : [];
+            var updateStyles = text != formattedText || formattedFont != font || formattedSize != size;
+            if (!updateStyles && shownMarkers.SetEquals(revealed)) return;
+
+            syncing = true;
+            document.BatchDisplayUpdates();
+            try {
+                var baseline = document.GetDefaultCharacterFormat();
+                if (formattedFont != font || formattedSize != size) {
+                    // RichEdit uses font family names. Bundled XAML font URIs include a family after '#'.
+                    baseline.Name = FontName(font);
+                    baseline.Size = (float)(size * .75);
+                    document.SetDefaultCharacterFormat(baseline);
+                    formattedSize = size;
+                    formattedFont = font;
+                }
+                if (updateStyles && text.Length > 0) {
+                    baseline.Hidden = FormatEffect.Off;
+                    baseline.Bold = baseline.Italic = baseline.Strikethrough = FormatEffect.Off;
+                    baseline.Underline = UnderlineType.None;
+                    document.GetRange(0, text.Length).CharacterFormat = baseline;
+                }
+                foreach (var span in decorations) {
+                    if (updateStyles) {
+                        var format = document.GetRange(span.ContentStart, span.ContentEnd).CharacterFormat;
+                        switch (span.Kind) {
+                            case "bold": format.Bold = FormatEffect.On; break;
+                            case "italic": format.Italic = FormatEffect.On; break;
+                            case "bold-italic": format.Bold = format.Italic = FormatEffect.On; break;
+                            case "underline": format.Underline = UnderlineType.Single; break;
+                            case "strike": format.Strikethrough = FormatEffect.On; break;
+                            case "code": format.Name = FontName(KronoDesign.CodeFont.Source); break;
+                            case "heading":
+                                format.Bold = FormatEffect.On;
+                                format.Size = (float)((size + (7 - span.Level) * 2) * .75);
+                                break;
+                        }
+                    }
+                    var visible = revealed.Contains(span);
+                    if (!updateStyles && visible == shownMarkers.Contains(span)) continue;
+                    var hidden = visible ? FormatEffect.Off : FormatEffect.On;
+                    if (span.Start < span.ContentStart)
+                        document.GetRange(span.Start, span.ContentStart).CharacterFormat.Hidden = hidden;
+                    if (span.ContentEnd < span.End)
+                        document.GetRange(span.ContentEnd, span.End).CharacterFormat.Hidden = hidden;
+                }
+                shownMarkers = revealed;
+                formattedText = text;
+                selection.SetRange(start, end);
+                if (start == end) selection.CharacterFormat.Hidden = FormatEffect.Off;
+            } finally { document.ApplyDisplayUpdates(); syncing = false; }
+        }
+    }
+
+    static string Normalize(string text) => text.ReplaceLineEndings("\n");
+    static string FontName(string source) => source[(source.LastIndexOf('#') + 1)..];
+
+    sealed record MarkdownDecoration(int Start, int ContentStart, int ContentEnd, int End, string Kind, int Level = 0);
+
+    static MarkdownDecoration[] ReadDecorations(string text)
+    {
+        var spans = new List<MarkdownDecoration>();
+        void Add(int start, int contentStart, int contentEnd, int end, string kind, int level = 0)
+        {
+            if (start >= 0 && start <= contentStart && contentStart < contentEnd && contentEnd <= end && end <= text.Length)
+                spans.Add(new(start, contentStart, contentEnd, end, kind, level));
+        }
+
+        void ReadInlines(ContainerInline container)
+        {
+            var underlines = new Stack<HtmlInline>();
+            foreach (var inline in container) {
+                var start = inline.Span.Start;
+                var end = inline.Span.End + 1;
+                switch (inline) {
+                    case EmphasisInline emphasis:
+                        var count = emphasis.DelimiterCount;
+                        var kind = emphasis.DelimiterChar switch {
+                            '+' => "underline", '~' => "strike",
+                            _ => count switch { 1 => "italic", 2 => "bold", _ => "bold-italic" }
+                        };
+                        Add(start, start + count, end - count, end, kind);
+                        break;
+                    case CodeInline code:
+                        Add(start, start + code.DelimiterCount, end - code.DelimiterCount, end, "code");
+                        break;
+                    case LinkInline { IsImage: false, FirstChild: { } first, LastChild: { } last }:
+                        Add(start, first.Span.Start, last.Span.End + 1, end, "underline");
+                        break;
+                    case HtmlInline html when html.Tag.Equals("<u>", StringComparison.OrdinalIgnoreCase):
+                        underlines.Push(html);
+                        break;
+                    case HtmlInline html when html.Tag.Equals("</u>", StringComparison.OrdinalIgnoreCase) && underlines.TryPop(out var open):
+                        Add(open.Span.Start, open.Span.End + 1, start, end, "underline");
+                        break;
+                }
+                if (inline is ContainerInline nested) ReadInlines(nested);
+            }
+        }
+
+        void ReadBlocks(ContainerBlock blocks)
+        {
+            foreach (var block in blocks) {
+                if (block is HeadingBlock { Inline: { FirstChild: { } first, LastChild: { } last } } heading)
+                    Add(heading.Span.Start, first.Span.Start, last.Span.End + 1, heading.Span.End + 1, "heading", heading.Level);
+                if (block is FencedCodeBlock fence) {
+                    var start = fence.Span.Start;
+                    var end = Math.Min(text.Length, fence.Span.End + 1);
+                    if (start >= 0 && end > start) {
+                        var firstLine = text.IndexOf('\n', start, end - start);
+                        var lastLine = text.LastIndexOf('\n', end - 1, end - start);
+                        if (firstLine >= 0 && lastLine > firstLine && text.AsSpan(lastLine + 1, end - lastLine - 1).TrimStart().StartsWith(new string(fence.FencedChar, 3)))
+                            Add(start, firstLine + 1, lastLine, end, "code");
+                    }
+                }
+                if (block is LeafBlock { Inline: { } inlines }) ReadInlines(inlines);
+                else if (block is ContainerBlock nested) ReadBlocks(nested);
+            }
+        }
+        ReadBlocks(Markdig.Markdown.Parse(text, Pipeline));
+        return spans.ToArray();
+    }
+}

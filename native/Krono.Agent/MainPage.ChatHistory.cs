@@ -71,7 +71,7 @@ public sealed partial class MainPage
                 return;
             }
             if (row.ContextFlyout is not null) return;
-            var menu = new MenuFlyout();
+            var menu = KronoDesign.CreateMenu();
             var pin = new MenuFlyoutItem();
             var archive = new MenuFlyoutItem();
             var delete = new MenuFlyoutItem { Text = "Delete chat" };

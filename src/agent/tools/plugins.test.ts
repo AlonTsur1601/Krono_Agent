@@ -29,6 +29,13 @@ describe('optional plugins', () => {
     expect(PluginConfig.safeParse({ id: 'unknown-skill', skill: true }).success).toBe(false)
   })
 
+  it('registers only tools listed in an installed package', () => {
+    const enabled = PluginConfig.parse({ id: 'npm', tools: ['npm_get_package', 'github_list_repositories'] })
+    const disabled = PluginConfig.parse({ id: 'npm', tools: [] })
+    expect(pluginTools([enabled]).map(tool => tool.name)).toEqual(['npm_get_package'])
+    expect(pluginTools([disabled])).toEqual([])
+  })
+
   it('searches Hugging Face public models without credentials and projects only catalog data', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json([
       { id: 'example/test-model', pipeline_tag: 'text-generation', downloads: 25, ignored: 'omitted' },

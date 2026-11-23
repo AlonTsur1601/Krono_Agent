@@ -5,6 +5,12 @@ const path = require('path')
 fs.copyFileSync(process.execPath, 'dist/sidecar/node.exe')
 fs.copyFileSync('src/db/schema.sql', 'dist/sidecar/schema.sql')
 fs.copyFileSync('src/agent/providers/catalog.json', 'dist/sidecar/providers.json')
+const pluginPackages = path.join('dist', 'sidecar', 'plugin-packages')
+fs.mkdirSync(pluginPackages, { recursive: true })
+for (const { id, type, guidance, tools } of require('../src/agent/tools/plugin-catalog.json')) {
+  if (!/^[a-z0-9-]+$/.test(id)) throw new Error('Invalid plugin package ID')
+  fs.writeFileSync(path.join(pluginPackages, id + '.json'), JSON.stringify({ id, type, guidance, tools }))
+}
 for (const item of ['lib', 'prebuilds/win32-x64', 'package.json', 'LICENSE']) {
   const source = path.join('node_modules/node-pty', item)
   if (fs.existsSync(source)) fs.cpSync(source, path.join('dist/sidecar/node_modules/node-pty', item), { recursive: true })

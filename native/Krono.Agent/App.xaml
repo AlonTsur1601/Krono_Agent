@@ -158,48 +158,12 @@
                             </Grid>
                         </ControlTemplate>
             <ControlTemplate x:Key="KronoFlatIconTemplate" TargetType="ButtonBase">
-                <Border x:Name="IconFace" Background="{ThemeResource KronoInputFace}" CornerRadius="{TemplateBinding CornerRadius}">
-                    <VisualStateManager.VisualStateGroups>
-                        <VisualStateGroup x:Name="CommonStates">
-                            <VisualState x:Name="Normal" />
-                            <VisualState x:Name="PointerOver">
-                                <VisualState.Setters><Setter Target="IconFace.Background" Value="{ThemeResource ButtonBackgroundPointerOver}" /></VisualState.Setters>
-                            </VisualState>
-                            <VisualState x:Name="Pressed">
-                                <VisualState.Setters><Setter Target="IconFace.Background" Value="{ThemeResource ButtonBackgroundPressed}" /></VisualState.Setters>
-                            </VisualState>
-                            <VisualState x:Name="Disabled">
-                                <VisualState.Setters><Setter Target="IconContent.Opacity" Value=".45" /></VisualState.Setters>
-                            </VisualState>
-                        </VisualStateGroup>
-                    </VisualStateManager.VisualStateGroups>
-                    <Border.BackgroundTransition><BrushTransition Duration="0:0:0.12" /></Border.BackgroundTransition>
-                    <ContentPresenter x:Name="IconContent" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"
-                        HorizontalAlignment="Center" VerticalAlignment="Center" />
-                </Border>
-            </ControlTemplate>
-            <ControlTemplate x:Key="KronoQuietIconTemplate" TargetType="ButtonBase">
                 <Grid Background="Transparent">
-                    <VisualStateManager.VisualStateGroups>
-                        <VisualStateGroup x:Name="CommonStates">
-                            <VisualState x:Name="Normal"/>
-                            <VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="Tint.Opacity" Value=".58"/></VisualState.Setters></VisualState>
-                            <VisualState x:Name="Pressed"><VisualState.Setters>
-                                <Setter Target="Tint.Opacity" Value=".78"/>
-                                <Setter Target="Tint.Background" Value="{ThemeResource ButtonBackgroundPressed}"/>
-                            </VisualState.Setters></VisualState>
-                            <VisualState x:Name="Disabled"><VisualState.Setters><Setter Target="Icon.Opacity" Value=".45"/></VisualState.Setters></VisualState>
-                        </VisualStateGroup>
-                    </VisualStateManager.VisualStateGroups>
-                    <Border x:Name="Tint" CornerRadius="{TemplateBinding CornerRadius}" Background="{ThemeResource ButtonBackgroundPointerOver}"
-                            Opacity="0" IsHitTestVisible="False"><Border.OpacityTransition><ScalarTransition Duration="0:0:0.12"/></Border.OpacityTransition></Border>
-                    <ContentPresenter x:Name="Icon" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"
-                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <Border x:Name="KronoFlatTint" CornerRadius="{TemplateBinding CornerRadius}" IsHitTestVisible="False"/>
+                    <ContentPresenter x:Name="KronoFlatContent" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"
+                        HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                        Margin="{TemplateBinding Padding}"/>
                 </Grid>
-            </ControlTemplate>
-            <ControlTemplate x:Key="KronoBrowserToolbarTemplate" TargetType="ButtonBase">
-                <ContentPresenter Background="Transparent" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"
-                                  HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
             </ControlTemplate>
             <Style x:Key="KronoButtonBase" TargetType="ButtonBase">
                 <Setter Property="Template" Value="{StaticResource KronoPressTemplate}" />
@@ -236,6 +200,28 @@
                 <Setter Property="VerticalContentAlignment" Value="Center" />
                 <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource KronoInputRim}" />
+            </Style>
+            <Style x:Key="KronoCompactTextInput" TargetType="TextBox" BasedOn="{StaticResource KronoTextInput}">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="0"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Border x:Name="BorderElement" Grid.Row="1" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="{TemplateBinding CornerRadius}"/>
+                                <ScrollViewer x:Name="ContentElement" Grid.Row="1" Margin="{TemplateBinding BorderThickness}"
+                                    Padding="{TemplateBinding Padding}" Foreground="{TemplateBinding Foreground}"
+                                    VerticalContentAlignment="Center" HorizontalScrollBarVisibility="Hidden"
+                                    VerticalScrollBarVisibility="Disabled" ZoomMode="Disabled" IsTabStop="False"
+                                    AutomationProperties.AccessibilityView="Raw"/>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
             <Style TargetType="ComboBox">
                 <Setter Property="BorderThickness" Value="1" />

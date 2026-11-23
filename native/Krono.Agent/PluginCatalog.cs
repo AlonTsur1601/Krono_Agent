@@ -22,27 +22,84 @@ static class PluginCatalog
         return JsonSerializer.Deserialize<Plugin[]>(manifest, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
     }
 
-    internal static bool Installed(Workspace workspace, Plugin plugin) => workspace.Setting(plugin.Setting) == "true";
+    static string Packaged(Plugin plugin) => Path.Combine(AppContext.BaseDirectory, "Engine", "plugin-packages", plugin.Id + ".json");
+
+    static JsonObject? ReadInstalled(Workspace workspace, Plugin plugin)
+    {
+        if (workspace.AccountId.Length == 0 || workspace.Setting(plugin.Setting) == "false") return null;
+        var path = workspace.InstalledPluginPath(plugin.Id);
+        try {
+            var file = new FileInfo(path);
+            if (!file.Exists || file.Length is <= 0 or > 16_384) return null;
+            var contents = File.ReadAllBytes(path);
+            if (!contents.AsSpan().SequenceEqual(File.ReadAllBytes(Packaged(plugin)))) return null;
+            return JsonNode.Parse(contents) as JsonObject;
+        } catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) {
+            return null;
+        }
+    }
+
+    internal static bool Installed(Workspace workspace, Plugin plugin) => ReadInstalled(workspace, plugin) is not null;
+
+    internal static void Install(Workspace workspace, Plugin plugin)
+    {
+        if (workspace.AccountId.Length == 0) return;
+        var contents = File.ReadAllBytes(Packaged(plugin));
+        var package = JsonNode.Parse(contents);
+        if (contents.Length > 16_384 || package?["id"]?.ToString() != plugin.Id || package?["type"]?.ToString() != plugin.Type)
+            throw new InvalidOperationException("The plugin package is invalid.");
+        var path = workspace.InstalledPluginPath(plugin.Id);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try {
+            File.WriteAllBytes(temporary, contents);
+            File.Move(temporary, path, overwrite: true);
+        } finally { File.Delete(temporary); }
+        workspace.SetSetting(plugin.Setting, "true");
+    }
+
+    internal static void RestoreInstallations(Workspace workspace)
+    {
+        foreach (var plugin in All) {
+            if (workspace.Setting(plugin.Setting) != "true" || Installed(workspace, plugin)) continue;
+            try { Install(workspace, plugin); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) {
+                App.RecordFault("Plugin package restoration", error);
+            }
+        }
+    }
 
     internal static JsonObject? Configuration(Workspace workspace, Plugin plugin)
     {
-        if (!plugin.RequiresAccount) return new JsonObject { ["id"] = plugin.Id, ["skill"] = plugin.Type == "skill" ? JsonValue.Create(true) : null };
+        if (ReadInstalled(workspace, plugin) is not { } package) return null;
+        if (!plugin.RequiresAccount) {
+            var published = new JsonObject { ["id"] = package["id"]?.DeepClone() };
+            if (plugin.Type == "skill") {
+                published["skill"] = true;
+                published["guidance"] = package["guidance"]?.DeepClone();
+            }
+            else published["tools"] = package["tools"]?.DeepClone();
+            return published;
+        }
         var value = workspace.Key(plugin.GrantSetting);
         if (value.Length > 0) {
-            try { return JsonNode.Parse(value) as JsonObject; }
-            catch (JsonException) { return null; }
+            try {
+                if (JsonNode.Parse(value) is not JsonObject configuration) return null;
+                configuration["tools"] = package["tools"]?.DeepClone();
+                return configuration;
+            } catch (JsonException) { return null; }
         }
 
         // Previously configured, encrypted credentials still work until the user reconnects or removes the plugin.
         if (plugin.Id is not ("github" or "vercel") || workspace.Key(plugin.Setting) is not { Length: > 0 } credential) return null;
-        var config = new JsonObject { ["id"] = plugin.Id, ["token"] = credential };
+        var config = new JsonObject { ["id"] = plugin.Id, ["token"] = credential, ["tools"] = package["tools"]?.DeepClone() };
         if (plugin.Id == "vercel" && workspace.Setting("native.plugin.vercel.team") is { Length: > 0 } team)
             config["teamId"] = team;
         return config;
     }
 
     internal static object[] Enabled(Workspace workspace, bool includeTools = true) => All
-        .Where(plugin => (includeTools || plugin.Type == "skill") && Installed(workspace, plugin))
+        .Where(plugin => includeTools || plugin.Type == "skill")
         .Select(plugin => Configuration(workspace, plugin)).OfType<object>().ToArray();
 
     internal static void SaveConnection(Workspace workspace, Plugin plugin, JsonNode response, string? profile)
@@ -73,6 +130,7 @@ static class PluginCatalog
     {
         var profile = plugin.UsesCli ? Configuration(workspace, plugin)?["profile"]?.GetValue<string>() : null;
         workspace.SetSetting(plugin.Setting, "false");
+        File.Delete(workspace.InstalledPluginPath(plugin.Id));
         if (plugin.RequiresAccount) workspace.SaveKey(plugin.GrantSetting, "");
         if (plugin.Id is "github" or "vercel") workspace.SaveKey(plugin.Setting, "");
         if (profile is not null) workspace.ClearPluginProfile(plugin.Id, profile);
@@ -81,6 +139,8 @@ static class PluginCatalog
 
 public sealed partial class Workspace
 {
+    internal string InstalledPluginPath(string plugin) => Path.Combine(dataHome, "native-installed-plugins", AccountId, plugin + ".json");
+
     string PluginProfileRoot(string plugin) => Path.Combine(dataHome, "native-plugin-profiles", AccountId, plugin);
     internal string NewPluginProfile(string plugin) => Path.GetFullPath(Path.Combine(PluginProfileRoot(plugin), Guid.NewGuid().ToString("N")));
 

@@ -159,11 +159,14 @@ public sealed partial class MainPage
             Text = workspace.Setting("instructions.global")
         };
         AutomationProperties.SetAutomationId(global, "GlobalInstructions");
-        var globalEditor = NativeMarkdown.Editor(global);
+        var globalEditor = NativeMarkdown.Editor(global, workspace);
         Grid.SetRow(globalEditor, 1);
         panel.Children.Add(globalEditor);
         var footer = new StackPanel { Spacing = 8 };
-        footer.Children.Add(Button("Save global instructions", () => workspace.SetSetting("instructions.global", global.Text.Trim())));
+        footer.Children.Add(Button("Save global instructions", () => {
+            workspace.SetSetting("instructions.global", global.Text.Trim());
+            NativeMarkdown.ShowSaved(global);
+        }));
         Grid.SetRow(footer, 2);
         panel.Children.Add(footer);
         var projectsPanel = new StackPanel { Spacing = 6 };
@@ -183,13 +186,14 @@ public sealed partial class MainPage
         };
         picker.SelectedIndex = 0;
         projectsPanel.Children.Add(picker);
-        projectsPanel.Children.Add(NativeMarkdown.Editor(instructions));
+        projectsPanel.Children.Add(NativeMarkdown.Editor(instructions, workspace));
         projectsPanel.Children.Add(Button("Save project instructions", () => {
             if (picker.SelectedIndex < 0) return;
             var id = SelectedProject();
             var config = workspace.ProjectPreferences(id);
             config["instructions"] = instructions.Text.Trim();
             workspace.SetSetting("project." + id, config.ToJsonString());
+            NativeMarkdown.ShowSaved(instructions);
         }));
         return panel;
     }

@@ -10,45 +10,12 @@ using System.Text.RegularExpressions;
 
 namespace Krono_Agent;
 
-public static class NativeMarkdown
+public static partial class NativeMarkdown
 {
     static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
     static readonly Regex CodeTokens = new(
         """(?<comment>//[^\n]*|#[^\n]*)|(?<literal>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(?<keyword>\b(?:const|let|var|function|class|return|if|else|for|while|import|from|export|public|private|async|await|def|true|false|null|None|new|using|void|int|string)\b)|(?<number>\b\d+(?:\.\d+)?\b)""",
         RegexOptions.NonBacktracking | RegexOptions.CultureInvariant);
-    internal static Grid Editor(TextBox input)
-    {
-        var editor = new Grid { RowSpacing = 5 };
-        editor.RowDefinitions.Add(new RowDefinition());
-        editor.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        var preview = new ScrollViewer { Visibility = Visibility.Collapsed, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Padding = new Thickness(10, 5, 10, 5) };
-        var toggle = new Button { Content = "Preview Markdown", HorizontalAlignment = HorizontalAlignment.Right, Tag = "caption" };
-        input.TextChanged += (_, _) => {
-            if (preview.Visibility == Visibility.Visible)
-                preview.Content = Render(input.Text, KronoDesign.TextFont.Source, KronoDesign.TextSize,
-                    KronoDesign.CodeFont.Source, KronoDesign.CodeSize);
-        };
-        toggle.Click += (_, _) => {
-            var showing = preview.Visibility == Visibility.Visible;
-            if (!showing) {
-                preview.MinHeight = input.ActualHeight;
-                preview.MaxHeight = Math.Max(input.ActualHeight, 1);
-                preview.Content = Render(input.Text, KronoDesign.TextFont.Source, KronoDesign.TextSize,
-                    KronoDesign.CodeFont.Source, KronoDesign.CodeSize);
-            }
-            preview.Visibility = showing ? Visibility.Collapsed : Visibility.Visible;
-            input.Visibility = showing ? Visibility.Visible : Visibility.Collapsed;
-            toggle.Content = showing ? "Preview Markdown" : "Edit Markdown";
-            if (showing) input.Focus(FocusState.Programmatic);
-        };
-        Grid.SetRow(toggle, 1);
-        editor.Children.Add(input);
-        editor.Children.Add(preview);
-        editor.Children.Add(toggle);
-        return editor;
-    }
-
     public static RichTextBlock Render(string source, string textFont, double textSize, string codeFont, double codeSize, string palette = "classic")
     {
         var resolvedCodeFont = KronoDesign.ResolveFont(codeFont);
@@ -98,15 +65,29 @@ public static class NativeMarkdown
         }
         void AddInlines(ContainerInline container, InlineCollection target)
         {
+            var underlines = new Stack<InlineCollection>();
             foreach (var inline in container) {
                 switch (inline) {
+                    case HtmlInline html when html.Tag.Equals("<u>", StringComparison.OrdinalIgnoreCase):
+                        var underline = new Underline();
+                        target.Add(underline);
+                        underlines.Push(target);
+                        target = underline.Inlines;
+                        break;
+                    case HtmlInline html when html.Tag.Equals("</u>", StringComparison.OrdinalIgnoreCase) && underlines.TryPop(out var parent):
+                        target = parent;
+                        break;
                     case LiteralInline literal: target.Add(new Run { Text = literal.Content.ToString() }); break;
                     case CodeInline code: target.Add(new Run { Text = code.Content, FontFamily = resolvedCodeFont, FontSize = codeSize }); break;
                     case LineBreakInline: target.Add(new LineBreak()); break;
                     case LinkInline link when !link.IsImage && Uri.TryCreate(link.Url, UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http":
                         var hyperlink = new Hyperlink(); AddInlines(link, hyperlink.Inlines); hyperlink.Click += (_, _) => Process.Start(new ProcessStartInfo(uri.ToString()) { UseShellExecute = true }); target.Add(hyperlink); break;
                     case EmphasisInline emphasis:
-                        Span span = emphasis.DelimiterCount >= 2 ? new Bold() : new Italic(); AddInlines(emphasis, span.Inlines); target.Add(span); break;
+                        Span span = emphasis.DelimiterChar switch {
+                            '+' => new Underline(),
+                            '~' => new Span { TextDecorations = Windows.UI.Text.TextDecorations.Strikethrough },
+                            _ => emphasis.DelimiterCount >= 2 ? new Bold() : new Italic()
+                        }; AddInlines(emphasis, span.Inlines); target.Add(span); break;
                     case ContainerInline nested: AddInlines(nested, target); break;
                     default: target.Add(new Run { Text = inline.ToString() ?? "" }); break;
                 }

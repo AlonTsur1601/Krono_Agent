@@ -119,7 +119,7 @@ public sealed class KronoComboBox : ComboBox
     };
 
     UIElement? outsideRoot;
-    TextBlock? emptyOptions;
+    Flyout? emptyMenu;
     readonly PointerEventHandler outsidePress;
 
     void DetachOutsidePress()
@@ -140,7 +140,10 @@ public sealed class KronoComboBox : ComboBox
         KronoInputMotion.RegisterPaletteRefresh(this, RefreshPalette);
         ActualThemeChanged += (_, _) => RefreshPalette();
         DropDownOpened += (_, _) => {
-            RefreshEmptyOptions();
+            if (Items.Count == 0) {
+                DispatcherQueue.TryEnqueue(ShowEmptyMenu);
+                return;
+            }
             if (GetTemplateChild("Popup") is not Popup dropdown) return;
             // WinUI inserts a canvas in front of the page to eat the first outside click.
             // Let the page receive that click and close the dropdown from the same event.
@@ -153,9 +156,16 @@ public sealed class KronoComboBox : ComboBox
             if (GetTemplateChild("PopupBorder") is FrameworkElement surface)
                 KronoDesign.AnimateMenuOpening(surface);
         };
-        Items.VectorChanged += (_, _) => RefreshEmptyOptions();
-        DropDownClosed += (_, _) => DetachOutsidePress();
-        Unloaded += (_, _) => DetachOutsidePress();
+        Items.VectorChanged += (_, _) => { if (Items.Count != 0) emptyMenu?.Hide(); };
+        DropDownClosed += (_, _) => {
+            DetachOutsidePress();
+            if (GetTemplateChild("PopupBorder") is Border popup) {
+                KronoInputMotion.ResetFlatButtons(popup);
+                foreach (var row in KronoInputMotion.Descendants(popup).OfType<ComboBoxItem>())
+                    VisualStateManager.GoToState(row, row.IsSelected ? "Selected" : "Normal", false);
+            }
+        };
+        Unloaded += (_, _) => { DetachOutsidePress(); emptyMenu?.Hide(); };
     }
 
     protected override void OnApplyTemplate()
@@ -172,23 +182,27 @@ public sealed class KronoComboBox : ComboBox
             popup.CornerRadius = CornerRadius;
             popup.Padding = new Thickness(2);
             popup.BorderThickness = new Thickness(1, 1, 1, 3);
-            if (popup.Child is FrameworkElement content && !ReferenceEquals(content.Tag, this)) {
-                popup.Child = null;
-                var surface = new Grid { Tag = this };
-                surface.Children.Add(content);
-                emptyOptions = new TextBlock { Text = "No options available.", Margin = new Thickness(12, 10, 12, 10),
-                    TextWrapping = TextWrapping.Wrap, MinHeight = 24, IsHitTestVisible = false, Opacity = .72 };
-                surface.Children.Add(emptyOptions);
-                popup.Child = surface;
-                RefreshEmptyOptions();
-            }
         }
         RefreshPalette();
     }
 
-    void RefreshEmptyOptions()
+    void ShowEmptyMenu()
     {
-        if (emptyOptions is not null) emptyOptions.Visibility = Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (!IsLoaded || !IsDropDownOpen || Items.Count != 0) return;
+        // The system popup sizes itself against its item list, which has no height here.
+        IsDropDownOpen = false;
+        if (emptyMenu is null) {
+            var message = new TextBlock { Text = "No options available.", TextWrapping = TextWrapping.Wrap };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(message, "EmptyDropdownMessage");
+            emptyMenu = new Flyout { Content = message, Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
+            emptyMenu.Opened += (_, _) => KronoDesign.AnimateMenuOpening(message);
+        }
+        if (emptyMenu.Content is TextBlock label) {
+            label.MinWidth = Math.Max(140, ActualWidth - 24);
+            label.FontFamily = FontFamily;
+            label.FontSize = FontSize;
+        }
+        emptyMenu.ShowAt(this);
     }
 
     protected override void PrepareContainerForItemOverride(DependencyObject element, object item)
@@ -248,7 +262,13 @@ internal static class KronoInputMotion
     }
 
     static readonly ConditionalWeakTable<Control, object> Attached = new();
-    static readonly ConditionalWeakTable<ButtonBase, object> StyledButtons = new();
+    static readonly ConditionalWeakTable<ButtonBase, Action> StyledButtons = new();
+
+    internal static void ResetFlatButtons(DependencyObject root)
+    {
+        foreach (var button in Descendants(root).OfType<ButtonBase>())
+            if (StyledButtons.TryGetValue(button, out var reset)) reset();
+    }
     static readonly ConditionalWeakTable<FrameworkElement, CompositeTransform> SurfaceTransforms = new();
 
     internal static void AlignTextContent(Control field)
@@ -327,7 +347,7 @@ internal static class KronoInputMotion
                 field is KronoComboBox { IsEditable: true } && Descendants(field).OfType<TextBox>().Any(editor => editor.FocusState != FocusState.Unfocused);
             var active = field.IsEnabled && (focused || hover);
             var pressing = field.IsEnabled && (pressed || pressFeedback.IsEnabled);
-            if (field is not (TextBox or PasswordBox))
+            if (field is not PasswordBox && field is not KronoTextBox { PressMotionEnabled: false })
                 AnimateSurface(field, pressing ? .98f : 1, companion);
             if (rim is null || shade is null || fill is null) return;
             var theme = field.ActualTheme;
@@ -371,7 +391,6 @@ internal static class KronoInputMotion
     internal static void StyleButton(ButtonBase button)
     {
         if (StyledButtons.TryGetValue(button, out _)) return;
-        StyledButtons.Add(button, new object());
         if (button.Name == "CloseButton") {
             button.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, "Close tab");
@@ -409,7 +428,63 @@ internal static class KronoInputMotion
         button.MaxHeight = 28;
         button.Padding = new Thickness(0);
         button.VerticalAlignment = VerticalAlignment.Center;
+        AttachFlatHover(button);
+    }
+
+    internal static void AttachFlatHover(ButtonBase button)
+    {
+        if (StyledButtons.TryGetValue(button, out _)) return;
         button.Template = (ControlTemplate)Application.Current.Resources["KronoFlatIconTemplate"];
+        Border? tint = null;
+        ContentPresenter? content = null;
+        SolidColorBrush? paint = null;
+        Storyboard? motion = null;
+        bool over = false, down = false;
+        void Update(bool immediate = false)
+        {
+            if (tint is null || paint is null) return;
+            if (content is not null) content.Opacity = button.IsEnabled ? 1 : .45;
+            var highContrast = new AccessibilitySettings().HighContrast;
+            var role = down ? "ButtonBackgroundPressed" : "ButtonBackgroundPointerOver";
+            var color = ((SolidColorBrush)KronoDesign.ThemeBrush(role, button.ActualTheme)).Color;
+            var visible = button.IsEnabled && (over || down);
+            if (highContrast) color = Microsoft.UI.Colors.Transparent;
+            else if (!visible) color.A = 0;
+            var from = paint.Color;
+            motion?.Stop();
+            paint.Color = color;
+            if (immediate || highContrast || !new UISettings().AnimationsEnabled) return;
+            var animation = new ColorAnimation {
+                From = from, To = color, EnableDependentAnimation = true, Duration = new Duration(TimeSpan.FromMilliseconds(135)),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Storyboard.SetTarget(animation, paint);
+            Storyboard.SetTargetProperty(animation, "Color");
+            motion = new Storyboard { Children = { animation } };
+            motion.Begin();
+        }
+        void Reset() { over = down = false; Update(true); }
+        StyledButtons.Add(button, Reset);
+        void BindTemplate()
+        {
+            button.ApplyTemplate();
+            tint = Descendants(button).OfType<Border>().FirstOrDefault(part => part.Name == "KronoFlatTint");
+            content = Descendants(button).OfType<ContentPresenter>().FirstOrDefault(part => part.Name == "KronoFlatContent");
+            if (tint is null) return;
+            tint.Background = paint = new SolidColorBrush();
+            Reset();
+        }
+        button.Loaded += (_, _) => BindTemplate();
+        if (button.IsLoaded) BindTemplate();
+        button.AddHandler(UIElement.PointerEnteredEvent, new PointerEventHandler((_, _) => { over = true; Update(); }), true);
+        button.AddHandler(UIElement.PointerExitedEvent, new PointerEventHandler((_, _) => { over = down = false; Update(); }), true);
+        button.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => { down = true; Update(); }), true);
+        button.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, _) => { down = false; Update(); }), true);
+        button.PointerCaptureLost += (_, _) => { down = false; Update(); };
+        button.PointerCanceled += (_, _) => Reset();
+        button.IsEnabledChanged += (_, _) => Reset();
+        button.ActualThemeChanged += (_, _) => Update(true);
+        button.Unloaded += (_, _) => Reset();
     }
 
     static void AnimateSurface(Control field, float scale, FrameworkElement? companion)
