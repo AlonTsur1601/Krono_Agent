@@ -317,12 +317,7 @@ const server = http.createServer((request, response) => {
   else if (request.url === '/agent-browser-next') {
     agentCookiePresent = request.headers.cookie?.includes('KronoAgent=1') === true
     response.writeHead(200, { 'Content-Type': 'text/html' })
-    const frame = process.env.KRONO_SMOKE_SCOPE === 'tray-lifecycle' ? '<iframe src="/browser-hover-frame" title="Hover fixture"></iframe>' : ''
-    response.end('<title>Native agent browser next</title><h1>AGENT_BROWSER_NEXT_PAGE</h1>' + frame)
-  }
-  else if (request.url === '/browser-hover-frame') {
-    response.writeHead(200, { 'Content-Type': 'text/html' })
-    response.end('<a id="hover" href="/fixture-destination">Frame link</a><script>setTimeout(() => document.getElementById("hover").dispatchEvent(new PointerEvent("pointerover", { bubbles: true, composed: true })), 1000)</script>')
+    response.end('<title>Native agent browser next</title><h1>AGENT_BROWSER_NEXT_PAGE</h1>')
   }
   else if (request.url.startsWith('/browser-selection?')) { browserSelection = new URL(request.url, 'http://localhost').searchParams.get('text'); response.end('ok') }
   else if (request.url === '/browser-selection') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ browserSelection })) }
