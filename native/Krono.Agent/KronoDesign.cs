@@ -306,7 +306,7 @@ public static class KronoDesign
                     if (face is null) {
                         face = new Border { Name = "KronoTabFace", CornerRadius = new CornerRadius(9, 9, 0, 0),
                             IsHitTestVisible = false, Margin = new Thickness(-header.Padding.Left, -header.Padding.Top,
-                                -header.Padding.Right, 0),
+                                -header.Padding.Right, -header.Padding.Bottom),
                             BackgroundTransition = new BrushTransition { Duration = TimeSpan.FromMilliseconds(120) } };
                         Grid.SetColumnSpan(face, header.ColumnDefinitions.Count);
                         header.Children.Insert(0, face);
@@ -392,7 +392,7 @@ public static class KronoDesign
         };
     }
 
-    internal static Grid CreateTabStrip(TabView tabs, Action addTab, FrameworkElement? commands = null, string contentSurface = "KronoSurface")
+    internal static Grid CreateTabStrip(TabView tabs, Action addTab, FrameworkElement? commands = null)
     {
         tabs.IsAddTabButtonVisible = true;
         tabs.TabStripHeader = new Border { Width = 0 };
@@ -423,12 +423,7 @@ public static class KronoDesign
         var header = new Grid { Height = TabHeight + TabStripInset };
         header.ColumnDefinitions.Add(new ColumnDefinition());
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var contentEdge = new Border { Height = 1, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false };
-        void PaintContentEdge() => contentEdge.Background = ThemeBrush(contentSurface, header.ActualTheme);
-        header.Loaded += (_, _) => PaintContentEdge();
-        header.ActualThemeChanged += (_, _) => PaintContentEdge();
-        KronoInputMotion.RegisterPaletteRefresh(header, PaintContentEdge);
-        Grid.SetColumnSpan(contentEdge, 2);
+        // Clip the tab backgrounds at the shared edge without reserving a separator row.
         var viewport = new Grid();
         var clip = new RectangleGeometry();
         viewport.Clip = clip;
@@ -440,7 +435,6 @@ public static class KronoDesign
         header.Children.Add(viewport);
         header.Children.Add(footer);
         Grid.SetColumn(footer, 1);
-        header.Children.Add(contentEdge);
 
         tabs.Loaded += (_, _) => {
             tabs.ApplyTemplate();

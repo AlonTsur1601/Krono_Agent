@@ -40,7 +40,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
         var frame = new Grid();
         frame.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         frame.RowDefinitions.Add(new RowDefinition());
-        frame.Children.Add(KronoDesign.CreateTabStrip(tabs, () => _ = Create(), contentSurface: TerminalSurface));
+        frame.Children.Add(KronoDesign.CreateTabStrip(tabs, () => _ = Create()));
         frame.Children.Add(selectedTerminal);
         void PaintContent() => selectedTerminal.Background = KronoDesign.ThemeBrush(TerminalSurface, selectedTerminal.ActualTheme);
         selectedTerminal.Loaded += (_, _) => PaintContent();
