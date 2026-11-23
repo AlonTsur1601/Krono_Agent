@@ -151,6 +151,7 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
             if (activePage is not null) activePage.Visibility = Visibility.Collapsed;
             activePage = tabs.SelectedItem is TabViewItem selected ? pages.GetValueOrDefault(selected) : null;
             if (activePage is not null) activePage.Visibility = Visibility.Visible;
+            address.Visibility = bookmarks.Visibility = Current is null ? Visibility.Collapsed : Visibility.Visible;
             SetLinkStatus("");
             UpdateAddress();
         };
