@@ -225,7 +225,13 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
 
     internal static IconElement BrowserTabIcon(bool isPrivate = false) => isPrivate
         ? new SymbolIcon(Symbol.Permissions)
-        : KronoDesign.NavigationIcon(Symbol.World);
+        : new FontIcon {
+            // The original browser used Symbol.World (Segoe MDL2 Assets, U+E909).
+            Glyph = "\uE909",
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe MDL2 Assets"),
+            FontSize = 20,
+            FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+        };
 
     static (TextBlock Title, ContentControl Icon) CreateBrowserTabHeader(TabViewItem tab, string titleText, IconElement glyph)
     {
