@@ -448,24 +448,19 @@ function TestWorkspaceInputs {
     }
 }
 function TestGamePreviews {
-    $scroll = $null
-    $ancestor = Find 'GameTile0'
-    $parents = [Windows.Automation.TreeWalker]::RawViewWalker
-    while ($ancestor -and !$scroll) {
-        $candidate = $null
-        if ($ancestor.TryGetCurrentPattern([Windows.Automation.ScrollPattern]::Pattern, [ref]$candidate) -and $candidate.Current.VerticallyScrollable) {
-            $scroll = $candidate
+    $names = 0..23 | ForEach-Object { (Find ('GameTile' + $_)).Current.Name }
+    try {
+        for ($index = 0; $index -lt $names.Count; $index++) {
+            $preview = 'GamePreviewImage' + $index
+            if (!(FindOptional $preview)) {
+                # Filtering brings lazy previews into view at any window width.
+                SetValue 'GameSearch' $names[$index]
+                Find $preview | Out-Null
+            }
         }
-        $ancestor = $parents.GetParent($ancestor)
+    } finally {
+        SetValue 'GameSearch' ''
     }
-    0..23 | ForEach-Object {
-        (Find ('GameTile' + $_)).SetFocus()
-        if ($scroll -and !(FindOptional ('GamePreviewImage' + $_))) {
-            $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, ($_ * 100.0 / 23))
-        }
-        Find ('GamePreviewImage' + $_) | Out-Null
-    }
-    if ($scroll) { $scroll.SetScrollPercent([Windows.Automation.ScrollPattern]::NoScroll, 0) }
     (Find 'GameTile0').SetFocus()
 }
 function TestGameSaveLifecycle {
