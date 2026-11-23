@@ -226,11 +226,10 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
     internal static IconElement BrowserTabIcon(bool isPrivate = false) =>
         new SymbolIcon(isPrivate ? Symbol.Permissions : Symbol.World);
 
-    static (TextBlock Title, ContentControl Icon) CreateBrowserTabHeader(TabViewItem tab, string titleText, IconElement glyph)
+    static (TextBlock Title, ContentControl Icon) CreateBrowserTabHeader(TabViewItem tab, string titleText, FrameworkElement glyph)
     {
         var icon = new ContentControl { Content = glyph, Width = 20, Height = 22,
             HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
-        if (glyph is PathIcon path) path.Width = path.Height = 18;
         var title = new TextBlock { Text = titleText, TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center };
         var header = new Grid { ColumnSpacing = 6 };

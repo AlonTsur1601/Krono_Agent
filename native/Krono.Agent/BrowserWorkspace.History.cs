@@ -93,7 +93,7 @@ public sealed partial class BrowserWorkspace
         scroll.SizeChanged += (_, args) => content.Width = Math.Max(0, Math.Min(820, args.NewSize.Width - 60));
         page.Children.Add(KronoDesign.ScrollPage(scroll, "KronoSurface"));
         var tab = new TabViewItem();
-        CreateBrowserTabHeader(tab, "History", KronoDesign.NavigationIcon(Symbol.Clock));
+        CreateBrowserTabHeader(tab, "History", KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Clock));
         pages.Add(tab, page);
         pageHost.Children.Add(page);
         tabs.TabItems.Add(tab);

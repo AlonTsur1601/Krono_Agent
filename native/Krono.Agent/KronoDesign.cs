@@ -9,7 +9,7 @@ namespace Krono_Agent;
 // Shared visual roles for every native page; gameplay animation is separate.
 public static class KronoDesign
 {
-    internal enum OutlineGlyph { Search, Folder, Pin, Unpin, Archive, Restore, Star }
+    internal enum OutlineGlyph { Search, Folder, Pin, Unpin, Archive, Restore, Star, Clock }
 
     internal static FrameworkElement OutlineIcon(OutlineGlyph glyph, Brush? stroke = null)
     {
@@ -21,6 +21,7 @@ public static class KronoDesign
             OutlineGlyph.Archive => "M3,4.5 H17 V8 H3 Z M4.5,8 V14.25 Q4.5,15.5 5.75,15.5 H14.25 Q15.5,15.5 15.5,14.25 V8 M8,10.75 H12",
             OutlineGlyph.Restore => "M7.75,5 L4.25,8.5 L7.75,12 M4.25,8.5 H12.5 A3.25,3.25 0 0 1 12.5,15 H9",
             OutlineGlyph.Star => "M10,2.75 L12.2,7.2 L17.1,7.9 L13.55,11.35 L14.4,16.25 L10,13.95 L5.6,16.25 L6.45,11.35 L2.9,7.9 L7.8,7.2 Z",
+            OutlineGlyph.Clock => "M18,10 A8,8 0 1 0 2,10 A8,8 0 1 0 18,10 Z M10,5.5 V10 H14",
             _ => throw new ArgumentOutOfRangeException(nameof(glyph))
         };
         // The fixed canvas keeps a 1.5-DIP outline and centers the ink without clipping.
@@ -305,7 +306,7 @@ public static class KronoDesign
                     if (face is null) {
                         face = new Border { Name = "KronoTabFace", CornerRadius = new CornerRadius(9, 9, 0, 0),
                             IsHitTestVisible = false, Margin = new Thickness(-header.Padding.Left, -header.Padding.Top,
-                                -header.Padding.Right, -header.Padding.Bottom),
+                                -header.Padding.Right, 0),
                             BackgroundTransition = new BrushTransition { Duration = TimeSpan.FromMilliseconds(120) } };
                         Grid.SetColumnSpan(face, header.ColumnDefinitions.Count);
                         header.Children.Insert(0, face);
@@ -427,7 +428,6 @@ public static class KronoDesign
         header.Loaded += (_, _) => PaintContentEdge();
         header.ActualThemeChanged += (_, _) => PaintContentEdge();
         KronoInputMotion.RegisterPaletteRefresh(header, PaintContentEdge);
-        header.Children.Add(contentEdge);
         Grid.SetColumnSpan(contentEdge, 2);
         var viewport = new Grid();
         var clip = new RectangleGeometry();
@@ -440,6 +440,7 @@ public static class KronoDesign
         header.Children.Add(viewport);
         header.Children.Add(footer);
         Grid.SetColumn(footer, 1);
+        header.Children.Add(contentEdge);
 
         tabs.Loaded += (_, _) => {
             tabs.ApplyTemplate();
@@ -490,7 +491,6 @@ public static class KronoDesign
     {
         var data = symbol switch {
             Symbol.World => "F0 M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 Z M10,3.85 A6.15,6.15 0 1 1 10,16.15 A6.15,6.15 0 1 1 10,3.85 Z M9.075,3.85 H10.925 V9.075 H16.15 V10.925 H10.925 V16.15 H9.075 V10.925 H3.85 V9.075 H9.075 Z",
-            Symbol.Clock => "F0 M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 Z M10,3.6 A6.4,6.4 0 1 1 10,16.4 A6.4,6.4 0 1 1 10,3.6 Z M9.2,5.5 H10.8 V9.2 H14 V10.8 H9.2 Z",
             Symbol.Download => "M9.25,2 H10.75 V10.2 L13.7,7.25 L14.75,8.3 L10,13.05 L5.25,8.3 L6.3,7.25 L9.25,10.2 Z M2,12 H3.5 V16.5 H16.5 V12 H18 V18 H2 Z",
             _ => throw new ArgumentOutOfRangeException(nameof(symbol))
         };
