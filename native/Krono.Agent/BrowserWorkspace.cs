@@ -223,15 +223,8 @@ public sealed partial class BrowserWorkspace : Grid, IDisposable
         })) Complete();
     }
 
-    internal static IconElement BrowserTabIcon(bool isPrivate = false) => isPrivate
-        ? new SymbolIcon(Symbol.Permissions)
-        : new FontIcon {
-            // The original browser used Symbol.World (Segoe MDL2 Assets, U+E909).
-            Glyph = "\uE909",
-            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe MDL2 Assets"),
-            FontSize = 20,
-            FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-        };
+    internal static IconElement BrowserTabIcon(bool isPrivate = false) =>
+        new SymbolIcon(isPrivate ? Symbol.Permissions : Symbol.World);
 
     static (TextBlock Title, ContentControl Icon) CreateBrowserTabHeader(TabViewItem tab, string titleText, IconElement glyph)
     {
