@@ -93,7 +93,8 @@ public sealed partial class MainPage
                 refreshPluginCards?.Invoke();
             };
             options.Items.Add(remove);
-            var more = new Button { Content = "…", Flyout = options, MinWidth = 38 };
+            var more = new Button { Content = "…", MinWidth = 38 };
+            more.Click += (_, _) => options.ShowAt(more);
             AutomationProperties.SetName(more, plugin.Name + " options");
             AutomationProperties.SetAutomationId(more, "PluginOptions-" + plugin.Id);
             actions.Children.Add(more);

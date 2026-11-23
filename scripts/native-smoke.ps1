@@ -362,25 +362,16 @@ function TestGamePreviews {
     (Find 'GameTile0').SetFocus()
 }
 function TestGameSaveLifecycle {
-    $shell = New-Object -ComObject WScript.Shell
-    if (!$shell.AppActivate($script:process.Id)) { throw 'Could not activate the game test window' }
     SelectNav 'Games'
     TestGamePreviews
     OpenGameTile 0
-    $clickBoard = {
-        $bounds = (Find 'GameStage').Current.BoundingRectangle
-        [KronoWindowCapture]::SetCursorPos([int]($bounds.Left + $bounds.Width / 2), [int]($bounds.Top + $bounds.Height / 2)) | Out-Null
-        [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
-        [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
-    }
-    & $clickBoard
-    Invoke 'Restart' -ByName
-    Find 'GameStage' | Out-Null
     if ((Find 'GameStatus').Current.Name -like 'Paused*') { Invoke 'Pause / resume' -ByName }
-    & $clickBoard
+    Invoke 'Move left' -ByName
+    Invoke 'Restart' -ByName
+    Invoke 'Move left' -ByName
     Invoke 'GameLibraryBack'
     $saved = (Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake'
-    if ($saved) { throw 'Entering, focusing or restarting an unplayed game created a save' }
+    if ($saved) { throw 'Entering, rejecting an invalid move or restarting an unplayed game created a save' }
 
     OpenGameTile 0
     if ((Find 'GameStatus').Current.Name -like 'Paused*') { Invoke 'Pause / resume' -ByName }
@@ -394,19 +385,41 @@ function TestGameSaveLifecycle {
     if ((Find 'GameStatus').Current.Name -notlike 'Paused*') { Invoke 'Pause / resume' -ByName }
     $played = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
     Invoke 'Restart' -ByName
-    & $clickBoard
+    Invoke 'Move left' -ByName
     Invoke 'GameLibraryBack'
     $after = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
     if (($played | ConvertTo-Json -Depth 20 -Compress) -ne ($after | ConvertTo-Json -Depth 20 -Compress)) {
         throw 'Restarting and leaving an untouched round replaced existing progress'
     }
 }
+function ReopenTrayWorkspace([IntPtr]$Hwnd) {
+    $relaunch = Start-Process -FilePath $Executable -WindowStyle Hidden -PassThru
+    try {
+        if (!$relaunch.WaitForExit(10000) -or $relaunch.ExitCode -ne 0) { throw 'Reopening Krono did not redirect to the running tray process' }
+        $deadline = (Get-Date).AddSeconds(5)
+        while (![KronoWindowCapture]::IsWindowVisible($Hwnd) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+        if (![KronoWindowCapture]::IsWindowVisible($Hwnd)) { throw 'The original tray window did not restore' }
+    } finally { if (!$relaunch.HasExited) { Stop-Process -InputObject $relaunch } }
+}
+function TestAgentBrowser {
+    UseFixtureModel
+    SelectNav 'Chats'
+    SelectChoice 'Mode' 'agent'
+    SetValue 'Composer' 'NATIVE_BROWSER_PROOF'
+    Invoke 'Send' -ByName
+    Invoke 'Allow once' -ByName
+    Find 'AgentBrowserTab' | Out-Null
+    Invoke 'Allow once' -ByName
+    Find 'Native agent browser verified.' -ByName | Out-Null
+    $proof = Invoke-RestMethod ($Fixture + '/agent-browser-proof')
+    if (!$proof.agentBrowserRan -or !$proof.profilesSeparate -or !$proof.agentCookiePresent) { throw 'Agent browser visit, link follow, or profile isolation failed' }
+}
 try {
     Launch
     $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
     if ($windowPattern.Current.WindowVisualState -ne [Windows.Automation.WindowVisualState]::Maximized) { throw 'Krono did not open maximized' }
     Find 'EmailInput' | Out-Null
-    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'games-lifecycle', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui')) {
+    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'games-lifecycle', 'tray-lifecycle', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui', 'markdown-ui')) {
         SetValue 'EmailInput' 'native-fixture@example.com'
         SetValue 'PasswordInput' 'fixture-password'
         Invoke 'LoginButton'
@@ -416,19 +429,28 @@ try {
             Write-Output 'NATIVE_SMOKE_PASS: viewport game previews and untouched, played, and restarted save lifecycles'
             return
         }
+        if ($env:KRONO_SMOKE_SCOPE -eq 'tray-lifecycle') {
+            TestAgentBrowser
+            if ((Find 'BrowserLinkDestination').Current.Name -notlike '*/fixture-destination') {
+                throw 'The iframe link did not relay its destination to the browser status'
+            }
+            $address = (Find 'BrowserAddress').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
+            $hwnd = $script:process.MainWindowHandle
+            $windowPattern.Close()
+            $deadline = (Get-Date).AddSeconds(5)
+            while ([KronoWindowCapture]::IsWindowVisible($hwnd) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+            if ([KronoWindowCapture]::IsWindowVisible($hwnd) -or $script:process.HasExited) { throw 'The native window did not hide into the running tray instance' }
+            ReopenTrayWorkspace $hwnd
+            $restoredAddress = (Find 'BrowserAddress').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
+            if ($address -ne $restoredAddress -or !(FindOptional 'Composer') -or !(FindOptional 'AgentBrowserTab')) {
+                throw 'Reopening from tray lost the agent browser tab, address or conversation split'
+            }
+            Write-Output 'NATIVE_SMOKE_PASS: real agent browser navigation, iframe link relay and shortcut restoration of the original tray window and browser split'
+            return
+        }
         if ($env:KRONO_SMOKE_SCOPE -eq 'runtime-workspaces') {
             TestWorkspaceInputs
-            UseFixtureModel
-            SelectNav 'Chats'
-            SelectChoice 'Mode' 'agent'
-            SetValue 'Composer' 'NATIVE_BROWSER_PROOF'
-            Invoke 'Send' -ByName
-            Invoke 'Allow once' -ByName
-            Find 'AgentBrowserTab' | Out-Null
-            Invoke 'Allow once' -ByName
-            Find 'Native agent browser verified.' -ByName | Out-Null
-            $proof = Invoke-RestMethod ($Fixture + '/agent-browser-proof')
-            if (!$proof.agentBrowserRan -or !$proof.profilesSeparate -or !$proof.agentCookiePresent) { throw 'Agent browser visit, link follow, or profile isolation failed' }
+            TestAgentBrowser
             Capture 'native-agent-browser-split.png'
             SetValue 'Composer' 'NATIVE_COMMAND_PROOF'
             Invoke 'Send' -ByName
@@ -462,16 +484,39 @@ try {
             $deadline = (Get-Date).AddSeconds(10)
             do { $proof = Invoke-RestMethod ($Fixture + '/tray-proof'); Start-Sleep -Milliseconds 100 } while (!$proof.completed -and (Get-Date) -lt $deadline)
             if (!$proof.completed -or $script:process.HasExited -or [KronoWindowCapture]::IsWindowVisible($hwnd)) { throw 'The agent did not save its finished response while the app remained in the tray' }
-            $relaunch = Start-Process -FilePath $Executable -WindowStyle Hidden -PassThru
-            try {
-                if (!$relaunch.WaitForExit(10000) -or $relaunch.ExitCode -ne 0) { throw 'Reopening Krono did not redirect to the running tray process' }
-                $deadline = (Get-Date).AddSeconds(5)
-                while (![KronoWindowCapture]::IsWindowVisible($hwnd) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
-                if (![KronoWindowCapture]::IsWindowVisible($hwnd)) { throw 'The original tray window did not restore' }
-                $restored = (Find 'TerminalOutput').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
-                if ($restored -ne $agentOutput -or !(FindOptional 'Composer')) { throw 'Reopening from tray lost the active conversation or its Terminal split' }
-            } finally { if (!$relaunch.HasExited) { Stop-Process -InputObject $relaunch } }
+            ReopenTrayWorkspace $hwnd
+            $restored = (Find 'TerminalOutput').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
+            if ($restored -ne $agentOutput -or !(FindOptional 'Composer')) { throw 'Reopening from tray lost the active conversation or its Terminal split' }
             Write-Output 'NATIVE_SMOKE_PASS: PTY, blank-tab reload, separate agent browser, tray completion and active split restoration'
+            return
+        }
+        if ($env:KRONO_SMOKE_SCOPE -eq 'markdown-ui') {
+            UseFixtureModel
+            SelectNav 'Chats'
+            Invoke 'Choose model' -ByName
+            Find 'Advanced…' -ByName | Out-Null
+            Find 'Composer' | Out-Null
+            Invoke 'Choose model' -ByName
+            SelectNav 'Settings'
+            SelectSettingsCategory 'Instructions'
+            $editor = (Find 'GlobalInstructions').Current.BoundingRectangle
+            $save = (Find 'Save global instructions' -ByName).Current.BoundingRectangle
+            if ($editor.Width -lt 440 -or $editor.Height -lt 220 -or $save.Bottom -gt $script:window.Current.BoundingRectangle.Bottom) {
+                throw 'Global editor did not use the available settings viewport'
+            }
+            SetValue 'GlobalInstructions' '# Preview instructions'
+            Invoke 'Preview Markdown' -ByName
+            $deadline = (Get-Date).AddSeconds(4)
+            do {
+                $heading = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) |
+                    Where-Object { $_.Current.Name.Trim() -eq 'Preview instructions' } | Select-Object -First 1
+                if ($heading) { break }
+                Start-Sleep -Milliseconds 100
+            } while ((Get-Date) -lt $deadline)
+            if (!$heading) { throw 'Markdown heading did not appear in preview' }
+            Invoke 'Edit Markdown' -ByName
+            Invoke 'Save global instructions' -ByName
+            Write-Output 'NATIVE_SMOKE_PASS: inline reasoning panel and viewport-sized Markdown instructions editor'
             return
         }
         if ($env:KRONO_SMOKE_SCOPE -eq 'local-model-ui') {
@@ -521,7 +566,13 @@ try {
             Invoke 'PluginOptions-github'
             Invoke 'PluginRemove-github'
             Invoke 'Remove plugin' -ByName
-            if ((Find 'PluginPrimary-github').Current.Name -ne 'Install') { throw 'Removing GitHub did not restore Install' }
+            $deadline = (Get-Date).AddSeconds(5)
+            do {
+                $action = (Find 'PluginPrimary-github').Current.Name
+                if ($action -eq 'Install') { break }
+                Start-Sleep -Milliseconds 75
+            } while ((Get-Date) -lt $deadline)
+            if ($action -ne 'Install') { throw 'Removing GitHub did not restore Install' }
             if (FindOptional 'PluginToken-github') { throw 'GitHub exposed a manual credential field' }
             Invoke 'PluginPrimary-node'
             Find 'PluginOptions-node' | Out-Null
@@ -706,7 +757,14 @@ try {
             SelectSettingsCategory 'Instructions'
             SetValue 'GlobalInstructions' '# Preview instructions'
             Invoke 'Preview Markdown' -ByName
-            Find 'Preview instructions' -ByName | Out-Null
+            $deadline = (Get-Date).AddSeconds(4)
+            do {
+                $heading = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) |
+                    Where-Object { $_.Current.Name.Trim() -eq 'Preview instructions' } | Select-Object -First 1
+                if ($heading) { break }
+                Start-Sleep -Milliseconds 100
+            } while ((Get-Date) -lt $deadline)
+            if (!$heading) { throw 'Markdown heading did not appear in preview' }
             Invoke 'Edit Markdown' -ByName
             Invoke 'Save global instructions' -ByName
             SelectNav 'Chats'
