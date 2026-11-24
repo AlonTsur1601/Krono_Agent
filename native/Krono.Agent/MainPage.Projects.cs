@@ -146,55 +146,58 @@ public sealed partial class MainPage
         return (await picker.PickSingleFolderAsync())?.Path;
     }
 
-    Grid BuildInstructionsSettings()
+    Grid BuildInstructionsSettings(ContentControl host)
     {
-        var panel = new Grid { RowSpacing = 8 };
-        panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        panel.RowDefinitions.Add(new RowDefinition());
-        panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        var headers = new StackPanel { Children = { Heading("Instructions"), Heading("Global") } };
-        panel.Children.Add(headers);
-        var global = new KronoTextBox {
-            PlaceholderText = "Instructions for every conversation", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
-            Text = workspace.Setting("instructions.global")
-        };
-        AutomationProperties.SetAutomationId(global, "GlobalInstructions");
-        var globalEditor = NativeMarkdown.Editor(global, workspace);
-        Grid.SetRow(globalEditor, 1);
-        panel.Children.Add(globalEditor);
-        var footer = new StackPanel { Spacing = 8 };
-        footer.Children.Add(Button("Save global instructions", () => {
-            workspace.SetSetting("instructions.global", global.Text.Trim());
-            NativeMarkdown.ShowSaved(global);
-        }));
-        Grid.SetRow(footer, 2);
-        panel.Children.Add(footer);
-        var projectsPanel = new StackPanel { Spacing = 6 };
-        footer.Children.Add(new Expander { Header = "Projects", Content = projectsPanel, HorizontalAlignment = HorizontalAlignment.Stretch });
-        var projects = workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name,id");
-        if (projects.Count == 0) {
-            projectsPanel.Children.Add(new TextBlock { Text = "No projects created." });
-            return panel;
+        var list = new StackPanel { Spacing = 22 };
+        list.Children.Add(Heading("Instructions"));
+        var overview = KronoDesign.ScrollPage(list);
+        StackPanel Group(string title)
+        {
+            var group = new StackPanel { Spacing = 10 };
+            group.Children.Add(new TextBlock { Text = title, FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            list.Children.Add(group);
+            return group;
         }
-        var picker = new KronoComboBox { Header = "Project", ItemsSource = projects.Select(row => row["name"]!.ToString()).ToArray() };
-        var instructions = new KronoTextBox { PlaceholderText = "Instructions for this project", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 70, MaxHeight = 125 };
-        AutomationProperties.SetAutomationId(picker, "InstructionsProject");
-        AutomationProperties.SetAutomationId(instructions, "ProjectInstructions");
-        string SelectedProject() => projects[picker.SelectedIndex]["id"]!.ToString();
-        picker.SelectionChanged += (_, _) => {
-            if (picker.SelectedIndex >= 0) instructions.Text = workspace.ProjectPreferences(SelectedProject())["instructions"]?.ToString() ?? "";
-        };
-        picker.SelectedIndex = 0;
-        projectsPanel.Children.Add(picker);
-        projectsPanel.Children.Add(NativeMarkdown.Editor(instructions, workspace));
-        projectsPanel.Children.Add(Button("Save project instructions", () => {
-            if (picker.SelectedIndex < 0) return;
-            var id = SelectedProject();
-            var config = workspace.ProjectPreferences(id);
-            config["instructions"] = instructions.Text.Trim();
-            workspace.SetSetting("project." + id, config.ToJsonString());
-            NativeMarkdown.ShowSaved(instructions);
-        }));
-        return panel;
+        void Edit(string title, string? project)
+        {
+            var editor = new Grid { RowSpacing = 14, Margin = new Thickness(28) };
+            editor.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            editor.RowDefinitions.Add(new RowDefinition());
+            editor.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            editor.Children.Add(Heading("Instructions · " + title));
+            var field = new KronoTextBox {
+                AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
+                Text = project is null ? workspace.Setting("instructions.global") :
+                    workspace.ProjectPreferences(project)["instructions"]?.ToString() ?? ""
+            };
+            AutomationProperties.SetAutomationId(field, project is null ? "GlobalInstructions" : "ProjectInstructions");
+            var input = NativeMarkdown.Editor(field, workspace);
+            Grid.SetRow(input, 1);
+            editor.Children.Add(input);
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            void Return() => KronoDesign.Present(host, overview);
+            actions.Children.Add(Button("Save instructions", () => {
+                if (project is null) workspace.SetSetting("instructions.global", field.Text.Trim());
+                else {
+                    var config = workspace.ProjectPreferences(project);
+                    config["instructions"] = field.Text.Trim();
+                    workspace.SetSetting("project." + project, config.ToJsonString());
+                }
+                Return();
+            }));
+            actions.Children.Add(Button("Cancel", Return));
+            Grid.SetRow(actions, 2);
+            editor.Children.Add(actions);
+            KronoDesign.Present(host, editor);
+        }
+        Group("Global").Children.Add(Button("Edit global instructions", () => Edit("Global", null)));
+        var projects = Group("Projects");
+        foreach (var row in workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name,id")) {
+            var name = row["name"]!.ToString();
+            var id = row["id"]!.ToString();
+            projects.Children.Add(Button(name, () => Edit(name, id)));
+        }
+        if (projects.Children.Count == 1) projects.Children.Add(new TextBlock { Text = "No projects created." });
+        return overview;
     }
 }

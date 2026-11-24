@@ -11,7 +11,7 @@ public static class KronoDesign
 {
     internal enum OutlineGlyph { Search, Folder, Pin, Unpin, Archive, Restore, Star, Clock }
 
-    internal static FrameworkElement OutlineIcon(OutlineGlyph glyph, Brush? stroke = null)
+    internal static FrameworkElement OutlineIcon(OutlineGlyph glyph, Brush? stroke = null, bool filled = false)
     {
         var data = glyph switch {
             OutlineGlyph.Search => "M13.5,8.5 A5,5 0 1 0 3.5,8.5 A5,5 0 1 0 13.5,8.5 M12.1,12.1 L16.5,16.5",
@@ -31,8 +31,10 @@ public static class KronoDesign
                       StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
             </Canvas>
             """);
-        if (stroke is not null && icon is Canvas canvas && canvas.Children[0] is Microsoft.UI.Xaml.Shapes.Path path)
-            path.Stroke = stroke;
+        if (icon is Canvas canvas && canvas.Children[0] is Microsoft.UI.Xaml.Shapes.Path path) {
+            if (stroke is not null) path.Stroke = stroke;
+            if (filled) path.Fill = path.Stroke;
+        }
         return icon;
     }
 
@@ -545,8 +547,13 @@ public static class KronoDesign
         void Palette()
         {
             slider.Resources["SliderTrackFill"] = ThemeBrush("KronoInputFace", slider.ActualTheme);
-            slider.Resources["SliderTrackValueFill"] = ThemeBrush("KronoPrimaryFace", slider.ActualTheme);
-            slider.Resources["SliderThumbBackground"] = ThemeBrush("KronoAccentForeground", slider.ActualTheme);
+            foreach (var (suffix, color) in new[] { ("", "KronoAccentFill"), ("PointerOver", "KronoAccentHover"), ("Pressed", "KronoAccentPressed") }) {
+                var brush = ThemeBrush(color, slider.ActualTheme);
+                slider.Resources["SliderTrackValueFill" + suffix] = brush;
+                slider.Resources["SliderThumbBackground" + suffix] = brush;
+            }
+            slider.Resources["SliderOuterThumbBackground"] = ThemeBrush("KronoSurface", slider.ActualTheme);
+            slider.Resources["SliderThumbBorderBrush"] = ThemeBrush("KronoBorder", slider.ActualTheme);
         }
         void Refresh(int index) => title.Text = name + " · " + labels[index];
         Palette();
@@ -558,40 +565,11 @@ public static class KronoDesign
         void PaintTrack() { track.Background = ThemeBrush("KronoButtonFace", track.ActualTheme); track.BorderBrush = ThemeBrush("KronoBorder", track.ActualTheme); }
         PaintTrack();
         track.ActualThemeChanged += (_, _) => PaintTrack();
+        KronoInputMotion.RegisterPaletteRefresh(track, () => { Palette(); PaintTrack(); });
         return new StackPanel { Spacing = 5, Children = { title, track } };
     }
 
-    internal static Expander Section(string title, FrameworkElement content)
-    {
-        var chevron = new FontIcon { Glyph = "\uE70D", FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 12, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        var header = new Grid();
-        header.ColumnDefinitions.Add(new ColumnDefinition());
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        header.Children.Add(new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center });
-        Grid.SetColumn(chevron, 1);
-        header.Children.Add(chevron);
-        var expander = new Expander { Header = header, Content = content, HorizontalAlignment = HorizontalAlignment.Stretch };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(expander, title);
-        expander.Expanding += (_, _) => chevron.Glyph = "\uE70E";
-        expander.Collapsed += (_, _) => chevron.Glyph = "\uE70D";
-        expander.Loaded += (_, _) => {
-            if (KronoInputMotion.Descendants(expander).OfType<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>()
-                .FirstOrDefault(button => button.Name == "ExpanderHeader") is not { } toggle) return;
-            toggle.Style = (Style)Application.Current.Resources["KronoToggleButton"];
-            toggle.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-            toggle.CornerRadius = new CornerRadius(10);
-            toggle.Padding = new Thickness(12, 6, 12, 6);
-            void Palette()
-            {
-                toggle.Background = ThemeBrush("KronoButtonFace", toggle.ActualTheme);
-                toggle.BorderBrush = ThemeBrush("KronoBorder", toggle.ActualTheme);
-            }
-            Palette();
-            toggle.ActualThemeChanged += (_, _) => Palette();
-            KronoInputMotion.RegisterPaletteRefresh(toggle, Palette);
-        };
-        return expander;
-    }
+    internal static KronoSection Section(string title, FrameworkElement content) => new(title, content);
 
     internal static ToggleSwitch Toggle(string header, bool isOn)
     {

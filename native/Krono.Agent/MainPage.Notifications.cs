@@ -41,12 +41,14 @@ public sealed partial class MainPage
         return message.Length > 240 ? message[..239] + "…" : message;
     }
 
-    public void Error(Exception error)
+    public void Error(Exception error) => ShowNotice(FriendlyError(error), AutomationLiveSetting.Assertive);
+
+    void ShowNotice(string message, AutomationLiveSetting urgency = AutomationLiveSetting.Polite)
     {
         if (XamlRoot is null) return;
         HideError();
-        var label = new TextBlock { Text = FriendlyError(error), TextWrapping = TextWrapping.Wrap };
-        AutomationProperties.SetLiveSetting(label, AutomationLiveSetting.Assertive);
+        var label = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap };
+        AutomationProperties.SetLiveSetting(label, urgency);
         var surface = new Border {
             Child = label, CornerRadius = new CornerRadius(14), Padding = new Thickness(18, 12, 18, 13),
             Background = KronoDesign.ThemeBrush("KronoSurface", ActualTheme),

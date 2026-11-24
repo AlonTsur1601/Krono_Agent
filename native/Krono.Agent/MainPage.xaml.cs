@@ -24,6 +24,8 @@ public sealed partial class MainPage : Page
     string provider = "openai", model = "", mode = "chat", permissions = "ask";
     readonly ListView chatList = new() { Width = 220, SelectionMode = ListViewSelectionMode.Single };
     readonly StackPanel messages = new() { Spacing = 20, MaxWidth = 850, HorizontalAlignment = HorizontalAlignment.Left, FlowDirection = FlowDirection.LeftToRight };
+    readonly Grid welcomeChat = new() { ColumnSpacing = 12, MaxWidth = 520, Margin = new Thickness(20, 0, 20, 0),
+        HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
     readonly KronoTextBox composer = new() { PlaceholderText = "Message Krono…", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80, MaxHeight = 180, FlowDirection = FlowDirection.LeftToRight, TextAlignment = TextAlignment.Left };
     readonly ScrollViewer transcript;
     readonly TextBlock progress = new() { Text = "", TextWrapping = TextWrapping.Wrap, Opacity = .7 };
@@ -473,6 +475,7 @@ public sealed partial class MainPage : Page
             transcriptArea.ColumnDefinitions.Add(new ColumnDefinition());
             transcriptArea.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             transcriptArea.Children.Add(KronoDesign.ScrollPage(transcript));
+            transcriptArea.Children.Add(welcomeChat);
             var map = new ScrollViewer { Content = conversationMap, HorizontalScrollMode = ScrollMode.Disabled,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden };
             Grid.SetColumn(map, 1);
@@ -587,15 +590,17 @@ public sealed partial class MainPage : Page
         if ((attachments.Count > 0 || pastedImage is not null) && attachmentChat != chatId) ClearAttachments();
         messages.Children.Clear();
         conversationMap.Children.Clear();
+        welcomeChat.Visibility = chatId is null ? Visibility.Visible : Visibility.Collapsed;
         if (chatId is null) {
-            var welcome = new Grid { ColumnSpacing = 12, Margin = new Thickness(0, 12, 0, 0), MaxWidth = 520 };
+            if (welcomeChat.Children.Count > 0) return;
+            var welcome = welcomeChat;
             welcome.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             welcome.ColumnDefinitions.Add(new ColumnDefinition());
             welcome.Children.Add(new Image { Source = new SvgImageSource(new Uri("ms-appx:///Assets/Krono.svg")), Width = 40, Height = 40, VerticalAlignment = VerticalAlignment.Center });
             var welcomeTitle = new TextBlock { Text = "What would you like to work on?", FontFamily = (FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 28, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(welcomeTitle, 1);
             welcome.Children.Add(welcomeTitle);
-            messages.Children.Add(welcome); return;
+            return;
         }
         var project = workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).First()["project_id"]?.ToString();
         if (loadedContext != chatId + ":" + project) {
@@ -716,7 +721,7 @@ public sealed partial class MainPage : Page
     bool CompatibleEndpoint => ProviderCatalog.Compatible(provider);
     string ProviderEndpoint => workspace.Setting("native.endpoint." + provider) is { Length: > 0 } endpoint ? endpoint : ProviderCatalog.Endpoint(provider);
     string ModelToolsSetting => "native.tools." + provider + "." + model;
-    bool ProviderToolsEnabled => !CompatibleEndpoint || model.Length > 0 && workspace.Setting(ModelToolsSetting) == "true";
+    bool ProviderToolsEnabled => !CompatibleEndpoint || workspace.Setting(ModelToolsSetting) != "false";
     string ConnectionKey() {
         if (model.Length == 0) throw new InvalidOperationException("Choose a provider and model in Settings first.");
         if (ProviderCatalog.AutomaticLocal(provider)) return "";
@@ -749,6 +754,7 @@ public sealed partial class MainPage : Page
         panel.Children.Add(Button("Sign out on all devices", async () => { if (await Confirm("Sign out on all devices?", "You’ll need to sign in again on each device.", "Sign out everywhere")) await Leave(true); }));
         AddSyncSettings(panel);
         panel = AddCategory("Models");
+        var modelPanel = panel;
         var secret = new PasswordBox { Header = "Provider API key", HorizontalAlignment = HorizontalAlignment.Stretch };
         KronoInputMotion.Attach(secret, "KronoPasswordInput");
         var endpoint = new KronoTextBox { Header = "Server base URL · include /v1", Text = ProviderEndpoint };
@@ -762,10 +768,9 @@ public sealed partial class MainPage : Page
         var modelSettings = new StackPanel { Spacing = 8 };
         var remoteConnection = new StackPanel { Spacing = 10 };
         var modelStatus = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        var advanced = new Expander { Header = "Advanced connection settings", HorizontalAlignment = HorizontalAlignment.Stretch };
-        AutomationProperties.SetAutomationId(advanced, "ProviderConnectionOptions");
         var connectionFields = new StackPanel { Spacing = 10 };
-        advanced.Content = connectionFields;
+        var advanced = KronoDesign.Section("Advanced connection settings", connectionFields);
+        AutomationProperties.SetAutomationId(advanced, "ProviderConnectionOptions");
         int modelRequest = 0;
         var saveKey = Button("Save key", SaveKey);
         void SaveEndpoint() { try {
@@ -814,7 +819,7 @@ public sealed partial class MainPage : Page
             EndpointVisibility();
             _ = LoadProviderModels();
         }));
-        tools.Checked += (_, _) => { if (CompatibleEndpoint && model.Length > 0) workspace.SetSetting(ModelToolsSetting, "true"); }; tools.Unchecked += (_, _) => { if (CompatibleEndpoint && model.Length > 0) workspace.SetSetting(ModelToolsSetting, "false"); };
+        tools.Checked += (_, _) => { if (!updatingModels && CompatibleEndpoint && model.Length > 0) workspace.SetSetting(ModelToolsSetting, "true"); }; tools.Unchecked += (_, _) => { if (!updatingModels && CompatibleEndpoint && model.Length > 0) workspace.SetSetting(ModelToolsSetting, "false"); };
         EndpointVisibility();
         connectionFields.Children.Add(remoteConnection);
         remoteConnection.Children.Add(endpoint); remoteConnection.Children.Add(saveEndpoint); remoteConnection.Children.Add(secret);
@@ -969,7 +974,6 @@ public sealed partial class MainPage : Page
             NativeMarkdown.RefreshEditors(workspace);
         };
         panel.Children.Add(liveMarkdown);
-        var instructions = BuildInstructionsSettings();
         AddCategory("Plugins");
         AddUpdateSettings(AddCategory("Updates"));
         var names = pages.Keys.ToList();
@@ -981,8 +985,11 @@ public sealed partial class MainPage : Page
         sidebar.Children.Add(categories);
         ShowContext(sidebar);
         var page = new ContentControl { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
-        var views = pages.ToDictionary(entry => entry.Key, entry => KronoDesign.ScrollPage(entry.Value));
-        views.Add("Instructions", instructions);
+        var modelScroll = new ScrollViewer { Content = modelPanel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        modelScroll.SizeChanged += (_, args) => modelPanel.Width = Math.Min(modelPanel.MaxWidth, args.NewSize.Width);
+        var views = pages.ToDictionary(entry => entry.Key,
+            entry => KronoDesign.ScrollPage(entry.Key == "Models" ? modelScroll : entry.Value));
+        views.Add("Instructions", BuildInstructionsSettings(page));
         var pluginsLoaded = false;
         var modelsLoaded = false;
         categories.SelectionChanged += (_, _) => {

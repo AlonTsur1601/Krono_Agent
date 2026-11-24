@@ -13,6 +13,13 @@ public sealed partial class GamesWorkspace
     string endMessage = "";
     readonly List<TextBlock> saveLabels = [];
     string SaveId(int index) => "native-v1:" + names[index];
+    void ClearSave(int index)
+    {
+        var marker = JsonSerializer.Serialize(new { Version = 1, Game = names[index], Deleted = true });
+        // Keep a syncable deletion marker so a previously synced save stays deleted.
+        workspace.Execute("UPDATE game_saves SET state=$p0,saved_at=$p1,synced=0 WHERE id=$p2 AND account_id=$p3",
+            marker, Workspace.Now, SaveId(index), workspace.AccountId);
+    }
     string BestCaption(int index)
     {
         var best = workspace.Query("SELECT MAX(score) AS best FROM game_scores WHERE account_id=$p0 AND game_id=$p1", workspace.AccountId, names[index]).First()["best"]?.ToString();
@@ -29,21 +36,23 @@ public sealed partial class GamesWorkspace
             var resume = false;
             if (saved is { Length: > 0 and <= 65536 }) {
                 bool compatible;
-                try { var data = System.Text.Json.Nodes.JsonNode.Parse(saved); compatible = data?["Version"]?.ToString() == "1" && data?["Game"]?.ToString() == names[index]; }
+                try { var data = System.Text.Json.Nodes.JsonNode.Parse(saved); compatible = data?["Version"]?.ToString() == "1" &&
+                    data?["Game"]?.ToString() == names[index] && data?["Deleted"]?.ToString() != "true"; }
                 catch (JsonException) { compatible = false; }
                 if (compatible) {
                     var choice = new KronoDialog { XamlRoot = XamlRoot,
                         Title = new TextBlock { Text = "Load " + names[index], FontWeight = Microsoft.UI.Text.FontWeights.Bold },
-                        Content = "The previous save is kept until you make progress in a new game.",
+                        Content = "Starting a new game deletes the existing save.",
                         PrimaryButtonText = "Load save", SecondaryButtonText = "New game", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
                     Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(choice, "GameSaveChoice");
                     var result = await choice.ShowAsync();
                     if (disposed || result == ContentDialogResult.None) return;
                     resume = result == ContentDialogResult.Primary;
+                    if (!resume) ClearSave(index);
                 }
             }
             if (disposed) return;
-            timer.Stop(); game = index; Reset();
+            timer.Stop(); game = index; botDifficulty = Difficulty(index); Reset();
             if (resume) madeProgress = RestoreCurrent();
             stateReady = true;
             shownScore = -1;

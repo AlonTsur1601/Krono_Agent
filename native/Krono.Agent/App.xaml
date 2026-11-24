@@ -33,6 +33,7 @@
                     <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#293D48" />
                     <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#344D59" />
                     <SolidColorBrush x:Key="KronoAccentForeground" Color="#84E6B1" />
+                    <SolidColorBrush x:Key="KronoDangerForeground" Color="#FF9292" />
                     <SolidColorBrush x:Key="KronoAccentFill" Color="#84E6B1" />
                     <SolidColorBrush x:Key="KronoPrimaryBase" Color="#3B9F72" />
                     <SolidColorBrush x:Key="KronoAccentHover" Color="#A0F0C5" />
@@ -69,6 +70,7 @@
                     <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#D8E9E5" />
                     <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#C3DDD6" />
                     <SolidColorBrush x:Key="KronoAccentForeground" Color="#17613E" />
+                    <SolidColorBrush x:Key="KronoDangerForeground" Color="#A5262D" />
                     <SolidColorBrush x:Key="KronoAccentFill" Color="#84E6B1" />
                     <SolidColorBrush x:Key="KronoPrimaryBase" Color="#3B9F72" />
                     <SolidColorBrush x:Key="KronoAccentHover" Color="#A0F0C5" />
@@ -213,8 +215,9 @@
                                 <Border x:Name="BorderElement" Grid.Row="1" Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
                                     CornerRadius="{TemplateBinding CornerRadius}"/>
-                                <ScrollViewer x:Name="ContentElement" Grid.Row="1" Margin="{TemplateBinding BorderThickness}"
-                                    Padding="{TemplateBinding Padding}" Foreground="{TemplateBinding Foreground}"
+                                <ScrollViewer x:Name="ContentElement" Grid.Row="1" Margin="{TemplateBinding Padding}"
+                                    Foreground="{TemplateBinding Foreground}"
+                                    VerticalAlignment="Center"
                                     VerticalContentAlignment="Center" HorizontalScrollBarVisibility="Hidden"
                                     VerticalScrollBarVisibility="Disabled" ZoomMode="Disabled" IsTabStop="False"
                                     AutomationProperties.AccessibilityView="Raw"/>

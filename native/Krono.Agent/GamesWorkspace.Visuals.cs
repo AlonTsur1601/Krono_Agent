@@ -306,9 +306,9 @@ public sealed partial class GamesWorkspace
             var bitmap = new RenderTargetBitmap();
             await bitmap.RenderAsync(scene, 384, 384);
             if (disposed || bitmap.PixelWidth == 0 || !surface.IsLoaded) return;
-            var picture = new Image { Source = bitmap, Width = 480, Height = 480, Stretch = Stretch.Uniform, IsHitTestVisible = false };
+            var picture = new Image { Source = bitmap, Stretch = Stretch.UniformToFill, IsHitTestVisible = false };
             AutomationProperties.SetAutomationId(picture, "GamePreviewImage" + index);
-            view.Child = picture;
+            surface.Children[0] = picture;
         } finally { scene.Loaded -= Ready; }
     }
     void SeedPreview()

@@ -142,10 +142,13 @@ function UseFixtureModel {
 function TestLiveMarkdown {
     SelectSettingsCategory 'Instructions'
     $markdown = "# Title`n`n**Bold phrase** and *italic phrase*`n`n++Underlined phrase++"
+    Invoke 'Edit global instructions' -ByName
     SetValue 'GlobalInstructions' $markdown
+    Invoke 'Save instructions' -ByName
     SelectSettingsCategory 'Appearance'
     SetToggle 'LiveMarkdownEditing' On
     SelectSettingsCategory 'Instructions'
+    Invoke 'Edit global instructions' -ByName
     $editor = Find 'GlobalInstructions'
     $pattern = $editor.GetCurrentPattern([Windows.Automation.TextPattern]::Pattern)
     $bold = $null
@@ -177,12 +180,14 @@ function TestLiveMarkdown {
     } while ((Get-Date) -lt $deadline)
     if (!$typed -or $typed.GetAttributeValue([Windows.Automation.TextPattern]::FontWeightAttribute) -lt 600) { throw ('Typing did not preserve the live Markdown formatting. Editor: ' + ($pattern.DocumentRange.GetText(-1) | ConvertTo-Json -Compress)) }
     $markdown = $markdown.Replace('Bold phrase', 'BolXd phrase')
+    Invoke 'Save instructions' -ByName
     SelectSettingsCategory 'Appearance'
     SetToggle 'LiveMarkdownEditing' Off
     SelectSettingsCategory 'Instructions'
+    Invoke 'Edit global instructions' -ByName
     $plain = (Find 'GlobalInstructions').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
     if (($plain -replace "`r`n?", "`n") -ne $markdown) { throw ('Toggling live Markdown changed the editable source from ' + ($markdown | ConvertTo-Json -Compress) + ' to ' + ($plain | ConvertTo-Json -Compress)) }
-    Invoke 'Save global instructions' -ByName
+    Invoke 'Save instructions' -ByName
     Capture 'native-markdown-saved.png'
 }
 function OpenAdvancedModel {
@@ -342,19 +347,16 @@ function Capture([string]$Name, [switch]$Screen) {
     $graphics.Dispose(); $bitmap.Dispose()
 }
 function TestWorkspaceInputs {
+    $shell = New-Object -ComObject WScript.Shell
+    if (!$shell.AppActivate($script:process.Id)) { throw 'Could not activate the terminal window' }
     SelectNav 'Terminal'
     Start-Sleep -Seconds 2
     $currentTerminal = FindOptional 'TerminalOutput'
     if (!$currentTerminal -or $currentTerminal.Current.Name -ne 'PowerShell terminal') { Invoke 'WorkspaceAddTab' }
     $terminal = Find 'PowerShell terminal' -ByName
-    $shell = New-Object -ComObject WScript.Shell
-    if (!$shell.AppActivate($script:process.Id)) { throw 'Could not activate the terminal window' }
-    $bounds = $terminal.Current.BoundingRectangle
-    [KronoWindowCapture]::SetCursorPos([int]($bounds.Left + 175), [int]($bounds.Top + 18)) | Out-Null
-    [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
-    [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 180
-    if (!$terminal.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.IsReadOnly) { throw 'Terminal output can be edited' }
+    $deadline = (Get-Date).AddSeconds(5)
+    while (!$terminal.Current.HasKeyboardFocus -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+    if (!$terminal.Current.HasKeyboardFocus) { throw 'The terminal did not receive focus automatically' }
     $shell.SendKeys('6*7{ENTER}')
     $deadline = (Get-Date).AddSeconds(10)
     do { Start-Sleep -Milliseconds 200; $output = Find 'TerminalOutput'; $text = ($output.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).Current.Value } while ($text -notmatch '42' -and (Get-Date) -lt $deadline)
@@ -481,6 +483,20 @@ function TestGamePreviews {
 function TestGameSaveLifecycle {
     SelectNav 'Games'
     TestGamePreviews
+    $ticBounds = WaitForBounds 'GameTile1'
+    $defaultWidth = $ticBounds.Width
+    if ([Math]::Abs($ticBounds.Top - (WaitForBounds 'GameTile0').Top) -gt 2) { throw 'Adding a difficulty slider shifted a game card out of its row' }
+    $sliders = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants,
+        (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Bot difficulty')))
+    $ranges = @($sliders | Where-Object { $_.Current.ControlType -eq [Windows.Automation.ControlType]::Slider })
+    if ($ranges.Count -ne 5) { throw 'Five bot games did not expose independent difficulty sliders' }
+    Toggle 'FavoriteGame1'
+    Toggle 'GameFavoritesFilter'
+    AssertGameCards @('GameTile1') 'favorites'
+    if ([Math]::Abs((WaitForBounds 'GameTile1').Width - $defaultWidth) -gt 2) { throw 'A favorite card grew wider than the catalog cards' }
+    Toggle 'GameFavoritesFilter'
+    Toggle 'FavoriteGame1'
+    Capture 'native-game-library-cards.png'
     OpenGameTile 0
     if ((Find 'GameStatus').Current.Name -like 'Paused*') { Invoke 'Pause / resume' -ByName }
     Invoke 'Move left' -ByName
@@ -500,14 +516,23 @@ function TestGameSaveLifecycle {
     } while (!$played -and (Get-Date) -lt $deadline)
     if (!$played -or (!$played.Turned -and $played.Tick -le 0)) { throw 'A played round did not save progress' }
     if ((Find 'GameStatus').Current.Name -notlike 'Paused*') { Invoke 'Pause / resume' -ByName }
-    $played = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
+    Invoke 'GameLibraryBack'
+    OpenGameTile 0 'New game' -RequireChoice
+    Invoke 'GameLibraryBack'
+    if ((Invoke-RestMethod ($Fixture + '/game-proof')).saves.game -contains 'Snake') { throw 'New game kept the previous save' }
+    OpenGameTile 0
+    Invoke 'Move right' -ByName
+    $deadline = (Get-Date).AddSeconds(5)
+    do {
+        $saved = (Invoke-RestMethod ($Fixture + '/game-proof')).saves.game -contains 'Snake'
+        if (!$saved) { Start-Sleep -Milliseconds 100 }
+    } while (!$saved -and (Get-Date) -lt $deadline)
+    if (!$saved) { throw 'A replacement save was not created after a move' }
     Invoke 'Restart' -ByName
     Invoke 'Move left' -ByName
     Invoke 'GameLibraryBack'
     $after = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
-    if (($played | ConvertTo-Json -Depth 20 -Compress) -ne ($after | ConvertTo-Json -Depth 20 -Compress)) {
-        throw 'Restarting and leaving an untouched round replaced existing progress'
-    }
+    if ($after) { throw 'Restarting kept the previous save or created an untouched save' }
 }
 function ReopenTrayWorkspace([IntPtr]$Hwnd) {
     $relaunch = Start-Process -FilePath $Executable -WindowStyle Hidden -PassThru
@@ -683,11 +708,13 @@ try {
             Invoke 'Choose model' -ByName
             SelectNav 'Settings'
             SelectSettingsCategory 'Instructions'
+            Invoke 'Edit global instructions' -ByName
             $editor = (Find 'GlobalInstructions').Current.BoundingRectangle
-            $save = (Find 'Save global instructions' -ByName).Current.BoundingRectangle
+            $save = (Find 'Save instructions' -ByName).Current.BoundingRectangle
             if ($editor.Width -lt 440 -or $editor.Height -lt 220 -or $save.Bottom -gt $script:window.Current.BoundingRectangle.Bottom) {
                 throw 'Global editor did not use the available settings viewport'
             }
+            Invoke 'Cancel' -ByName
             TestLiveMarkdown
             Write-Output 'NATIVE_SMOKE_PASS: inline reasoning panel and viewport-sized Markdown instructions editor'
             return
@@ -738,20 +765,35 @@ try {
             $package = Join-Path $ReportDirectory 'native-installed-plugins/33333333-3333-4333-8333-333333333333/github.json'
             if (Test-Path -LiteralPath $package) { throw 'GitHub was installed before Install was clicked' }
             Invoke 'PluginPrimary-github'
-            Find 'PluginOptions-github' | Out-Null
+            Find 'GitHub installed.' -ByName | Out-Null
+            Find 'PluginRemove-github' | Out-Null
             if (!(Test-Path -LiteralPath $package)) { throw 'Installing GitHub did not write its plugin package' }
+            $packaged = [IO.File]::ReadAllText($package)
+            CloseApp
+            [IO.File]::WriteAllText($package, '{"id":"github","previousVersion":true}')
+            Launch
+            Find 'Sign out' -ByName | Out-Null
+            SelectNav 'Settings'
+            SelectSettingsCategory 'Plugins'
+            Find 'PluginRemove-github' | Out-Null
+            if ([IO.File]::ReadAllText($package) -ne $packaged) { throw 'An updated plugin package was not restored at startup' }
             SelectChoice 'PluginFilter' 'Installed'
             if (FindOptional 'PluginPrimary-vercel') { throw 'Installed filter shows an uninstalled plugin' }
             SelectChoice 'PluginFilter' 'All'
             if ((Find 'PluginPrimary-github').Current.Name -ne 'Connect') { throw 'GitHub did not offer browser connection after installation' }
-            Invoke 'PluginOptions-github'
             Invoke 'PluginRemove-github'
             Find 'Remove GitHub?' -ByName | Out-Null
             Invoke 'Cancel' -ByName
             if ((Find 'PluginPrimary-github').Current.Name -ne 'Connect') { throw 'Cancelling removal changed the installed plugin' }
-            Invoke 'PluginOptions-github'
-            Invoke 'PluginRemove-github'
+            $confirm = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Remove plugin')
+            $deadline = (Get-Date).AddSeconds(5)
+            do {
+                Invoke 'PluginRemove-github'
+                Start-Sleep -Milliseconds 200
+                $prompt = $script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, $confirm)
+            } while (!$prompt -and (Get-Date) -lt $deadline)
             Invoke 'Remove plugin' -ByName
+            Find 'GitHub removed.' -ByName | Out-Null
             $deadline = (Get-Date).AddSeconds(5)
             do {
                 $action = (Find 'PluginPrimary-github').Current.Name
@@ -771,7 +813,7 @@ try {
             Find 'PluginOptions-node' | Out-Null
             if ((Find 'PluginStatus-node').Current.Name -ne 'Installed') { throw 'The local runtime required a cloud connection' }
             Invoke 'PluginPrimary-typescript'
-            Find 'PluginOptions-typescript' | Out-Null
+            Find 'PluginRemove-typescript' | Out-Null
             [IO.File]::WriteAllText((Join-Path $ReportDirectory 'package.json'), '{"name":"native-plugin-fixture","scripts":{"test":"node --test"}}')
             UseFixtureModel
             SelectNav 'Chats'
@@ -785,6 +827,15 @@ try {
             Invoke 'Save project' -ByName
             Find 'Edit project' -ByName | Out-Null
             Invoke 'Back to chat' -ByName
+            SelectNav 'Settings'
+            SelectSettingsCategory 'Instructions'
+            Invoke 'Edit global instructions' -ByName
+            SetValue 'GlobalInstructions' 'Global plugin fixture instructions'
+            Invoke 'Save instructions' -ByName
+            Invoke 'Plugin fixture project' -ByName
+            SetValue 'ProjectInstructions' 'Project plugin fixture instructions'
+            Invoke 'Save instructions' -ByName
+            SelectNav 'Chats'
             Invoke 'Project…' -ByName
             SelectChoice 'ChatProjectSelector' 'Plugin fixture project'
             Invoke 'Choose' -ByName
@@ -936,8 +987,14 @@ try {
             SelectNav 'Settings'
             SelectSettingsCategory 'Models'
             SelectChoice 'Provider' 'Ollama'
+            $modelBounds = (Find 'ModelSelector').Current.BoundingRectangle
+            $modelWidth = $modelBounds.Width
+            if ([Math]::Abs($modelBounds.Left - (Find 'Provider').Current.BoundingRectangle.Left) -gt 2) { throw 'The model selector did not align with the provider field' }
             OpenProviderConnection
             SetValue 'ProviderEndpoint' ($Fixture + '/local/v1')
+            if ([Math]::Abs($modelWidth - (Find 'ModelSelector').Current.BoundingRectangle.Width) -gt 2 -or $modelWidth -lt 400) {
+                throw 'The model selector changed width when opening connection settings'
+            }
             PressEnterOn 'ProviderEndpoint'
             Find 'Endpoint saved.' -ByName | Out-Null
             SetValue 'ProviderKey' 'fixture-placeholder'
@@ -950,6 +1007,8 @@ try {
             } while ((Get-Date) -lt $deadline)
             if (!$saved) { throw 'Enter did not save the fixture credential' }
             SelectChoice 'ModelSelector' 'native-keyboard-model'
+            if ((Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw 'Tool calling was not enabled by default' }
+            Capture 'native-provider-expanded.png'
             SelectChoice 'Provider' 'OpenAI'
             SelectChoice 'Provider' 'Ollama'
             $selected = (Find 'ModelSelector').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
@@ -1202,6 +1261,8 @@ try {
     Invoke 'Refresh models' -ByName
     Start-Sleep -Milliseconds 500
     SelectChoice 'ModelSelector' 'local-fixture-model'
+    if ((Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw 'Tool calling was not enabled by default' }
+    (Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
     Capture 'native-local-model.png'
     SelectNav 'Chats'
     SetValue 'Composer' 'Reply using the local endpoint, without tools'
@@ -1224,7 +1285,9 @@ try {
     $toggle = (Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
     $toggle.Toggle()
     SelectChoice 'ModelSelector' 'basic-fixture-model'
-    if ((Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne [Windows.Automation.ToggleState]::Off) { throw 'Tool capability leaked from model A to model B' }
+    $toggle = (Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+    if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw 'Tool calling was not enabled by default for model B' }
+    $toggle.Toggle()
     SelectNav 'Chats'
     SetValue 'Composer' 'Native manual model B without tool support'
     Invoke 'Send' -ByName
