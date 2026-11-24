@@ -1774,7 +1774,7 @@ try {
     SelectGame 'Solitaire'
     if ((Find 'SolWaste').Current.Name -ne $wasteName) { throw 'Solitaire waste was lost across restart' }
     SelectGame 'Snake'
-    $untouchedSnake = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
+    if ((Invoke-RestMethod ($Fixture + '/game-proof')).saves.game -notcontains 'Snake') { throw 'Snake had no save before Restart' }
     Invoke 'Restart' -ByName
     $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
     $windowPattern.SetWindowVisualState([Windows.Automation.WindowVisualState]::Minimized)
@@ -1785,8 +1785,7 @@ try {
     $beforeSnake = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
     Start-Sleep -Seconds 2
     $afterSnake = ((Invoke-RestMethod ($Fixture + '/game-proof')).saves | Where-Object game -eq 'Snake').state
-    if ($afterSnake.Tick -ne $untouchedSnake.Tick -or ($afterSnake.Snake -join ',') -ne ($untouchedSnake.Snake -join ',')) { throw 'Restarting then leaving an untouched game replaced its saved progress' }
-    if ($beforeSnake.Tick -ne $afterSnake.Tick) { throw 'Hidden moving game continued ticking' }
+    if ($beforeSnake -or $afterSnake) { throw 'Restarting then leaving an untouched game left a save' }
     Invoke-RestMethod -Method Post ($Fixture + '/corrupt-game') | Out-Null
     Invoke-RestMethod -Method Post ($Fixture + '/solitaire-endgame') | Out-Null
     CloseApp
