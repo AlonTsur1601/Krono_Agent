@@ -209,7 +209,7 @@ public sealed partial class MainPage
             RefreshUpdateButton();
             var setupInfo = new ProcessStartInfo(downloadedInstaller) { UseShellExecute = false };
             foreach (var argument in new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/SP-", "/NORESTART",
-                "/NORESTARTAPPLICATIONS", "/CLOSEAPPLICATIONS", "/KRONOUPDATE=1" })
+                "/NORESTARTAPPLICATIONS", "/CLOSEAPPLICATIONS", "/KRONOUPDATE=1", $"/KRONOPID={Environment.ProcessId}" })
                 setupInfo.ArgumentList.Add(argument);
             using var setup = Process.Start(setupInfo);
             if (setup is null) throw new InvalidOperationException("The update installer could not be started.");

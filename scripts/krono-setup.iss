@@ -18,6 +18,8 @@ DisableProgramGroupPage=yes
 DisableWelcomePage=no
 SetupIconFile=..\native\Krono.Agent\Assets\AppIcon.ico
 UninstallDisplayIcon={app}\KronoAgent.exe
+AppModifyPath="{app}\Krono-Repair.exe" /SILENT /SP- /NORESTART /CLOSEAPPLICATIONS /NORESTARTAPPLICATIONS /KRONOREPAIR=1
+SetupMutex=Local\KronoAgent.Setup
 OutputDir=..\release
 OutputBaseFilename=Krono-Agent-Setup-x64
 #ifdef KronoOffline
@@ -67,11 +69,40 @@ Name: "{userdesktop}\Krono Agent"; Filename: "{app}\KronoAgent.exe"; WorkingDir:
 Filename: "{app}\KronoAgent.exe"; Description: "Launch Krono Agent"; Flags: nowait postinstall skipifsilent
 Filename: "{app}\KronoAgent.exe"; WorkingDir: "{app}"; Flags: nowait skipifnotsilent; Check: IsAppUpdate
 
+[UninstallDelete]
+Type: files; Name: "{app}\Krono-Repair.exe"
+Type: files; Name: "{app}\Krono-Maintenance.lock"
+
 [Code]
 var
   CleanUpgrade: Boolean;
   InstalledFiles: TStringList;
   DefaultDataDirectory, DataDirectory: String;
+  MaintenanceHandle: Integer;
+
+function CreateFile(FileName: String; Access, Share: LongWord; Security: Integer;
+  Disposition, Flags: LongWord; Template: Integer): Integer;
+  external 'CreateFileW@kernel32.dll stdcall';
+function CloseHandle(Handle: Integer): Boolean;
+  external 'CloseHandle@kernel32.dll stdcall';
+function OpenProcess(Access: LongWord; Inherit: Boolean; ProcessId: LongWord): Integer;
+  external 'OpenProcess@kernel32.dll stdcall';
+function WaitForSingleObject(Handle: Integer; Timeout: LongWord): LongWord;
+  external 'WaitForSingleObject@kernel32.dll stdcall';
+function MoveFileEx(Source, Destination: String; Flags: LongWord): Boolean;
+  external 'MoveFileExW@kernel32.dll stdcall';
+
+procedure ReleaseMaintenance;
+begin
+  if MaintenanceHandle > 0 then CloseHandle(MaintenanceHandle);
+  MaintenanceHandle := 0;
+end;
+
+procedure DeinitializeSetup;
+begin
+  ReleaseMaintenance;
+  if InstalledFiles <> nil then InstalledFiles.Free;
+end;
 
 function IsAppUpdate: Boolean;
 begin
@@ -89,19 +120,57 @@ end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  PreviousDir, AppDir, OverrideDir: String;
+  PreviousDir, AppDir, OverrideDir, PreviousVersion: String;
+  ProcessId, ProcessHandle: Integer;
 begin
   Result := '';
   AppDir := RemoveBackslashUnlessRoot(ExpandConstant('{app}'));
+  CleanUpgrade := RegQueryStringValue(HKCU64,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\KronoAgent_is1',
+    'InstallLocation', PreviousDir) and
+    (CompareText(RemoveBackslashUnlessRoot(PreviousDir), AppDir) = 0);
+  if ExpandConstant('{param:KRONOREPAIR|0}') = '1' then
+  begin
+    if not CleanUpgrade or not RegQueryStringValue(HKCU64,
+       'Software\Microsoft\Windows\CurrentVersion\Uninstall\KronoAgent_is1',
+       'DisplayVersion', PreviousVersion) or (PreviousVersion <> '{#KronoVersion}') then
+    begin
+      Result := 'This repair package does not match the installed version. Use the current Krono Agent installer.';
+      Exit;
+    end;
+  end;
   DefaultDataDirectory := RemoveBackslashUnlessRoot(ExpandConstant('{userappdata}\krono-agent'));
   DataDirectory := DefaultDataDirectory;
   OverrideDir := GetEnv('KRONO_USER_DATA');
   if OverrideDir <> '' then
     DataDirectory := RemoveBackslashUnlessRoot(ExpandFileName(OverrideDir));
-  CleanUpgrade := RegQueryStringValue(HKCU64,
-    'Software\Microsoft\Windows\CurrentVersion\Uninstall\KronoAgent_is1',
-    'InstallLocation', PreviousDir) and
-    (CompareText(RemoveBackslashUnlessRoot(PreviousDir), AppDir) = 0);
+  ReleaseMaintenance;
+  if not ForceDirectories(AppDir) then
+  begin
+    Result := 'Setup could not open the Krono Agent installation folder.';
+    Exit;
+  end;
+  MaintenanceHandle := CreateFile(AddBackslash(AppDir) + 'Krono-Maintenance.lock', $40000000, 0, 0, 4, $80, 0);
+  if MaintenanceHandle = -1 then
+  begin
+    Result := 'Setup could not lock the installation folder. Close any other Krono setup and retry.';
+    Exit;
+  end;
+  ProcessId := StrToIntDef(ExpandConstant('{param:KRONOPID|0}'), 0);
+  if IsAppUpdate and (ProcessId > 0) then
+  begin
+    ProcessHandle := OpenProcess($00100000, False, ProcessId);
+    if ProcessHandle <> 0 then
+    begin
+      try
+        if WaitForSingleObject(ProcessHandle, 30000) <> 0 then
+          Result := 'Krono Agent is still closing. Close it from the notification area and retry.';
+      finally
+        CloseHandle(ProcessHandle);
+      end;
+      if Result <> '' then Exit;
+    end;
+  end;
   if not CleanUpgrade then Exit;
   if (Pos(Lowercase(AddBackslash(DataDirectory)), Lowercase(AddBackslash(AppDir))) = 1) or
      (Pos(Lowercase(AddBackslash(DefaultDataDirectory)), Lowercase(AddBackslash(AppDir))) = 1) then
@@ -110,6 +179,7 @@ begin
     Exit;
   end;
   ExtractTemporaryFile('Krono-InstalledFiles.txt');
+  if InstalledFiles <> nil then InstalledFiles.Free;
   InstalledFiles := TStringList.Create;
   InstalledFiles.LoadFromFile(ExpandConstant('{tmp}\Krono-InstalledFiles.txt'));
   InstalledFiles.Sorted := True;
@@ -133,7 +203,9 @@ begin
         RemoveDir(Path);
       end
       else if (InstalledFiles.IndexOf(RelativeName) < 0) and
-        not ((Prefix = '') and (Pos('unins', Lowercase(Entry.Name)) = 1)) then
+        not ((Prefix = '') and ((Pos('unins', Lowercase(Entry.Name)) = 1) or
+          (CompareText(Entry.Name, 'Krono-Repair.exe') = 0) or
+          (CompareText(Entry.Name, 'Krono-Maintenance.lock') = 0))) then
       begin
         if not DeleteFile(Path) then Log('Could not remove obsolete file: ' + Path);
       end;
@@ -145,16 +217,34 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var
-  AppDir: String;
+  AppDir, Repair, Pending: String;
   Entry: TFindRec;
 begin
   if (CurStep = ssPostInstall) and not WizardSilent and WizardIsTaskSelected('startpin') then
     PinStartShortcut;
-  if (CurStep <> ssPostInstall) or not CleanUpgrade then Exit;
+  if CurStep <> ssPostInstall then Exit;
   AppDir := ExpandConstant('{app}');
-  if not FindFirst(AppDir, Entry) then Exit;
-  FindClose(Entry);
-  if (Entry.Attributes and $400) = 0 then CleanObsoleteFiles(AppDir, '');
+  try
+    if CleanUpgrade and FindFirst(AppDir, Entry) then
+    begin
+      FindClose(Entry);
+      if (Entry.Attributes and $400) = 0 then CleanObsoleteFiles(AppDir, '');
+    end;
+    Repair := AddBackslash(AppDir) + 'Krono-Repair.exe';
+    if CompareText(ExpandConstant('{srcexe}'), Repair) <> 0 then
+    begin
+      Pending := Repair + '.pending';
+      if not FileCopy(ExpandConstant('{srcexe}'), Pending, False) or
+         not MoveFileEx(Pending, Repair, 1) then
+      begin
+        DeleteFile(Pending);
+        Log('Could not cache the Krono repair installer.');
+        SuppressibleMsgBox('Krono Agent was installed, but Windows repair could not be registered. Keep this installer to repair the app later.', mbError, MB_OK, IDOK);
+      end;
+    end;
+  finally
+    ReleaseMaintenance;
+  end;
 end;
 
 procedure InitializeWizard;

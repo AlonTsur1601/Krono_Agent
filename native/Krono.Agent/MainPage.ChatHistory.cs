@@ -46,6 +46,11 @@ public sealed partial class MainPage
     void InitializeChatRail()
     {
         AutomationProperties.SetAutomationId(chatList, "ChatList");
+        void PaintAccent() => KronoDesign.ApplyControlAccents(chatList);
+        PaintAccent();
+        chatList.Loaded += (_, _) => PaintAccent();
+        chatList.ActualThemeChanged += (_, _) => PaintAccent();
+        KronoInputMotion.RegisterPaletteRefresh(chatList, PaintAccent);
         chatList.ItemTemplateSelector = new ChatRailTemplates(Resources);
         chatList.SelectionChanged += (_, _) => {
             if (loadingChatHistory || runId is not null) return;
@@ -60,8 +65,9 @@ public sealed partial class MainPage
         chatList.ContainerContentChanging += (_, args) => {
             if (args.InRecycleQueue || args.ItemContainer is not ListViewItem row || args.Item is not RailEntry entry)
                 return;
-            row.MinHeight = 32;
-            row.Padding = entry.Kind == RailKind.Disclosure ? new Thickness(0) : new Thickness(7, 0, 5, 0);
+            row.MinHeight = 34;
+            row.Margin = new Thickness(0, entry.Kind is RailKind.Heading or RailKind.Disclosure ? 6 : 1, 0, 1);
+            row.Padding = entry.Kind == RailKind.Disclosure ? new Thickness(0) : new Thickness(13, 0, 6, 0);
             row.HorizontalContentAlignment = HorizontalAlignment.Stretch;
             row.IsTabStop = entry.Kind == RailKind.Chat;
             row.IsHitTestVisible = entry.Kind != RailKind.Heading;

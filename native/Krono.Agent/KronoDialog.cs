@@ -54,15 +54,10 @@ internal sealed class KronoDialog : ContentDialog
 
         var activeState = defaults.CurrentState?.Name;
         VisualStateManager.GoToState(this, "NoDefaultButton", false);
-        foreach (var state in defaults.States) {
-            var style = state.Name switch {
-                "PrimaryAsDefaultButton" => PrimaryButtonStyle,
-                "SecondaryAsDefaultButton" => SecondaryButtonStyle,
-                "CloseAsDefaultButton" => CloseButtonStyle,
-                _ => null,
-            };
-            if (style is null) continue;
-            foreach (var setter in state.Setters.OfType<Setter>()) setter.Value = style;
+        // WinUI substitutes the system accent style for the default action.
+        // Keep its keyboard behavior while letting the three style bindings render the buttons.
+        foreach (var state in defaults.States.Where(state => state.Name.EndsWith("AsDefaultButton", StringComparison.Ordinal))) {
+            state.Setters.Clear();
         }
         if (activeState is not null) VisualStateManager.GoToState(this, activeState, false);
     }

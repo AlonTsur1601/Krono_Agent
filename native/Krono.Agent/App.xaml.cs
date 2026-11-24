@@ -40,9 +40,20 @@ public partial class App : Application
     }
     [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
     static extern bool SetThreadPreferredUILanguages(uint flags, string languages, out uint count);
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    static extern int MessageBoxW(nint window, string text, string caption, uint type);
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
+        try {
+            using var maintenance = File.Open(Path.Combine(AppContext.BaseDirectory, "Krono-Maintenance.lock"),
+                FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        } catch (FileNotFoundException) { }
+        catch (IOException error) when ((error.HResult & 0xffff) is 32 or 33) {
+            MessageBoxW(0, "Krono Agent is being updated or repaired. Open it again when setup finishes.", "Krono Agent", 0x40);
+            Exit();
+            return;
+        }
         var profile = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Workspace.Home)).ToUpperInvariant();
         var key = "Krono-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(profile)).AsSpan(0, 16));
         activation = AppInstance.FindOrRegisterForKey(key);

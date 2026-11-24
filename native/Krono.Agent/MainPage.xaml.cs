@@ -149,11 +149,14 @@ public sealed partial class MainPage : Page
         HideError();
         EmailInput.Focus(FocusState.Programmatic);
     }
-    void CenterPasswordContent(object sender, RoutedEventArgs args)
+    void CenterAuthInput(object sender, RoutedEventArgs args)
     {
-        if (sender is not PasswordBox password) return;
-        KronoInputMotion.Attach(password, "KronoPasswordInput", PasswordVisibility);
-        KronoInputMotion.StyleButton(PasswordVisibility);
+        if (sender is not Control field) return;
+        if (field is PasswordBox password) {
+            KronoInputMotion.Attach(password, "KronoPasswordInput", PasswordVisibility);
+            KronoInputMotion.StyleButton(PasswordVisibility);
+        }
+        KronoInputMotion.AlignTextContent(field, centerEditor: true);
     }
     void PasswordVisibilityChanged(object sender, RoutedEventArgs args)
     {
@@ -381,17 +384,18 @@ public sealed partial class MainPage : Page
     {
         if (chatView is null) {
             chatView = new Grid();
-            var history = new Grid { RowSpacing = 10, Width = 220 };
+            var history = new Grid { RowSpacing = 14, Width = 220 };
             history.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             history.RowDefinitions.Add(new RowDefinition());
-            var header = new StackPanel { Spacing = 7 };
+            var header = new StackPanel { Spacing = 10 };
             chatSearchInput = new KronoTextBox { PlaceholderText = "Search chats", Visibility = Visibility.Collapsed };
             chatSearchInput.TextChanged += (_, _) => { if (workspace.AccountId.Length > 0) ReloadChats(); };
-            var titleRow = new Grid { ColumnSpacing = 4 };
+            var titleRow = new Grid { ColumnSpacing = 8 };
             titleRow.ColumnDefinitions.Add(new ColumnDefinition());
             titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var title = Heading("Chats");
+            title.Margin = new Thickness(0);
             title.VerticalAlignment = VerticalAlignment.Center;
             titleRow.Children.Add(title);
             var searchButton = HistoryAction("Search chats", KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Search), () => {
@@ -406,6 +410,7 @@ public sealed partial class MainPage : Page
             titleRow.Children.Add(projectsButton);
             Grid.SetColumn(projectsButton, 2);
             header.Children.Add(titleRow);
+            header.Children.Add(chatSearchInput);
             history.Children.Add(header);
             header.Children.Add(Button("+ New chat", () => {
                 if (runId is not null) return;
@@ -420,7 +425,6 @@ public sealed partial class MainPage : Page
             InitializeChatRail();
             Grid.SetRow(chatList, 1);
             history.Children.Add(chatList);
-            header.Children.Add(chatSearchInput);
             backToChats = Button("Back to chat", ShowChats);
             header.Children.Add(backToChats);
             chatHistory = history;

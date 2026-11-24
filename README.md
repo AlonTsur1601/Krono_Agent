@@ -12,6 +12,8 @@ See [implementation status](IMPLEMENTATION_STATUS.md) and [.kiro requirements](.
 
 For Windows x64, [download the Krono Agent installer](https://github.com/KronoAgent/Krono_Agent/releases/latest/download/Krono-Agent-Setup-x64.exe). The installer works offline and lets you choose the installation folder and add a desktop shortcut named **Krono Agent**.
 
+To repair a Windows installation, close Krono Agent from its tray menu. In **Settings → Apps → Installed apps**, open the menu for **Krono Agent** and choose **Modify**. If Windows does not show that option, use **Control Panel → Programs and Features → Krono Agent → Change**. For older installations, run the current installer and keep the existing installation folder. Repair replaces app files and keeps your profile and workspace data under `%APPDATA%\krono-agent`.
+
 To build from source, install Node 24+ and .NET 10 SDK, then:
 
 ```powershell
