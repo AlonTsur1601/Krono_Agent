@@ -1376,6 +1376,10 @@ try {
     do { Start-Sleep -Milliseconds 200; $proof = Invoke-RestMethod ($Fixture + '/side-proof') } while ($proof.queued -gt 0 -and (Get-Date) -lt $deadline)
     if ($proof.queued -ne 0 -or $proof.transferred -ne 1) { throw 'Side transfer did not append after the safe boundary' }
     Find 'Response ready' -ByName | Out-Null
+    if ((Find 'GameStatus').Current.Name -like 'Paused*') {
+        if (!(New-Object -ComObject WScript.Shell).AppActivate($script:process.Id)) { throw 'Could not reactivate the game window' }
+        Invoke 'Pause / resume' -ByName
+    }
     $ticCell = WaitTicTurn
     Invoke ('GameCell' + $ticCell)
     Find ('Cell ' + ($ticCell + 1) + ': X') -ByName | Out-Null
