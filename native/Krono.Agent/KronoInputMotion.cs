@@ -271,12 +271,12 @@ internal static class KronoInputMotion
     }
     static readonly ConditionalWeakTable<FrameworkElement, CompositeTransform> SurfaceTransforms = new();
 
-    internal static void AlignTextContent(Control field)
+    internal static void AlignTextContent(Control field, bool centerEditor = false)
     {
         var multiline = field is TextBox { AcceptsReturn: true };
         foreach (var part in Descendants(field)) {
             if (part is ScrollViewer { Name: "ContentElement" } viewer) {
-                viewer.VerticalAlignment = !multiline && ReferenceEquals(field.Style, Application.Current.Resources["KronoCompactTextInput"])
+                viewer.VerticalAlignment = !multiline && (centerEditor || ReferenceEquals(field.Style, Application.Current.Resources["KronoCompactTextInput"]))
                     ? VerticalAlignment.Center : VerticalAlignment.Stretch;
                 viewer.VerticalContentAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
             } else if (part is FrameworkElement { Name: "PlaceholderTextContentPresenter" } placeholder)

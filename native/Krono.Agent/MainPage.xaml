@@ -31,9 +31,9 @@
     </DataTemplate>
     <DataTemplate x:Key="ChatRailDisclosure">
         <Button Template="{StaticResource ChatRailAction}" Click="ChatRailDisclosureClicked"
-                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="32" Padding="7,0,5,0"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="34" Padding="13,0,6,0"
                 AutomationProperties.Name="{Binding ActionLabel}">
-            <Grid ColumnSpacing="6">
+            <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
                 <ContentPresenter Content="{Binding Icon}" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="14" FontWeight="SemiBold"
@@ -47,12 +47,12 @@
                 AutomationProperties.Name="{Binding ActionLabel}"/>
     </DataTemplate>
     <DataTemplate x:Key="ChatRailConversation">
-        <Grid Background="Transparent" MinHeight="32" ColumnSpacing="4" Margin="{Binding Indent}"
+        <Grid Background="Transparent" MinHeight="34" ColumnSpacing="8" Margin="{Binding Indent}"
               PointerEntered="ChatRowPointerEntered" PointerExited="ChatRowPointerExited">
             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <ProgressRing Grid.Column="1" Width="13" Height="13" Visibility="{Binding WorkingVisibility}" IsActive="{Binding Working}" AutomationProperties.Name="Agent working"/>
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" Visibility="Collapsed">
+            <ProgressRing Grid.Column="1" Width="13" Height="13" Foreground="{ThemeResource KronoAccentForeground}" Visibility="{Binding WorkingVisibility}" IsActive="{Binding Working}" AutomationProperties.Name="Agent working"/>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" Visibility="Collapsed">
                 <Button Style="{StaticResource ChatRailIconButton}" Width="24" Height="24" Click="ChatPinClicked"
                         Content="{Binding PinIcon}" Visibility="{Binding PinVisibility}" AutomationProperties.Name="{Binding PinLabel}"
                         ToolTipService.ToolTip="{Binding PinLabel}"/>
@@ -117,19 +117,22 @@
 </Grid></Border></Grid></NavigationView>
 <ProgressRing x:Name="StartupProgress" IsActive="True" Width="36" Height="36" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 <ScrollViewer x:Name="SignIn" Visibility="Collapsed" VerticalScrollBarVisibility="Hidden" VerticalContentAlignment="Stretch" HorizontalContentAlignment="Stretch">
-<Grid Background="{ThemeResource KronoLoginBackdrop}">
+<Grid Background="{ThemeResource KronoBackground}">
 <Grid x:Name="LoginPattern" IsHitTestVisible="False"/>
-<Border x:Name="AuthCard" Margin="24" MaxWidth="440" HorizontalAlignment="Stretch" VerticalAlignment="Center" Padding="32" CornerRadius="22" Background="{ThemeResource KronoSurface}" BorderBrush="{ThemeResource KronoBorder}" BorderThickness="1">
+<Border x:Name="AuthCard" Margin="24" MaxWidth="440" HorizontalAlignment="Stretch" VerticalAlignment="Center" Padding="32" CornerRadius="18" Background="{ThemeResource KronoSurface}" BorderBrush="{ThemeResource KronoBorder}" BorderThickness="1,1,1,3">
 <Grid>
 <StackPanel x:Name="LoginForm" Spacing="14" PreviewKeyDown="SubmitPassword">
-<Image Width="72" Height="72" HorizontalAlignment="Left"><Image.Source><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg"/></Image.Source></Image>
-<TextBlock x:Name="AuthTitle" Text="Welcome to Krono" FontFamily="{ThemeResource KronoDisplayFont}" Style="{ThemeResource TitleTextBlockStyle}"/>
+<Grid ColumnSpacing="12">
+<Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+<Image Width="40" Height="40" VerticalAlignment="Center"><Image.Source><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg"/></Image.Source></Image>
+<TextBlock Grid.Column="1" x:Name="AuthTitle" Text="Welcome to Krono" FontFamily="{ThemeResource KronoDisplayFont}" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"/>
+</Grid>
 <TextBlock x:Name="AuthSubtitle" Text="Sign in to your workspace." Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-<local:KronoTextBox x:Name="EmailInput" Header="Email" InputScope="EmailSmtpAddress"/>
+<local:KronoTextBox x:Name="EmailInput" Header="Email" InputScope="EmailSmtpAddress" Loaded="CenterAuthInput"/>
 <StackPanel Spacing="4">
 <TextBlock Text="Password"/>
 <Grid>
-<PasswordBox x:Name="PasswordInput" AutomationProperties.Name="Password" PasswordRevealMode="Hidden" Padding="12,8,46,8" Loaded="CenterPasswordContent"/>
+<PasswordBox x:Name="PasswordInput" AutomationProperties.Name="Password" PasswordRevealMode="Hidden" Padding="12,8,46,8" Loaded="CenterAuthInput"/>
 <ToggleButton x:Name="PasswordVisibility" AutomationProperties.Name="Show password" ToolTipService.ToolTip="Show password" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,5,0" Width="34" Height="28" Padding="0" Background="Transparent" BorderThickness="0" Checked="PasswordVisibilityChanged" Unchecked="PasswordVisibilityChanged">
 <FontIcon x:Name="PasswordEye" Glyph="&#xE890;" FontFamily="Segoe Fluent Icons" FontSize="16"/>
 </ToggleButton>
@@ -155,10 +158,11 @@
 </Border>
 </StackPanel>
 <StackPanel x:Name="ConfirmationForm" Visibility="Collapsed" Spacing="10">
-<StackPanel Orientation="Horizontal" Spacing="10">
-<SymbolIcon Symbol="Mail" Width="20" Height="20" Foreground="{ThemeResource KronoAccentForeground}"/>
-<TextBlock Text="Check your email" FontFamily="{ThemeResource KronoDisplayFont}" FontSize="24" FontWeight="SemiBold"/>
-</StackPanel>
+<Grid ColumnSpacing="12">
+<Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+<SymbolIcon Symbol="Mail" Width="26" Height="26" VerticalAlignment="Center" Foreground="{ThemeResource KronoAccentForeground}"/>
+<TextBlock Grid.Column="1" Text="Check your email" FontFamily="{ThemeResource KronoDisplayFont}" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"/>
+</Grid>
 <TextBlock x:Name="ConfirmationInstructions" TextWrapping="Wrap"/>
 <TextBlock x:Name="ConfirmationAddress" TextWrapping="Wrap" FontWeight="SemiBold"/>
 <TextBlock x:Name="ConfirmationHelp" TextWrapping="Wrap" Foreground="{ThemeResource KronoMuted}"/>

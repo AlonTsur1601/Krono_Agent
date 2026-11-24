@@ -41,6 +41,18 @@ jobs:
           $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($desktop)
           if (!(Test-Path -LiteralPath $desktop) -or $shortcut.TargetPath -ne $env:KRONO_SMOKE_EXE) { throw 'Desktop shortcut has the wrong target.' }
           if (!(Test-Path -LiteralPath $startMenu) -or (New-Object -ComObject WScript.Shell).CreateShortcut($startMenu).TargetPath -ne $env:KRONO_SMOKE_EXE) { throw 'Start menu shortcut is missing or has the wrong target.' }
+          $repair = Join-Path $target 'Krono-Repair.exe'
+          $entry = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\KronoAgent_is1'
+          if (!(Test-Path -LiteralPath $repair) -or !$entry.ModifyPath.StartsWith(('"' + $repair + '" '))) { throw 'Windows repair was not registered.' }
+          $env:KRONO_USER_DATA = Join-Path $env:RUNNER_TEMP 'Krono repair profile'
+          New-Item -ItemType Directory -Path $env:KRONO_USER_DATA -Force | Out-Null
+          $sentinel = Join-Path $env:KRONO_USER_DATA 'keep-me.txt'
+          Set-Content -LiteralPath $sentinel -Value 'repair preserves this profile'
+          Remove-Item -LiteralPath $env:KRONO_SMOKE_EXE
+          $repairArgs = $entry.ModifyPath.Substring($repair.Length + 3)
+          $repaired = Start-Process -FilePath $repair -ArgumentList "$repairArgs /SUPPRESSMSGBOXES" -WindowStyle Hidden -Wait -PassThru
+          if ($repaired.ExitCode -ne 0 -or !(Test-Path -LiteralPath $env:KRONO_SMOKE_EXE) -or
+              (Get-Content -LiteralPath $sentinel) -ne 'repair preserves this profile') { throw 'Windows repair failed or changed the profile.' }
           node scripts/native-smoke.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Installed app failed native acceptance.' }
           $uninstall = Start-Process -FilePath (Join-Path $target 'unins000.exe') -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -WindowStyle Hidden -Wait -PassThru
