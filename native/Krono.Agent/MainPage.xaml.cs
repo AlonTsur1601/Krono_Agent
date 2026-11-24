@@ -982,7 +982,12 @@ public sealed partial class MainPage : Page
         AddUpdateSettings(AddCategory("Updates"));
         var names = pages.Keys.ToList();
         names.Insert(names.IndexOf("Plugins"), "Instructions");
-        var categories = new ListView { ItemsSource = names, SelectionMode = ListViewSelectionMode.Single };
+        var categories = new ListView {
+            // The sidebar already animates its entrance horizontally.
+            ItemContainerTransitions = new Microsoft.UI.Xaml.Media.Animation.TransitionCollection(),
+            ItemsSource = names,
+            SelectionMode = ListViewSelectionMode.Single
+        };
         AutomationProperties.SetAutomationId(categories, "SettingsCategories");
         var sidebar = new StackPanel { Spacing = 4 };
         sidebar.Children.Add(Heading("Settings"));
