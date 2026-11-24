@@ -276,7 +276,8 @@ internal static class KronoInputMotion
         var multiline = field is TextBox { AcceptsReturn: true };
         foreach (var part in Descendants(field)) {
             if (part is ScrollViewer { Name: "ContentElement" } viewer) {
-                viewer.VerticalAlignment = VerticalAlignment.Stretch;
+                viewer.VerticalAlignment = !multiline && ReferenceEquals(field.Style, Application.Current.Resources["KronoCompactTextInput"])
+                    ? VerticalAlignment.Center : VerticalAlignment.Stretch;
                 viewer.VerticalContentAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
             } else if (part is FrameworkElement { Name: "PlaceholderTextContentPresenter" } placeholder)
                 placeholder.VerticalAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center;

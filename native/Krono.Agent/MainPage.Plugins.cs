@@ -11,6 +11,7 @@ public sealed partial class MainPage
 {
     sealed record PluginOperation(string Plugin, string Request, AgentWorker Worker);
     PluginOperation? pluginOperation;
+    string? changingPlugin;
     string pluginProgress = "";
     Action? refreshPluginCards;
 
@@ -87,8 +88,8 @@ public sealed partial class MainPage
 
             var primary = Button("Install", async () => {
                 if (pluginOperation is { Plugin: var current } && current == plugin.Id) { await CancelPluginConnection(); return; }
-                if (pluginOperation is not null) return;
-                if (!PluginCatalog.Installed(workspace, plugin)) { PluginCatalog.Install(workspace, plugin); refreshPluginCards?.Invoke(); return; }
+                if (pluginOperation is not null || changingPlugin is not null) return;
+                if (!PluginCatalog.Installed(workspace, plugin)) { await ChangePlugin(plugin, true); return; }
                 if (plugin.RequiresAccount) await ConnectPlugin(plugin);
             });
             AutomationProperties.SetAutomationId(primary, "PluginPrimary-" + plugin.Id);
@@ -107,22 +108,25 @@ public sealed partial class MainPage
                 guide.Click += async (_, _) => await Windows.System.Launcher.LaunchUriAsync(new Uri(url));
                 options.Items.Add(guide);
             }
-            var remove = new MenuFlyoutItem { Text = "Remove" };
-            AutomationProperties.SetAutomationId(remove, "PluginRemove-" + plugin.Id);
-            remove.Click += async (_, _) => {
+            var remove = Button("", async () => {
                 var generation = sessionGeneration;
+                if (changingPlugin is not null || pluginOperation is not null) return;
                 if (!await Confirm("Remove " + plugin.Name + "?", "Krono will stop using this plugin and clear its saved connection on this computer.", "Remove plugin") || generation != sessionGeneration) return;
-                if (pluginOperation?.Plugin == plugin.Id) await CancelPluginConnection();
-                PluginCatalog.Remove(workspace, plugin);
-                refreshPluginCards?.Invoke();
-            };
-            options.Items.Add(remove);
+                await ChangePlugin(plugin, false);
+            });
+            remove.Content = new SymbolIcon(Symbol.Delete);
+            remove.Foreground = KronoDesign.ThemeBrush("KronoDangerForeground", card.ActualTheme);
+            card.ActualThemeChanged += (_, _) => remove.Foreground = KronoDesign.ThemeBrush("KronoDangerForeground", card.ActualTheme);
+            AutomationProperties.SetName(remove, "Remove " + plugin.Name);
+            ToolTipService.SetToolTip(remove, "Remove " + plugin.Name);
+            AutomationProperties.SetAutomationId(remove, "PluginRemove-" + plugin.Id);
+            actions.Children.Add(remove);
             var more = new Button { Content = "…", MinWidth = 38 };
             more.Click += (_, _) => options.ShowAt(more);
             AutomationProperties.SetName(more, plugin.Name + " options");
             AutomationProperties.SetAutomationId(more, "PluginOptions-" + plugin.Id);
             actions.Children.Add(more);
-            actions.Children.Add(badge);
+            footer.Children.Add(badge);
             footer.Children.Add(status);
 
             void Render()
@@ -130,11 +134,15 @@ public sealed partial class MainPage
                 var installed = PluginCatalog.Installed(workspace, plugin);
                 var connected = installed && plugin.RequiresAccount && PluginCatalog.Configuration(workspace, plugin) is not null;
                 var connecting = pluginOperation?.Plugin == plugin.Id;
-                bool actionNeeded = !installed || plugin.RequiresAccount && !connected || connecting;
+                var changing = changingPlugin == plugin.Id;
+                bool actionNeeded = changing || !installed || plugin.RequiresAccount && !connected || connecting;
                 primary.Content = connecting ? "Cancel" : installed ? "Connect" : "Install";
                 primary.Visibility = actionNeeded ? Visibility.Visible : Visibility.Collapsed;
-                primary.IsEnabled = connecting || pluginOperation is null;
-                more.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
+                primary.IsEnabled = connecting || changingPlugin is null && pluginOperation is null;
+                remove.Visibility = installed || changing ? Visibility.Visible : Visibility.Collapsed;
+                remove.IsEnabled = changingPlugin is null && pluginOperation is null;
+                more.Visibility = installed && (connected || plugin.Id == "node" || plugin.SetupUrl is not null) ? Visibility.Visible : Visibility.Collapsed;
+                more.IsEnabled = changingPlugin is null && pluginOperation is null;
                 reconnect.Visibility = connected && !connecting ? Visibility.Visible : Visibility.Collapsed;
                 check.Visibility = installed && (connected || plugin.Id == "node") && !connecting ? Visibility.Visible : Visibility.Collapsed;
                 badge.Visibility = installed && !connecting ? Visibility.Visible : Visibility.Collapsed;
@@ -160,6 +168,26 @@ public sealed partial class MainPage
         filter.SelectionChanged += (_, _) => Arrange(grid.ActualWidth, refresh: true);
         Arrange(panel.ActualWidth);
         grid.Loaded += (_, _) => { Arrange(panel.ActualWidth); refreshPluginCards?.Invoke(); };
+    }
+
+    async Task ChangePlugin(PluginCatalog.Plugin plugin, bool install)
+    {
+        if (changingPlugin is not null || pluginOperation is not null) return;
+        changingPlugin = plugin.Id;
+        var generation = sessionGeneration;
+        refreshPluginCards?.Invoke();
+        try {
+            var ready = new TaskCompletionSource();
+            if (DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => ready.SetResult()))
+                await ready.Task;
+            if (generation != sessionGeneration) return;
+            if (install) PluginCatalog.Install(workspace, plugin);
+            else PluginCatalog.Remove(workspace, plugin);
+            ShowNotice(plugin.Name + (install ? " installed." : " removed."));
+        } finally {
+            changingPlugin = null;
+            refreshPluginCards?.Invoke();
+        }
     }
 
     static FrameworkElement PluginIcon(PluginCatalog.Plugin plugin)

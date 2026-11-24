@@ -52,10 +52,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
             var terminal = terminals.Values.FirstOrDefault(session => ReferenceEquals(session.Tab, tabs.SelectedItem));
             selectedTerminal.Content = terminal?.Screen;
             if (terminal is not null) {
-                DispatcherQueue.TryEnqueue(() => {
-                    if (IsLoaded && !terminal.AgentTranscript && ReferenceEquals(selectedTerminal.Content, terminal.Screen))
-                        terminal.Screen.Focus(FocusState.Programmatic);
-                });
+                FocusInput(terminal);
                 if (terminal.NeedsRender) Render(terminal);
                 else ScrollOutputToEnd(terminal);
             }
@@ -85,14 +82,25 @@ public sealed class TerminalWorkspace : Grid, IDisposable
             if (tabs.SelectedItem is TabViewItem { Tag: string id } && terminals.TryGetValue(id, out var terminal)) {
                 if (terminal.NeedsRender) Render(terminal);
                 else ScrollOutputToEnd(terminal);
+                FocusInput(terminal);
             }
         };
         Unloaded += (_, _) => renderTimer.Stop();
     }
 
+    void FocusInput(Session terminal)
+    {
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => {
+            if (IsLoaded && terminal.Screen.IsLoaded && !terminal.Screen.IsReadOnly &&
+                ReferenceEquals(selectedTerminal.Content, terminal.Screen)) terminal.Screen.Focus(FocusState.Programmatic);
+        });
+    }
+
     Session NewSession(string id, string name, bool agent = false)
     {
-        var screen = new KronoTextBox { IsReadOnly = true, AcceptsReturn = true, PressMotionEnabled = false,
+        var screen = new KronoTextBox { IsReadOnly = agent, AcceptsReturn = true, PressMotionEnabled = false,
+            FlowDirection = FlowDirection.LeftToRight, TextReadingOrder = TextReadingOrder.UseFlowDirection,
+            TextAlignment = TextAlignment.Left, IsTextPredictionEnabled = false, IsSpellCheckEnabled = false,
             FontFamily = KronoDesign.CodeFont, FontSize = KronoDesign.CodeSize, TextWrapping = TextWrapping.NoWrap,
             SurfaceFeedbackEnabled = false, UseSystemFocusVisuals = false,
             BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(0),
@@ -105,6 +113,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
         KronoDesign.StyleTabHeader(tab, TerminalSurface);
         var terminal = new Session(tab, screen) { AgentTranscript = agent };
         screen.BeforeTextChanging += (_, args) => args.Cancel = !terminal.Rendering;
+        screen.Loaded += (_, _) => FocusInput(terminal);
         terminals[id] = terminal;
         tabs.TabItems.Add(tab);
         tabs.SelectedItem = tab;
@@ -169,7 +178,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
             var waiting = terminal.StartupInput.ToString();
             terminal.StartupInput = null;
             terminal.Ready = true;
-            if (ReferenceEquals(tabs.SelectedItem, terminal.Tab)) screen.Focus(FocusState.Programmatic);
+            FocusInput(terminal);
             if (waiting.Length > 0) await Write(id, terminal, waiting);
         } catch (Exception error) {
             terminal.StartupInput = null;

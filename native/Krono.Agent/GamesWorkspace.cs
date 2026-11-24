@@ -42,7 +42,6 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
     {
         this.workspace = workspace;
         if (previewIndex >= 0) { previewOnly = true; game = previewIndex; random = new Random(4081 + game); Reset(); SeedPreview(); Draw(); return; }
-        botDifficulty = int.TryParse(workspace.Setting("native.gameBotDifficulty"), out var difficulty) ? Math.Clamp(difficulty, 0, 2) : 1;
         scoreDeltaTimer.Tick += (_, _) => { scoreDeltaTimer.Stop(); pointsGain.Text = ""; pointsGain.Opacity = 0; };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(status, "GameStatus");
         RowSpacing = 10; RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); RowDefinitions.Add(new RowDefinition { Height = new GridLength(42) }); RowDefinitions.Add(new RowDefinition()); RowDefinitions.Add(new RowDefinition { Height = new GridLength(112) });
@@ -58,7 +57,15 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         };
         toolbar.Children.Add(back);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(back, "GameLibraryBack");
-        void Restart() { SaveCurrent(false); PlayGameSound(GameSound.Click); Reset(); stateReady = true; timer.Start(); }
+        void Restart()
+        {
+            try { ClearSave(game); }
+            catch (Exception error) when (error is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException) {
+                gameHelp.Text = "Could not clear the previous save. " + error.Message;
+                return;
+            }
+            PlayGameSound(GameSound.Click); Reset(); stateReady = true; timer.Start();
+        }
         var restart = new Button { Content = "Restart" }; restart.Click += (_, _) => Restart(); toolbar.Children.Add(restart);
         var pause = new Button { Content = "Pause / resume" }; pause.Click += (_, _) => { if (ended) return; paused = !paused; if (!paused) timer.Start(); else timer.Stop(); Draw(); SaveCurrent(false); }; toolbar.Children.Add(pause); Children.Add(toolbar);
         var header = ScoreHeader(); Grid.SetRow(header, 1); Children.Add(header);
@@ -174,36 +181,51 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
             card.Children.Add(new TextBlock { Text = names[i], FontFamily = (FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(14, 0, 14, 0) });
             card.Children.Add(new TextBlock { Text = descriptions[i], FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.Normal, Opacity = .72, TextWrapping = TextWrapping.Wrap, MinHeight = 34, Margin = new Thickness(14, 0, 14, 6) });
             var saveLabel = new TextBlock { Text = BestCaptionText(bestScores.GetValueOrDefault(names[i])), FontFamily = KronoDesign.CodeFont, FontSize = 10, CharacterSpacing = 85, Foreground = ReadableAccent, Margin = new Thickness(14, 0, 14, 14) }; saveLabels.Add(saveLabel); card.Children.Add(saveLabel);
-            var button = new Button { Style = (Style)Application.Current.Resources["KronoButton"], Content = card, Padding = new Thickness(0), CornerRadius = new CornerRadius(16), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            var button = new Button { Style = (Style)Application.Current.Resources["KronoButton"], Content = card, Padding = new Thickness(0),
+                CornerRadius = new CornerRadius(16), HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Top };
             card.Children.Insert(0, BoardPreview(i, button));
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(button, "GameTile" + i);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, names[i]);
             button.Click += async (_, _) => await ChooseGame(index);
             var starred = favorites.Contains(names[i]);
             var star = new ToggleButton { IsChecked = starred, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(8), Padding = new Thickness(8, 4, 8, 4), FontSize = 18, CornerRadius = new CornerRadius(10), Background = Ink(0x293a51), Foreground = starred ? Ink(0xffd389) : White, BorderBrush = Ink(0x344452), BorderThickness = new Thickness(0) };
-            star.Content = KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Star, star.Foreground);
+            star.Content = KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Star, star.Foreground, starred);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(star, "FavoriteGame" + i);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(star, "Favorite " + names[i]);
             void SaveFavorite(object sender, RoutedEventArgs e) {
                 if (star.IsChecked == true) favorites.Add(names[index]); else favorites.Remove(names[index]);
                 star.Foreground = star.IsChecked == true ? Ink(0xffd389) : White;
-                star.Content = KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Star, star.Foreground);
+                star.Content = KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Star, star.Foreground, star.IsChecked == true);
                 workspace.SetSetting("native.gameFavorites", System.Text.Json.JsonSerializer.Serialize(favorites));
                 if (favoritesOnly.IsChecked == true) Arrange();
             }
             star.Checked += SaveFavorite; star.Unchecked += SaveFavorite;
-            var cardFrame = new Grid { Margin = new Thickness(6) }; cardFrame.Children.Add(button); cardFrame.Children.Add(star); buttons.Add(cardFrame); cards.Children.Add(cardFrame);
+            var cardFrame = new Grid { Margin = new Thickness(6), RowSpacing = 6 };
+            cardFrame.RowDefinitions.Add(new RowDefinition());
+            cardFrame.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            cardFrame.Children.Add(button);
+            cardFrame.Children.Add(star);
+            if (index is 1 or 4 or 7 or 12 or MazeChase) {
+                var difficulty = KronoDesign.DiscreteSlider("Bot difficulty", BotLevels, Difficulty(index),
+                    value => workspace.SetSetting("native.gameBotDifficulty." + names[index], value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(difficulty, "GameDifficulty" + index);
+                Grid.SetRow(difficulty, 1);
+                cardFrame.Children.Add(difficulty);
+            }
+            buttons.Add(cardFrame);
+            cards.Children.Add(cardFrame);
         }
         string Category(int i) => i is 1 or 4 or 12 or Solitaire ? "Strategy" : i is 2 or 3 or 6 or 8 or 9 or 10 or 13 or 15 or Jigsaw or BlockFit ? "Puzzle" : "Arcade";
         void Arrange() {
             if (disposed) return;
             filters.Orientation = ActualWidth is > 0 and < 520 ? Orientation.Vertical : Orientation.Horizontal;
-            var recent = recentOnly.IsChecked == true ? workspace.Query("SELECT game_id FROM game_saves WHERE account_id=$p0 AND id LIKE 'native-v1:%' ORDER BY saved_at DESC,game_id LIMIT 8", workspace.AccountId).Select(row => row["game_id"]?.ToString() ?? "").ToArray() : [];
+            var recent = recentOnly.IsChecked == true ? workspace.Query("SELECT game_id FROM game_saves WHERE account_id=$p0 AND id LIKE 'native-v1:%' AND CASE WHEN json_valid(state) THEN COALESCE(json_extract(state,'$.Deleted'),0)=0 ELSE 0 END ORDER BY saved_at DESC,game_id LIMIT 8", workspace.AccountId).Select(row => row["game_id"]?.ToString() ?? "").ToArray() : [];
             var query = search.Text.Trim(); var chosen = category.SelectedItem?.ToString();
             var visible = Enumerable.Range(0, names.Length).Where(i => (chosen is null or "All categories" || Category(i) == chosen) && (favoritesOnly.IsChecked != true || favorites.Contains(names[i])) && (recentOnly.IsChecked != true || recent.Contains(names[i])) && (query.Length == 0 || names[i].Contains(query, StringComparison.OrdinalIgnoreCase) || descriptions[i].Contains(query, StringComparison.OrdinalIgnoreCase)));
             if (recentOnly.IsChecked == true) visible = visible.OrderBy(i => Array.IndexOf(recent, names[i]));
             var shown = visible.ToArray(); var maxColumns = ActualWidth >= 850 ? 4 : ActualWidth >= 650 ? 3 : ActualWidth >= 420 ? 2 : 1;
-            var columns = Math.Clamp(shown.Length, 1, maxColumns); empty.Visibility = shown.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            var columns = maxColumns; empty.Visibility = shown.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             cards.ColumnDefinitions.Clear(); cards.RowDefinitions.Clear();
             for (var i = 0; i < columns; i++) cards.ColumnDefinitions.Add(new ColumnDefinition());
             for (var i = 0; i < (shown.Length + columns - 1) / columns; i++) cards.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -219,15 +241,17 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         search.TextChanged += (_, _) => Arrange(); category.SelectionChanged += (_, _) => Arrange(); favoritesOnly.Checked += (_, _) => Arrange(); favoritesOnly.Unchecked += (_, _) => Arrange(); recentOnly.Checked += (_, _) => Arrange(); recentOnly.Unchecked += (_, _) => Arrange();
         SizeChanged += (_, _) => Arrange(); library.RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => { if (library.Visibility == Visibility.Visible) Arrange(); }); Arrange();
         content.Children.Add(cards);
-        content.Children.Insert(1, KronoDesign.Section("Game settings", KronoDesign.DiscreteSlider("Bot difficulty", BotLevels, botDifficulty, index => {
-            botDifficulty = index;
-            workspace.SetSetting("native.gameBotDifficulty", index.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        })));
         libraryScroll = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         libraryScroll.Loaded += (_, _) => QueueVisiblePreviews();
         libraryScroll.SizeChanged += (_, _) => QueueVisiblePreviews();
         libraryScroll.ViewChanged += (_, _) => QueueVisiblePreviews();
         library.Children.Add(KronoDesign.ScrollPage(libraryScroll)); Children.Add(library);
+    }
+    int Difficulty(int index)
+    {
+        var value = workspace.Setting("native.gameBotDifficulty." + names[index]);
+        if (value.Length == 0) value = workspace.Setting("native.gameBotDifficulty");
+        return int.TryParse(value, out var difficulty) ? Math.Clamp(difficulty, 0, 2) : 1;
     }
     void Reset()
     {

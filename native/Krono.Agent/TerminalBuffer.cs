@@ -70,6 +70,10 @@ public sealed class TerminalBuffer
             }
             display.Append(line, 0, length);
             if (index == row && column > length) display.Append(' ', column - length);
+            if (index == row && column >= length && line.ToString().Any(ch => ch is >= '\u0590' and <= '\u08ff' or >= '\ufb1d' and <= '\ufefc')) {
+                display.Append('\u200e');
+                caret++;
+            }
         }
         return (display.ToString(), caret);
     }

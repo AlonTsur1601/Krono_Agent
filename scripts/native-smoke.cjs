@@ -104,7 +104,7 @@ const server = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'application/json')
     response.end(JSON.stringify({ project }))
   }
-  else if (request.url === '/game-proof') { const saves = fixtureDb(db => db.prepare('SELECT game_id,state FROM game_saves WHERE account_id=? ORDER BY game_id').all(user.id).map(row => ({ game: row.game_id, state: JSON.parse(row.state) }))); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ saves })) }
+  else if (request.url === '/game-proof') { const saves = fixtureDb(db => db.prepare('SELECT game_id,state FROM game_saves WHERE account_id=? ORDER BY game_id').all(user.id).map(row => ({ game: row.game_id, state: JSON.parse(row.state) })).filter(row => !row.state.Deleted)); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ saves })) }
   else if (request.url === '/local-reply-proof') { const count = fixtureDb(db => db.prepare("SELECT count(*) AS n FROM messages WHERE role='assistant' AND content='Native local endpoint reply.'").get().n); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ count })) }
   else if (request.url === '/corrupt-game') { fixtureDb(db => db.prepare("UPDATE game_saves SET state='{}' WHERE game_id='Snake'").run()); response.end('ok') }
   else if (request.url === '/odd-color-round-20' && request.method === 'POST') {
@@ -201,7 +201,8 @@ const server = http.createServer((request, response) => {
         if (!result) {
           const guidance = input.input.find(message => message.role === 'system')?.content
           if (!input.tools?.some(tool => tool.name === 'node_inspect_package') || input.tools.some(tool => tool.name.startsWith('github_')) ||
-              !String(guidance).includes('Installed skill packs') || !String(guidance).includes('nearest tsconfig')) {
+              !String(guidance).includes('Installed skill packs') || !String(guidance).includes('nearest tsconfig') ||
+              !String(guidance).includes('Global plugin fixture instructions') || !String(guidance).includes('Project plugin fixture instructions')) {
             complete(response, 'Unexpected native plugin tool list.'); return
           }
           response.write('data: ' + JSON.stringify({ type: 'response.output_item.done', item: { type: 'function_call', call_id: 'native-node-plugin', name: 'node_inspect_package', arguments: '{}' } }) + '\n\n')

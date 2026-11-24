@@ -47,7 +47,7 @@ public sealed partial class BrowserWorkspace
         bookmarkAction.IsEnabled = address is not null;
         ToolTipService.SetToolTip(bookmarkAction, label);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(bookmarkAction, label);
-        bookmarkAction.Content = ToolbarIcon(saved ? Symbol.SolidStar : Symbol.Favorite);
+        bookmarkAction.Content = KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Star, filled: saved);
     }
 
     async void EditCurrentBookmark()
