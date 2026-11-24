@@ -1505,7 +1505,6 @@ try {
             Invoke ('GameCell' + $odd.Group[0].Index)
             if ((Find 'GameStatus').Current.Name -notmatch '^Shade 2 · Score 100') { throw 'Odd Color did not advance or score the correct choice' }
             Capture 'native-odd-color.png'
-            Invoke 'Restart' -ByName
             Invoke 'GameLibraryBack'
             Invoke-RestMethod -Method Post ($Fixture + '/odd-color-round-20') | Out-Null
             OpenGameTile 10 -RequireChoice
@@ -1749,7 +1748,6 @@ try {
         $expected = if ($pieces[$i] -eq 15) { 'Empty square' } else { 'Tile ' + ($i + 1) + ' · Piece ' + ($pieces[$i] + 1) }
         if ((Find ('GameCell' + $i)).Current.Name -ne $expected) { throw 'Jigsaw board was lost across restart' }
     }
-    Invoke 'Restart' -ByName
     Invoke 'GameLibraryBack'
     Invoke-RestMethod -Method Post ($Fixture + '/jigsaw-endgame') | Out-Null
     OpenGameTile 19 -RequireChoice
