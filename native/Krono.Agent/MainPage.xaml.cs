@@ -813,12 +813,12 @@ public sealed partial class MainPage : Page
             var selectedProvider = provider;
             var generation = sessionGeneration;
             if (workspace.Key(selectedProvider).Length == 0 && ProviderCatalog.RequiresKey(selectedProvider)) {
-                models.PlaceholderText = "Save an API key to load models";
+                SetModelStatus("Save an API key to load models");
                 return;
             }
             if (worker is null) return;
             loadingModels = true;
-            models.PlaceholderText = "Loading models…";
+            SetModelStatus("Loading models…");
             bool Current() => request == modelRequest && generation == sessionGeneration && provider == selectedProvider;
             try {
                 var result = await DiscoverModels(selectedProvider, refresh);
@@ -826,13 +826,15 @@ public sealed partial class MainPage : Page
                 ChooseDefaultModel(result);
                 var ids = ModelChoices(selectedProvider, result, model, false);
                 ListModels(ids);
-                models.PlaceholderText = ids.Length == 0 ? "No models available" : "Choose an available model";
+                SetModelStatus(ids.Length == 0 ? "No models available" : "Choose an available model");
             } catch (Exception) {
-                if (Current()) {
-                    models.PlaceholderText = "Could not load models";
-                    if (refresh) ShowNotice("Could not load this provider’s models.", success: false);
-                }
+                if (Current()) SetModelStatus("Could not load models");
             } finally { if (Current()) loadingModels = false; }
+        }
+        void SetModelStatus(string status)
+        {
+            models.PlaceholderText = status;
+            models.EmptyText = status;
         }
         models.DropDownOpened += (_, _) => {
             if (!loadingModels && models.Items.Count == 0) _ = LoadProviderModels(refresh: true);

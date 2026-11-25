@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace Krono_Agent;
 
@@ -13,6 +14,8 @@ public sealed partial class MainPage
     PluginOperation? pluginOperation;
     string? changingPlugin;
     string pluginProgress = "";
+    string? pluginDeviceCode;
+    bool pluginCancelRequested;
     Action? refreshPluginCards;
 
     void AddPluginSettings(StackPanel panel)
@@ -77,7 +80,8 @@ public sealed partial class MainPage
             Grid.SetRow(description, 1);
             contents.Children.Add(description);
             var footer = new StackPanel { Spacing = 6 };
-            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            var actionStyle = (Style)Application.Current.Resources["KronoCompactButton"];
             var status = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .76 };
             AutomationProperties.SetAutomationId(status, "PluginProgress-" + plugin.Id);
             footer.Children.Add(actions);
@@ -86,14 +90,16 @@ public sealed partial class MainPage
             Grid.SetRow(footer, 2);
             contents.Children.Add(footer);
 
-            var primary = Button("Install", async () => {
-                if (pluginOperation is { Plugin: var current } && current == plugin.Id) { await CancelPluginConnection(); return; }
-                if (pluginOperation is not null || changingPlugin is not null) return;
-                if (!PluginCatalog.Installed(workspace, plugin)) { await ChangePlugin(plugin, true); return; }
-                if (plugin.RequiresAccount) await ConnectPlugin(plugin);
-            });
+            var primary = new Button { Content = "Install", Style = actionStyle };
+            primary.Click += async (_, _) => {
+                try {
+                    if (pluginOperation is { Plugin: var current } && current == plugin.Id) { await CancelPluginConnection(); return; }
+                    if (pluginOperation is not null || changingPlugin is not null) return;
+                    if (!PluginCatalog.Installed(workspace, plugin)) { await ChangePlugin(plugin, true); return; }
+                    if (plugin.RequiresAccount) await ConnectPlugin(plugin);
+                } catch (Exception error) { Error(error); }
+            };
             AutomationProperties.SetAutomationId(primary, "PluginPrimary-" + plugin.Id);
-            footer.Children.Insert(0, primary);
 
             var options = KronoDesign.CreateMenu();
             var reconnect = new MenuFlyoutItem { Text = "Reconnect" };
@@ -114,6 +120,7 @@ public sealed partial class MainPage
                 if (!await Confirm("Remove " + plugin.Name + "?", "Krono will stop using this plugin and clear its saved connection on this computer.", "Remove plugin") || generation != sessionGeneration) return;
                 await ChangePlugin(plugin, false);
             });
+            remove.Style = actionStyle;
             remove.Content = new SymbolIcon(Symbol.Delete);
             remove.Foreground = KronoDesign.ThemeBrush("KronoDangerForeground", card.ActualTheme);
             card.ActualThemeChanged += (_, _) => remove.Foreground = KronoDesign.ThemeBrush("KronoDangerForeground", card.ActualTheme);
@@ -121,12 +128,27 @@ public sealed partial class MainPage
             ToolTipService.SetToolTip(remove, "Remove " + plugin.Name);
             AutomationProperties.SetAutomationId(remove, "PluginRemove-" + plugin.Id);
             actions.Children.Add(remove);
-            var more = new Button { Content = "…", MinWidth = 38 };
+            var more = new Button { Content = "…", Style = actionStyle };
             more.Click += (_, _) => options.ShowAt(more);
             AutomationProperties.SetName(more, plugin.Name + " options");
             AutomationProperties.SetAutomationId(more, "PluginOptions-" + plugin.Id);
             actions.Children.Add(more);
             actions.Children.Add(badge);
+            var copyCode = Button("", () => {
+                if (pluginOperation?.Plugin != plugin.Id || pluginDeviceCode is not { } code) return;
+                var data = new DataPackage();
+                data.SetText(code);
+                if (Clipboard.SetContentWithOptions(data, new ClipboardContentOptions { IsAllowedInHistory = false, IsRoamable = false }))
+                    ShowNotice("Sign-in code copied.");
+                else ShowNotice("Couldn’t copy the sign-in code.", success: false);
+            });
+            copyCode.Style = actionStyle;
+            copyCode.Content = new SymbolIcon(Symbol.Copy);
+            AutomationProperties.SetAutomationId(copyCode, "PluginCopyCode-" + plugin.Id);
+            AutomationProperties.SetName(copyCode, "Copy sign-in code");
+            ToolTipService.SetToolTip(copyCode, "Copy the sign-in code to paste on the approval page");
+            actions.Children.Add(copyCode);
+            actions.Children.Add(primary);
             footer.Children.Add(status);
 
             void Render()
@@ -137,15 +159,16 @@ public sealed partial class MainPage
                 bool actionNeeded = !installed || plugin.RequiresAccount && !connected || connecting;
                 primary.Content = connecting ? "Cancel" : installed ? "Connect" : "Install";
                 primary.Visibility = actionNeeded ? Visibility.Visible : Visibility.Collapsed;
-                primary.IsEnabled = connecting || changingPlugin is null && pluginOperation is null;
+                primary.IsEnabled = connecting ? !pluginCancelRequested : changingPlugin is null && pluginOperation is null;
                 remove.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
                 remove.IsEnabled = changingPlugin is null && pluginOperation is null;
-                more.Visibility = installed && (connected || plugin.Id == "node" || plugin.SetupUrl is not null) ? Visibility.Visible : Visibility.Collapsed;
+                more.Visibility = installed && !connecting && (connected || plugin.Id == "node" || plugin.SetupUrl is not null) ? Visibility.Visible : Visibility.Collapsed;
                 more.IsEnabled = changingPlugin is null && pluginOperation is null;
                 reconnect.Visibility = connected && !connecting ? Visibility.Visible : Visibility.Collapsed;
                 check.Visibility = installed && (connected || plugin.Id == "node") && !connecting ? Visibility.Visible : Visibility.Collapsed;
-                badge.Visibility = installed && !connecting ? Visibility.Visible : Visibility.Collapsed;
+                badge.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
                 badge.Text = connected ? "Connected" : "Installed";
+                copyCode.Visibility = connecting && pluginDeviceCode is not null ? Visibility.Visible : Visibility.Collapsed;
                 status.Text = connecting ? pluginProgress : "";
                 status.Visibility = status.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
             }
@@ -211,19 +234,22 @@ public sealed partial class MainPage
         var profile = plugin.UsesCli ? workspace.NewPluginProfile(plugin.Id) : null;
         bool retained = false;
         pluginOperation = operation;
+        pluginDeviceCode = null;
+        pluginCancelRequested = false;
         pluginProgress = "Opening provider sign-in…";
         refreshPluginCards?.Invoke();
         async void ShowAuthorize(string id, string kind, JsonNode? value)
         {
-            if (id != request || generation != sessionGeneration || pluginOperation != operation) return;
-            if (kind == "plugin:status") {
-                pluginProgress = value?.ToString() ?? "Complete provider sign-in in your browser.";
+            if (id != request || generation != sessionGeneration || pluginOperation != operation || pluginCancelRequested) return;
+            if (kind == "plugin:device-code" && value is JsonValue device && device.TryGetValue<string>(out var code)) {
+                pluginDeviceCode = code;
+                pluginProgress = "";
                 refreshPluginCards?.Invoke();
             } else if (kind == "plugin:authorize" && Uri.TryCreate(value?.ToString(), UriKind.Absolute, out var uri) && uri.Scheme == "https" && uri.UserInfo.Length == 0) {
                 try {
                     if (!await Windows.System.Launcher.LaunchUriAsync(uri)) throw new InvalidOperationException();
-                    if (generation != sessionGeneration || pluginOperation != operation) return;
-                    if (!pluginProgress.StartsWith("Enter ", StringComparison.Ordinal)) pluginProgress = "Approve the connection in your browser.";
+                    if (generation != sessionGeneration || pluginOperation != operation || pluginCancelRequested) return;
+                    if (pluginDeviceCode is null) pluginProgress = "Approve the connection in your browser.";
                     refreshPluginCards?.Invoke();
                 } catch { if (pluginOperation == operation) await CancelPluginConnection(); }
             }
@@ -241,14 +267,18 @@ public sealed partial class MainPage
         finally {
             active.Event -= ShowAuthorize;
             if (!retained && generation == sessionGeneration && profile is not null) workspace.ClearPluginProfile(plugin.Id, profile);
-            if (pluginOperation == operation) { pluginOperation = null; pluginProgress = ""; }
+            if (pluginOperation == operation) {
+                pluginOperation = null; pluginProgress = ""; pluginDeviceCode = null; pluginCancelRequested = false;
+            }
             if (generation == sessionGeneration) refreshPluginCards?.Invoke();
         }
     }
 
     async Task CancelPluginConnection()
     {
-        if (pluginOperation is not { } operation) return;
+        if (pluginOperation is not { } operation || pluginCancelRequested) return;
+        pluginCancelRequested = true;
+        pluginDeviceCode = null;
         pluginProgress = "Cancelling sign-in…";
         refreshPluginCards?.Invoke();
         try { await operation.Worker.Send(Guid.NewGuid().ToString(), "cancel", new { id = operation.Request }); }

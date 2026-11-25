@@ -1,0 +1,38 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:Krono_Agent">
+    <Style x:Key="KronoTextInput" TargetType="TextBox">
+        <Setter Property="MinHeight" Value="{ThemeResource KronoControlMinHeight}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
+        <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Background" Value="{ThemeResource KronoInputFace}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource KronoInputRim}" />
+    </Style>
+    <Style x:Key="KronoCompactTextInput" TargetType="TextBox" BasedOn="{StaticResource KronoTextInput}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="0"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border x:Name="BorderElement" Grid.Row="1" Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"/>
+                        <ScrollViewer x:Name="ContentElement" Grid.Row="1" Margin="{TemplateBinding Padding}"
+                            Foreground="{TemplateBinding Foreground}"
+                            VerticalAlignment="Center"
+                            VerticalContentAlignment="Center" HorizontalScrollBarVisibility="Hidden"
+                            VerticalScrollBarVisibility="Disabled" ZoomMode="Disabled" IsTabStop="False"
+                            AutomationProperties.AccessibilityView="Raw"/>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style TargetType="TextBox" BasedOn="{StaticResource KronoTextInput}" />
+</ResourceDictionary>

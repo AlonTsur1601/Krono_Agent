@@ -55,7 +55,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
         cleanupRun = () => { clearTimeout(deadline); connection.abort(); active.delete(id) }
         const result = await connectPlugin(plugin.data, connection.signal,
           url => send({ id, event: 'plugin:authorize', data: url }),
-          text => send({ id, event: 'plugin:status', data: text }))
+          code => send({ id, event: 'plugin:device-code', data: code }))
         send({ id, result }); return
       }
       if (method === 'plugin:test') {

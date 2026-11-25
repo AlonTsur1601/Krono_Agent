@@ -351,9 +351,9 @@ export const PluginConnect = z.union([
   z.object({ id: z.literal('firebase'), profile: CliProfile }),
 ])
 
-export async function connectPlugin(config: z.infer<typeof PluginConnect>, signal: AbortSignal, open: (url: string) => void, notify: (message: string) => void) {
+export async function connectPlugin(config: z.infer<typeof PluginConnect>, signal: AbortSignal, open: (url: string) => void, showDeviceCode: (code: string) => void) {
   if (!('profile' in config)) return connectMcp(config.id, signal, open)
-  const state = await connectCli(config.id, config.profile, signal, open, notify)
+  const state = await connectCli(config.id, config.profile, signal, open, showDeviceCode)
   if (!state.success) return state
   const checked = await testPlugin(config, signal)
   return checked.success ? { ...checked, profile: state.profile } : checked

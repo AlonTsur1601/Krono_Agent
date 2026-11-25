@@ -120,6 +120,18 @@ public sealed class KronoComboBox : ComboBox
 
     UIElement? outsideRoot;
     Flyout? emptyMenu;
+    Border? emptySurface;
+    TextBlock? emptyMessage;
+    string emptyText = "No options available.";
+    internal string EmptyText
+    {
+        get => emptyText;
+        set
+        {
+            emptyText = value;
+            if (emptyMessage is not null) emptyMessage.Text = value;
+        }
+    }
     readonly PointerEventHandler outsidePress;
 
     void DetachOutsidePress()
@@ -182,11 +194,8 @@ public sealed class KronoComboBox : ComboBox
             highlight.BorderThickness = new Thickness(0);
             highlight.Background = null;
         }
-        if (GetTemplateChild("PopupBorder") is Border popup) {
-            popup.CornerRadius = CornerRadius;
-            popup.Padding = new Thickness(2);
-            popup.BorderThickness = new Thickness(1, 1, 1, 3);
-        }
+        if (GetTemplateChild("PopupBorder") is Border popup)
+            popup.Style = (Style)Application.Current.Resources["KronoDropdownSurface"];
         if (GetTemplateChild("ScrollViewer") is ScrollViewer items)
             items.MinWidth = 0;
         RefreshPalette();
@@ -198,19 +207,20 @@ public sealed class KronoComboBox : ComboBox
         // The system popup sizes itself against its item list, which has no height here.
         IsDropDownOpen = false;
         if (emptyMenu is null) {
-            var message = new TextBlock { Text = "No options available.", TextWrapping = TextWrapping.Wrap };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(message, "EmptyDropdownMessage");
-            emptyMenu = new Flyout { Content = message, Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
-            emptyMenu.Opened += (_, _) => KronoDesign.AnimateMenuOpening(message);
+            emptyMessage = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12, 8, 12, 8) };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(emptyMessage, "EmptyDropdownMessage");
+            emptySurface = new Border { Child = emptyMessage, Style = (Style)Application.Current.Resources["KronoDropdownSurface"] };
+            emptyMenu = new Flyout {
+                Content = emptySurface, Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft,
+                FlyoutPresenterStyle = (Style)Application.Current.Resources["KronoEmptyDropdownPresenter"]
+            };
+            emptyMenu.Opened += (_, _) => KronoDesign.AnimateMenuOpening(emptySurface);
         }
-        if (emptyMenu.Content is TextBlock label) {
-            var style = new Style(typeof(FlyoutPresenter));
-            style.Setters.Add(new Setter(FrameworkElement.MinWidthProperty, 0d));
-            style.Setters.Add(new Setter(FrameworkElement.WidthProperty, ActualWidth));
-            emptyMenu.FlyoutPresenterStyle = style;
-            label.FontFamily = FontFamily;
-            label.FontSize = FontSize;
-        }
+        emptySurface!.Width = ActualWidth;
+        emptyMessage!.FontFamily = FontFamily;
+        emptyMessage.FontSize = FontSize;
+        emptyMessage.Text = EmptyText;
+        RefreshPalette();
         emptyMenu.ShowAt(this);
     }
 
@@ -251,6 +261,11 @@ public sealed class KronoComboBox : ComboBox
         if (GetTemplateChild("PopupBorder") is Border popup) {
             popup.Background = background;
             popup.BorderBrush = border;
+        }
+        if (emptySurface is not null) {
+            emptySurface.Background = background;
+            emptySurface.BorderBrush = border;
+            emptyMessage!.Foreground = Foreground;
         }
         foreach (var (key, brush) in ItemPalette)
             Resources[key] = KronoDesign.ThemeBrush(brush, ActualTheme);
