@@ -60,10 +60,17 @@ public sealed partial class MainPage
         };
     }
 
+    string? shownAgentTerminal;
+
     void ReceiveAgentWorkspace(string id, string type, JsonNode? data)
     {
         if (type == "terminal-agent" && terminal is null && worker is not null) terminal = new TerminalWorkspace(worker);
         terminal?.Receive(id, type, data);
+        if (type == "terminal-agent" && activeSection == "chats" && id != shownAgentTerminal) {
+            shownAgentTerminal = id;
+            OpenWorkspace("Terminal");
+            terminal?.SelectAgentRun(id);
+        }
         if (type == "chunk" && data?["type"]?.ToString() == "tool_call" && data["toolCall"]?["name"]?.ToString() is { } name) {
             if (runActions.Count < 100) runActions.Add(name.Replace('_', ' '));
         }

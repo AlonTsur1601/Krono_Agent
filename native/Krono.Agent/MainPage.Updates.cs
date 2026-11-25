@@ -142,8 +142,10 @@ public sealed partial class MainPage
                 throw new InvalidDataException("The published release has an invalid version.");
             if (version <= current) {
                 availableUpdate = null;
-                if (showUpdateCheckResult)
+                if (showUpdateCheckResult) {
                     ShowUpdateCheck(Symbol.Accept, "You’re up to date", $"Krono Agent v{current.ToString(3)} is the latest version.");
+                    ShowNotice("Krono Agent is up to date.");
+                }
                 else if (updateCheckResult?.Icon == Symbol.Download) {
                     updateCheckResult = null;
                     RefreshUpdateStatus();
@@ -160,12 +162,15 @@ public sealed partial class MainPage
                     asset.GetProperty("browser_download_url").GetString() != url.AbsoluteUri) break;
                 availableUpdate = new(version, url, size, Convert.ToHexString(Convert.FromHexString(digest[7..])));
                 ShowAvailableUpdate(version);
+                if (showUpdateCheckResult) ShowNotice($"Krono Agent v{version.ToString(3)} is available.");
                 return;
             }
             throw new InvalidDataException("The release has no verified Windows installer.");
         } catch (Exception error) {
-            if (showUpdateCheckResult && !updateLifetime.IsCancellationRequested)
-                ShowUpdateCheck(Symbol.Important, "Couldn’t check for updates", error.Message);
+            if (showUpdateCheckResult && !updateLifetime.IsCancellationRequested) {
+                ShowUpdateCheck(Symbol.Important, "Couldn’t check for updates", FriendlyError(error));
+                ShowNotice("Couldn’t check for updates. " + FriendlyError(error), success: false);
+            }
         } finally {
             checkingUpdate = showUpdateCheckResult = false;
             RefreshUpdateButton();
