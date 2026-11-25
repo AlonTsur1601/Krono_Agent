@@ -1197,3 +1197,9 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 
 - Publish Vercel client metadata with an exact localhost OAuth callback, validate the browser handoff, and handle provider declines promptly.
 - Find Google Cloud CLI on Windows, request Firebase read-only access through browser sign-in, and offer setup from the plugin card when a CLI is missing.
+
+## v0.2.17 plugin connections and notifications
+
+- Bundle Firebase browser sign-in and keep existing Firebase credentials compatible.
+- Use a public HTTPS Vercel callback that forwards one authorization response to the app. Verify the loopback handoff and the PKCE code exchange.
+- Use a uniform rounded outline on notifications.

@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { runInNewContext } from 'node:vm'
 import { afterEach, expect, it, vi } from 'vitest'
 import { connectMcp, mcpTools, type McpGrant } from './plugin-mcp'
-import vercelMetadata from '../../../docs/oauth-client-v2.json'
+import vercelMetadata from '../../../docs/oauth-client-v3.json'
 
 const origin = 'https://mcp.notion.com'
 const remoteFetch = globalThis.fetch
@@ -99,17 +101,34 @@ it('rejects provider discovery outside the allowlisted host', async () => {
   expect(fixture.mock.calls.every(([target]) => String(target).startsWith(origin))).toBe(true)
 })
 
-it('uses the published Vercel client ID and exact callback, and reports a declined authorization promptly', async () => {
+it('relays the published HTTPS Vercel callback to the app and exchanges the code with PKCE', async () => {
   const endpoint = 'https://mcp.vercel.com/'
   const issuer = 'https://vercel.com'
-  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async target => {
+  let challenge = ''
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (target, init) => {
     const url = new URL(target instanceof Request ? target.url : target)
     if (url.pathname.startsWith('/.well-known/oauth-protected-resource'))
       return Response.json({ resource: endpoint, authorization_servers: [issuer], scopes_supported: ['openid'] })
     if (url.pathname.startsWith('/.well-known/oauth-authorization-server'))
       return Response.json({ issuer, authorization_endpoint: issuer + '/oauth/authorize', token_endpoint: issuer + '/oauth/token',
         response_types_supported: ['code'], code_challenge_methods_supported: ['S256'], client_id_metadata_document_supported: true })
+    if (url.href === issuer + '/oauth/token') {
+      const body = new URLSearchParams(String(init?.body))
+      expect(body.get('redirect_uri')).toBe(vercelMetadata.redirect_uris[0])
+      expect(body.get('code')).toBe(verification)
+      expect(createHash('sha256').update(body.get('code_verifier')!).digest('base64url')).toBe(challenge)
+      return Response.json({ access_token: authValue, token_type: 'Bearer' })
+    }
     if (url.href !== endpoint) throw new Error('Unexpected authorization endpoint')
+    if (new Headers(init?.headers).get('authorization') === `Bearer ${authValue}`) {
+      if (init?.method !== 'POST') return new Response(null, { status: 405 })
+      const request = JSON.parse(String(init.body))
+      if (request.method === 'initialize') return Response.json({ jsonrpc: '2.0', id: request.id,
+        result: { protocolVersion: request.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'Fixture', version: '1' } } })
+      if (request.method === 'tools/list') return Response.json({ jsonrpc: '2.0', id: request.id,
+        result: { tools: [{ name: 'list_teams', inputSchema: { type: 'object' } }] } })
+      return new Response(null, { status: 202 })
+    }
     return new Response(null, { status: 401, headers: { 'WWW-Authenticate': 'Bearer resource_metadata="https://mcp.vercel.com/.well-known/oauth-protected-resource"' } })
   }))
   let callback: Promise<number> | undefined
@@ -118,11 +137,22 @@ it('uses the published Vercel client ID and exact callback, and reports a declin
     expect(url.searchParams.get('client_id')).toBe(vercelMetadata.client_id)
     expect(url.searchParams.get('redirect_uri')).toBe(vercelMetadata.redirect_uris[0])
     expect(url.searchParams.get('resource')).toBe(endpoint)
+    challenge = url.searchParams.get('code_challenge')!
     const target = new URL(vercelMetadata.redirect_uris[0])
     target.searchParams.set('state', url.searchParams.get('state')!)
-    target.searchParams.set('error', 'access_denied')
-    callback = remoteFetch(target).then(response => response.status)
+    target.searchParams.set('code', verification)
+    const clearAddress = vi.fn()
+    runInNewContext(readFileSync('docs/plugin-callback.js', 'utf8'), {
+      URL, URLSearchParams,
+      location: { search: target.search, pathname: target.pathname, replace: (address: string) => {
+        expect(new URL(address).origin).toBe('http://127.0.0.1:54127')
+        callback = remoteFetch(address).then(response => response.status)
+      } },
+      history: { replaceState: clearAddress },
+      document: { getElementById: () => ({}) },
+    })
+    expect(clearAddress).toHaveBeenCalledWith(null, '', target.pathname)
   })
   expect(await callback).toBe(200)
-  expect(result).toEqual({ success: false, message: 'Authorization was declined.' })
+  expect(result).toMatchObject({ success: true, connection: { redirect: vercelMetadata.redirect_uris[0] } })
 })

@@ -93,7 +93,7 @@ describe('optional plugins', () => {
     expect(new Headers(fetch.mock.calls[1][1]?.headers).get('X-Goog-User-Project')).toBe('fixture-project')
     expect(JSON.parse(result.output!)).toEqual({ apps: [{ displayName: 'Demo', appId: 'fixture-app', platform: 'WEB' }], nextPageToken: 'p2' })
     firebaseHeaders.mockRejectedValueOnce(new Error(credential))
-    expect(await testPlugin(config)).toMatchObject({ success: false, message: expect.stringContaining('gcloud auth application-default login') })
+    expect(await testPlugin(config)).toMatchObject({ success: false, message: expect.stringContaining('Connect Firebase in Settings') })
   })
 
   it('requires per-action approval for cloud reads and stops cloud tools at the Project permission boundary', async () => {

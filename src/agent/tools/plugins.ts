@@ -1,4 +1,4 @@
-import { open, stat } from 'node:fs/promises'
+import { access, open, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -6,7 +6,7 @@ import { GoogleAuth } from 'google-auth-library'
 import { z } from 'zod'
 import type { ExecutionContext, ToolDefinition, ToolResult } from '../types'
 import { authorizePath } from './files'
-import { CliProfile, connectCli, githubGet } from './plugin-cli'
+import { CliProfile, connectCli, firebaseAccessToken, githubGet } from './plugin-cli'
 import { McpGrant, McpId, checkMcp, connectMcp, mcpTools } from './plugin-mcp'
 import catalog from './plugin-catalog.json'
 
@@ -26,7 +26,7 @@ export const PluginConfig = z.union([
 ]).and(z.object({ tools: z.array(z.string().regex(/^[a-z0-9_]+$/)).max(20).optional() }))
 type Config = z.infer<typeof PluginConfig>
 type RestConfig = z.infer<typeof rest>
-type FirebaseConfig = Extract<RestConfig, { id: 'firebase' }> & { auth?: GoogleAuth }
+type FirebaseConfig = Extract<RestConfig, { id: 'firebase' }> & { auth?: GoogleAuth; session?: Awaited<ReturnType<typeof firebaseAccessToken>> }
 type RemoteConfig = Exclude<RestConfig, { id: 'firebase' }> | FirebaseConfig
 type Query = Record<string, string | number | undefined>
 type PersistGrant = (id: string, grantId: string, connection: McpGrant) => void
@@ -60,15 +60,21 @@ function items(value: unknown, names: readonly string[]) {
   return Array.isArray(value) ? value.slice(0, pageSize).map(row => fields(row, names)) : []
 }
 
-async function requestHeaders(config: RemoteConfig, url: URL): Promise<Headers> {
+async function requestHeaders(config: RemoteConfig, url: URL, signal?: AbortSignal): Promise<Headers> {
   if (config.id === 'firebase') {
     try {
+      const legacy = config.profile && await access(join(config.profile, 'application_default_credentials.json')).then(() => true, () => false)
+      if (config.profile && !legacy) {
+        if (!config.session || (config.session.expires ?? 0) < Date.now() + 60_000)
+          config.session = await firebaseAccessToken(config.profile, signal)
+        return new Headers({ Authorization: `Bearer ${config.session.token}` })
+      }
       const firebaseAuth = config.auth ?? createFirebaseAuth(config.profile)
       const credentials = await firebaseAuth.getRequestHeaders(url)
       if (!credentials.has('authorization')) throw new Error()
       return new Headers(credentials)
     } catch {
-      throw new PluginError(config.profile ? 'Reconnect Firebase in Settings → Plugins.' : 'Firebase sign-in is required. Run gcloud auth application-default login, then test the connection again.')
+      throw new PluginError('Connect Firebase in Settings → Plugins using the Google account that has access to your projects.')
     }
   }
   const headers = new Headers({ Authorization: `Bearer ${config.token}` })
@@ -108,7 +114,7 @@ async function getJson(config: RemoteConfig, path: string, query: Query, signal?
     const abort = () => rejectHeaders(combined.reason)
     if (combined.aborted) { abort(); return }
     combined.addEventListener('abort', abort, { once: true })
-    void requestHeaders(config, url).then(resolveHeaders, rejectHeaders).finally(() => combined.removeEventListener('abort', abort))
+    void requestHeaders(config, url, combined).then(resolveHeaders, rejectHeaders).finally(() => combined.removeEventListener('abort', abort))
   })
   const response = await fetch(url, { headers, signal: combined, redirect: 'error', method: 'GET' })
   if (!response.ok) {

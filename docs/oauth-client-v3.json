@@ -1,0 +1,9 @@
+{
+  "client_id": "https://kronoagent.github.io/Krono_Agent/oauth-client-v3.json",
+  "client_name": "Krono Agent",
+  "client_uri": "https://kronoagent.github.io/Krono_Agent/",
+  "redirect_uris": ["https://kronoagent.github.io/Krono_Agent/plugin-callback.html"],
+  "token_endpoint_auth_method": "none",
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"]
+}

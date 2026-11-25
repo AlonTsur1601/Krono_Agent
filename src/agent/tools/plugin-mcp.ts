@@ -9,15 +9,16 @@ import type { ToolDefinition } from '../types'
 
 export const McpId = z.enum(['vercel', 'notion', 'linear', 'monday', 'netlify'])
 export type McpId = z.infer<typeof McpId>
+const vercelCallback = 'https://kronoagent.github.io/Krono_Agent/plugin-callback.html'
 export const McpGrant = z.object({
-  redirect: z.string().regex(/^http:\/\/(127\.0\.0\.1|localhost):[0-9]{1,5}\/callback$/),
+  redirect: z.union([z.literal(vercelCallback), z.string().regex(/^http:\/\/(127\.0\.0\.1|localhost):[0-9]{1,5}\/callback$/)]),
   client: OAuthClientInformationSchema,
   tokens: OAuthTokensSchema,
 })
 export type McpGrant = z.infer<typeof McpGrant>
 
 type ReadTool = { method: string; description: string; input: z.ZodType }
-type Profile = { endpoint: string; origins: string[]; metadata?: { url: string; callback: string }; scope?: string; tools: ReadTool[] }
+type Profile = { endpoint: string; origins: string[]; metadata?: { url: string; callback: string; port: number }; scope?: string; tools: ReadTool[] }
 const name = z.string().trim().min(1).max(300)
 const identifier = z.string().trim().min(1).max(128)
 const limit = z.number().int().min(1).max(20).optional()
@@ -27,8 +28,9 @@ const profiles: Record<McpId, Profile> = {
   vercel: {
     endpoint: 'https://mcp.vercel.com', origins: ['https://mcp.vercel.com', 'https://vercel.com'],
     metadata: {
-      url: 'https://kronoagent.github.io/Krono_Agent/oauth-client-v2.json',
-      callback: 'http://localhost:54127/callback',
+      url: 'https://kronoagent.github.io/Krono_Agent/oauth-client-v3.json',
+      callback: vercelCallback,
+      port: 54127,
     },
     tools: [
       { method: 'list_teams', description: 'List the connected Vercel account’s teams.', input: z.object({}) },
@@ -112,8 +114,7 @@ function allow(profile: Profile, url: URL) {
     throw new ConnectionFailure('The provider returned an unexpected authorization address.')
 }
 
-async function startCallback(state: string, signal: AbortSignal, registeredCallback?: string) {
-  const registered = registeredCallback ? new URL(registeredCallback) : undefined
+async function startCallback(state: string, signal: AbortSignal, registration?: Profile['metadata']) {
   type Callback = { code: string } | { error: string }
   let finish: (value: Callback) => void = () => {}
   const result = new Promise<Callback>(resolve => { finish = resolve })
@@ -131,14 +132,14 @@ async function startCallback(state: string, signal: AbortSignal, registeredCallb
   server.requestTimeout = 10_000
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
-    server.listen(registered ? Number(registered.port) : 0, '127.0.0.1', () => { server.off('error', reject); resolve() })
+    server.listen(registration?.port ?? 0, '127.0.0.1', () => { server.off('error', reject); resolve() })
   }).catch(() => { throw new ConnectionFailure('The local sign-in port is already in use. Close other Krono sign-in attempts and try again.') })
   const address = server.address()
   if (!address || typeof address === 'string') throw new ConnectionFailure('The local sign-in callback is unavailable.')
   const aborted = () => finish({ error: interrupted })
   signal.addEventListener('abort', aborted, { once: true })
   if (signal.aborted) aborted()
-  return { redirect: registeredCallback ?? `http://127.0.0.1:${address.port}/callback`, result, close: () => {
+  return { redirect: registration?.callback ?? `http://127.0.0.1:${address.port}/callback`, result, close: () => {
     signal.removeEventListener('abort', aborted)
     server.closeIdleConnections()
     server.close()
@@ -164,7 +165,7 @@ export async function connectMcp(id: McpId, signal: AbortSignal, onAuthorize: (u
   let callback: Awaited<ReturnType<typeof startCallback>> | undefined
   let client = createClient()
   try {
-    callback = await startCallback(state, signal, profile.metadata?.callback)
+    callback = await startCallback(state, signal, profile.metadata)
     let connection = transport(profile, callback.redirect, state, signal, undefined, onAuthorize)
     try { await client.connect(connection.channel, { signal, timeout: requestTimeout }) }
     catch (error) {
