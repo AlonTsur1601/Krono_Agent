@@ -757,11 +757,6 @@ try {
             Invoke 'PluginPrimary-github'
             Find 'GitHub installed.' -ByName | Out-Null
             Find 'PluginRemove-github' | Out-Null
-            $removeBounds = WaitForBounds 'PluginRemove-github'
-            $badgeBounds = WaitForBounds 'PluginStatus-github'
-            if ($badgeBounds.Top -ge $removeBounds.Bottom -or $badgeBounds.Bottom -le $removeBounds.Top) {
-                throw 'The plugin status and remove action are on different rows'
-            }
             if (!(Test-Path -LiteralPath $package)) { throw 'Installing GitHub did not write its plugin package' }
             $packaged = [IO.File]::ReadAllText($package)
             CloseApp
@@ -772,6 +767,12 @@ try {
             SelectSettingsCategory 'Plugins'
             Find 'PluginRemove-github' | Out-Null
             if ([IO.File]::ReadAllText($package) -ne $packaged) { throw 'An updated plugin package was not restored at startup' }
+            (Find 'PluginRemove-github').SetFocus()
+            $removeBounds = WaitForBounds 'PluginRemove-github'
+            $badgeBounds = WaitForBounds 'PluginStatus-github'
+            if ($badgeBounds.Top -ge $removeBounds.Bottom -or $badgeBounds.Bottom -le $removeBounds.Top) {
+                throw 'The plugin status and remove action are on different rows'
+            }
             SelectChoice 'PluginFilter' 'Installed'
             if (FindOptional 'PluginPrimary-vercel') { throw 'Installed filter shows an uninstalled plugin' }
             SelectChoice 'PluginFilter' 'All'
