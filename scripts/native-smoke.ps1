@@ -665,16 +665,6 @@ try {
             Invoke 'Send' -ByName
             Invoke 'Allow once' -ByName
             Find 'Native command fixture response.' -ByName | Out-Null
-            Invoke 'Workspace' -ByName
-            $terminalName = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Terminal')
-            $deadline = (Get-Date).AddSeconds(5)
-            do {
-                $menuItem = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, $terminalName) |
-                    Where-Object { $_.Current.ControlType -eq [Windows.Automation.ControlType]::MenuItem } | Select-Object -First 1
-                if (!$menuItem) { Start-Sleep -Milliseconds 75 }
-            } while (!$menuItem -and (Get-Date) -lt $deadline)
-            if (!$menuItem) { throw 'The Terminal split action did not appear' }
-            ($menuItem.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)).Invoke()
             $agentTerminal = Find 'TerminalOutput'
             $agentOutput = $agentTerminal.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
             if ($agentTerminal.Current.Name -ne 'Agent terminal' -or $agentOutput -notmatch 'native-command-proof' -or $agentOutput -notmatch '\b42\b') { throw 'The agent terminal did not show the real command and its output' }
@@ -767,6 +757,11 @@ try {
             Invoke 'PluginPrimary-github'
             Find 'GitHub installed.' -ByName | Out-Null
             Find 'PluginRemove-github' | Out-Null
+            $removeBounds = WaitForBounds 'PluginRemove-github'
+            $badgeBounds = WaitForBounds 'PluginStatus-github'
+            if ($badgeBounds.Top -ge $removeBounds.Bottom -or $badgeBounds.Bottom -le $removeBounds.Top) {
+                throw 'The plugin status and remove action are on different rows'
+            }
             if (!(Test-Path -LiteralPath $package)) { throw 'Installing GitHub did not write its plugin package' }
             $packaged = [IO.File]::ReadAllText($package)
             CloseApp
@@ -996,7 +991,14 @@ try {
                 throw 'The model selector changed width when opening connection settings'
             }
             PressEnterOn 'ProviderEndpoint'
-            Find 'Endpoint saved.' -ByName | Out-Null
+            $savedNotice = Find 'Endpoint saved.' -ByName
+            Invoke 'Save key' -ByName
+            $errorNotice = Find 'Enter an API key before saving.' -ByName
+            if ($savedNotice.Current.AutomationId -ne 'SuccessNotice' -or $errorNotice.Current.AutomationId -ne 'ErrorNotice' -or
+                $errorNotice.Current.BoundingRectangle.Top -le $savedNotice.Current.BoundingRectangle.Top) {
+                throw 'Success and error notifications did not stack'
+            }
+            Capture 'native-stacked-notices.png'
             SetValue 'ProviderKey' 'fixture-placeholder'
             PressEnterOn 'ProviderKey'
             $deadline = (Get-Date).AddSeconds(5)

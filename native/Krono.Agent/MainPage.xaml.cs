@@ -94,7 +94,7 @@ public sealed partial class MainPage : Page
             catch (Exception error) { Error(error); }
             finally { StartupProgress.IsActive = false; StartupProgress.Visibility = Visibility.Collapsed; if (Nav.Visibility != Visibility.Visible) SignIn.Visibility = Visibility.Visible; }
         };
-        Unloaded += (_, _) => { confirmationWait?.Cancel(); sessionGeneration++; sessionTimer.Stop(); StopSync(); StopSchedules(); sideChat?.Dispose(); worker?.Dispose(); browser?.Dispose(); terminal?.Dispose(); games?.Dispose(); workspace.Dispose(); };
+        Unloaded += (_, _) => { HideError(); confirmationWait?.Cancel(); sessionGeneration++; sessionTimer.Stop(); StopSync(); StopSchedules(); sideChat?.Dispose(); worker?.Dispose(); browser?.Dispose(); terminal?.Dispose(); games?.Dispose(); workspace.Dispose(); };
     }
     async void Login(object sender, RoutedEventArgs e) => await Authenticate(false);
     async void SignInWithGoogle(object sender, RoutedEventArgs e)
@@ -247,9 +247,12 @@ public sealed partial class MainPage : Page
         ResendConfirmationButton.IsEnabled = BackToLoginButton.IsEnabled = false;
         ConfirmationStatus.Visibility = Visibility.Visible;
         ConfirmationStatus.Text = "Sending…";
-        try { await workspace.ResendConfirmation(ConfirmationAddress.Text); ConfirmationStatus.Text = "A new confirmation email was requested."; }
-        catch (Exception error) { ConfirmationStatus.Text = error.Message; }
-        finally { ResendConfirmationButton.IsEnabled = BackToLoginButton.IsEnabled = true; }
+        try { await workspace.ResendConfirmation(ConfirmationAddress.Text); ShowNotice("A new confirmation email was requested."); }
+        catch (Exception error) { Error(error); }
+        finally {
+            ConfirmationStatus.Visibility = Visibility.Collapsed;
+            ResendConfirmationButton.IsEnabled = BackToLoginButton.IsEnabled = true;
+        }
     }
     void Enter()
     {
@@ -342,8 +345,7 @@ public sealed partial class MainPage : Page
             ClearAttachments();
             mode = "chat"; permissions = "ask"; if (modeSelector is not null) modeSelector.SelectedItem = mode; if (permissionSelector is not null) permissionSelector.SelectedItem = permissions;
             activityChatId = null; RunActivity.IsOpen = false; Approval.IsOpen = false;
-            errorTimer?.Stop();
-            if (errorPopup is not null) errorPopup.IsOpen = false;
+            HideError();
             discoveredModels.Clear();
             Nav.Visibility = Visibility.Collapsed; SignIn.Visibility = Visibility.Visible;
         }
@@ -511,14 +513,6 @@ public sealed partial class MainPage : Page
             modelChoice.MaxWidth = 240;
             toolbar.Children.Add(currentModelLabel);
             toolbar.Children.Add(modelChoice);
-            var toolsMenu = KronoDesign.CreateMenu();
-            foreach (var name in new[] { "Files", "Browser", "Terminal" }) {
-                var entry = new MenuFlyoutItem { Text = name };
-                entry.Click += (_, _) => OpenWorkspace(name);
-                toolsMenu.Items.Add(entry);
-            }
-            var split = new Button { Content = "Workspace", Flyout = toolsMenu };
-            toolbar.Children.Add(split);
             sideChatButton = Button("Side chat", OpenSideChat);
             AutomationProperties.SetAutomationId(sideChatButton, "OpenSideChatButton");
             toolbar.Children.Add(sideChatButton);
@@ -779,7 +773,8 @@ public sealed partial class MainPage : Page
         var saveKey = Button("Save key", SaveKey);
         void SaveEndpoint() { try {
             var url = ProviderCatalog.ParseEndpoint(endpoint.Text);
-            workspace.SetSetting("native.endpoint." + provider, url.AbsoluteUri.TrimEnd('/')); connectionStatus.Text = "Endpoint saved.";
+            workspace.SetSetting("native.endpoint." + provider, url.AbsoluteUri.TrimEnd('/'));
+            ShowNotice("Endpoint saved.");
             discoveredModels.Remove(provider);
             _ = LoadProviderModels();
         } catch (Exception error) { Error(error); } }
@@ -830,8 +825,18 @@ public sealed partial class MainPage : Page
         AutomationProperties.SetAutomationId(secret, "ProviderKey");
         void SaveKey()
         {
-            if (string.IsNullOrWhiteSpace(secret.Password)) return;
-            try { workspace.SaveKey(provider, secret.Password.Trim()); secret.Password = ""; discoveredModels.Remove(provider); RefreshModelVisibility(); _ = LoadProviderModels(); }
+            if (string.IsNullOrWhiteSpace(secret.Password)) {
+                ShowNotice("Enter an API key before saving.", success: false);
+                return;
+            }
+            try {
+                workspace.SaveKey(provider, secret.Password.Trim());
+                secret.Password = "";
+                ShowNotice(ProviderCatalog.Name(provider) + " API key saved.");
+                discoveredModels.Remove(provider);
+                RefreshModelVisibility();
+                _ = LoadProviderModels();
+            }
             catch (Exception error) { Error(error); }
         }
         secret.PreviewKeyDown += (_, args) => { if (args.Key == Windows.System.VirtualKey.Enter) { args.Handled = true; SaveKey(); } };
@@ -846,6 +851,7 @@ public sealed partial class MainPage : Page
             if (result?["success"]?.GetValue<bool>() != true)
                 throw new InvalidOperationException("Connection failed. Check the server, endpoint and credentials.");
             connectionStatus.Text = "Connected · " + result["latencyMs"] + " ms";
+            ShowNotice(ProviderCatalog.Name(id) + " connection succeeded.");
         }));
         remoteConnection.Children.Add(connectionStatus);
         remoteConnection.Children.Add(profileHelp);
@@ -882,8 +888,10 @@ public sealed partial class MainPage : Page
                     ? ProviderCatalog.AutomaticLocal(selectedProvider) ? "No local models found. Start your model server and refresh." : "This provider returned no models."
                     : "";
             } catch (Exception) {
-                if (request == modelRequest && generation == sessionGeneration && provider == selectedProvider)
+                if (request == modelRequest && generation == sessionGeneration && provider == selectedProvider) {
                     modelStatus.Text = "Could not load this provider’s models.";
+                    if (refresh) ShowNotice(modelStatus.Text, success: false);
+                }
             }
         }
         models.SelectionChanged += (_, _) => {

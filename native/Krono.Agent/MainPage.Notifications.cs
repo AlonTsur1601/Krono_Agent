@@ -5,21 +5,39 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Media;
 using Windows.UI.ViewManagement;
 
 namespace Krono_Agent;
 
 public sealed partial class MainPage
 {
-    Popup? errorPopup;
-    Border? errorSurface;
-    DispatcherTimer? errorTimer;
-    int errorSequence;
+    readonly StackPanel notices = new() { Spacing = 8, IsHitTestVisible = false };
+    readonly Dictionary<Border, DispatcherTimer> noticeTimers = [];
+    Popup? noticePopup;
 
     void HideError()
     {
-        errorTimer?.Stop();
-        if (errorPopup is not null) errorPopup.IsOpen = false;
+        foreach (var timer in noticeTimers.Values) timer.Stop();
+        noticeTimers.Clear();
+        notices.Children.Clear();
+        CloseNoticePopup();
+    }
+
+    void CloseNoticePopup()
+    {
+        if (noticePopup is not { } popup) return;
+        popup.XamlRoot.Changed -= PositionNotices;
+        popup.IsOpen = false;
+        popup.Child = null;
+        noticePopup = null;
+    }
+
+    void PositionNotices(XamlRoot root, XamlRootChangedEventArgs? args = null)
+    {
+        if (noticePopup is not { } popup) return;
+        notices.Width = Math.Clamp(root.Size.Width - 32, 0, 430);
+        popup.HorizontalOffset = (root.Size.Width - notices.Width) / 2;
     }
 
     internal static string FriendlyError(Exception error)
@@ -41,43 +59,59 @@ public sealed partial class MainPage
         return message.Length > 240 ? message[..239] + "…" : message;
     }
 
-    public void Error(Exception error) => ShowNotice(FriendlyError(error), AutomationLiveSetting.Assertive);
+    public void Error(Exception error) => ShowNotice(FriendlyError(error), success: false);
 
-    void ShowNotice(string message, AutomationLiveSetting urgency = AutomationLiveSetting.Polite)
+    void ShowNotice(string message, bool success = true)
     {
-        if (XamlRoot is null) return;
-        HideError();
-        var label = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap };
-        AutomationProperties.SetLiveSetting(label, urgency);
+        if (XamlRoot is not { } root) return;
+        if (noticePopup is null) {
+            noticePopup = new Popup { XamlRoot = root, Child = notices, VerticalOffset = 16, IsHitTestVisible = false };
+            root.Changed += PositionNotices;
+            PositionNotices(root);
+        }
+        if (notices.Children.Count >= 5 && notices.Children[0] is Border oldest) RemoveNotice(oldest);
+        var ink = success ? new SolidColorBrush(ActualTheme == ElementTheme.Light
+            ? Windows.UI.Color.FromArgb(255, 23, 97, 62)
+            : Windows.UI.Color.FromArgb(255, 132, 230, 177))
+            : (SolidColorBrush)KronoDesign.ThemeBrush("KronoDangerForeground", ActualTheme);
+        var accent = ink.Color;
+        var background = ((SolidColorBrush)KronoDesign.ThemeBrush("KronoSurface", ActualTheme)).Color;
+        static byte Tint(byte surface, byte ink) => (byte)((surface * 4 + ink) / 5);
+        var fill = Windows.UI.Color.FromArgb(255, Tint(background.R, accent.R), Tint(background.G, accent.G), Tint(background.B, accent.B));
+        var label = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetLiveSetting(label, success ? AutomationLiveSetting.Polite : AutomationLiveSetting.Assertive);
+        var row = new Grid { ColumnSpacing = 10 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.Children.Add(new SymbolIcon(success ? Symbol.Accept : Symbol.Important) { Foreground = ink, VerticalAlignment = VerticalAlignment.Center });
+        Grid.SetColumn(label, 1);
+        row.Children.Add(label);
         var surface = new Border {
-            Child = label, CornerRadius = new CornerRadius(14), Padding = new Thickness(18, 12, 18, 13),
-            Background = KronoDesign.ThemeBrush("KronoSurface", ActualTheme),
-            BorderBrush = KronoDesign.ThemeBrush("KronoBorder", ActualTheme), BorderThickness = new Thickness(1, 1, 1, 3),
-            MaxWidth = Math.Max(140, Math.Min(430, ActualWidth - 32))
+            Child = row, CornerRadius = new CornerRadius(14), Padding = new Thickness(16, 10, 16, 11),
+            Background = new SolidColorBrush(fill), BorderBrush = ink, BorderThickness = new Thickness(1, 1, 1, 3)
         };
-        var popup = new Popup { XamlRoot = XamlRoot, Child = surface,
-            HorizontalOffset = Math.Max(12, ActualWidth - surface.MaxWidth - 16), VerticalOffset = 16 };
-        errorPopup = popup;
-        errorSurface = surface;
-        errorSequence++;
-        popup.IsOpen = true;
-        AnimateNotice(true);
-        errorTimer ??= new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-        errorTimer.Tick -= DismissError;
-        errorTimer.Tick += DismissError;
-        errorTimer.Start();
+        AutomationProperties.SetAutomationId(label, success ? "SuccessNotice" : "ErrorNotice");
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        timer.Tick += (_, _) => { timer.Stop(); AnimateNotice(surface, entering: false); };
+        noticeTimers.Add(surface, timer);
+        notices.Children.Add(surface);
+        noticePopup.IsOpen = true;
+        AnimateNotice(surface, entering: true);
+        FrameworkElementAutomationPeer.CreatePeerForElement(label)?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+        timer.Start();
     }
 
-    void DismissError(object? sender, object args)
+    void RemoveNotice(Border surface)
     {
-        errorTimer?.Stop();
-        AnimateNotice(false);
+        if (!noticeTimers.Remove(surface, out var timer)) return;
+        timer.Stop();
+        notices.Children.Remove(surface);
+        if (notices.Children.Count == 0) CloseNoticePopup();
     }
 
-    void AnimateNotice(bool entering)
+    void AnimateNotice(Border surface, bool entering)
     {
-        if (errorSurface is not { } surface || errorPopup is not { } popup) return;
-        if (!new UISettings().AnimationsEnabled) { if (!entering) popup.IsOpen = false; return; }
+        if (!new UISettings().AnimationsEnabled) { if (!entering) RemoveNotice(surface); return; }
         ElementCompositionPreview.SetIsTranslationEnabled(surface, true);
         var visual = ElementCompositionPreview.GetElementVisual(surface);
         var compositor = visual.Compositor;
@@ -89,9 +123,8 @@ public sealed partial class MainPage
         slide.InsertKeyFrame(0, new(0, entering ? -10 : 0, 0));
         slide.InsertKeyFrame(1, new(0, entering ? 0 : -10, 0));
         slide.Duration = fade.Duration;
-        var sequence = errorSequence;
         var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
-        batch.Completed += (_, _) => { if (!entering && sequence == errorSequence) popup.IsOpen = false; };
+        batch.Completed += (_, _) => { if (!entering) RemoveNotice(surface); };
         visual.StartAnimation("Opacity", fade);
         visual.StartAnimation("Translation", slide);
         batch.End();

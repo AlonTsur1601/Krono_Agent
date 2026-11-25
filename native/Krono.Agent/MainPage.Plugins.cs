@@ -93,7 +93,7 @@ public sealed partial class MainPage
                 if (plugin.RequiresAccount) await ConnectPlugin(plugin);
             });
             AutomationProperties.SetAutomationId(primary, "PluginPrimary-" + plugin.Id);
-            actions.Children.Add(primary);
+            footer.Children.Insert(0, primary);
 
             var options = KronoDesign.CreateMenu();
             var reconnect = new MenuFlyoutItem { Text = "Reconnect" };
@@ -126,7 +126,7 @@ public sealed partial class MainPage
             AutomationProperties.SetName(more, plugin.Name + " options");
             AutomationProperties.SetAutomationId(more, "PluginOptions-" + plugin.Id);
             actions.Children.Add(more);
-            footer.Children.Add(badge);
+            actions.Children.Add(badge);
             footer.Children.Add(status);
 
             void Render()
@@ -236,6 +236,7 @@ public sealed partial class MainPage
             if (reply?["success"]?.GetValue<bool>() == true) {
                 PluginCatalog.SaveConnection(workspace, plugin, reply, profile);
                 retained = true;
+                ShowNotice(plugin.Name + " connected.");
             } else Error(new InvalidOperationException(reply?["message"]?.ToString() ?? "Could not connect this plugin."));
         } catch (Exception error) { if (generation == sessionGeneration) Error(error); }
         finally {
@@ -264,7 +265,10 @@ public sealed partial class MainPage
         try {
             var reply = await active.Request(Guid.NewGuid().ToString(), "plugin:test", configuration);
             if (generation != sessionGeneration || !PluginCatalog.Installed(workspace, plugin)) return;
-            status.Text = reply?["message"]?.ToString() ?? "The check was not completed.";
+            status.Text = "";
+            status.Visibility = Visibility.Collapsed;
+            var success = reply?["success"]?.GetValue<bool>() == true;
+            ShowNotice(plugin.Name + (success ? " check succeeded." : " check failed."), success);
         } catch (Exception error) { if (generation == sessionGeneration) Error(error); }
     }
 }
