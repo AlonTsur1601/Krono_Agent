@@ -118,6 +118,11 @@ const server = http.createServer((request, response) => {
     })
     response.end('ok')
   }
+  else if (request.url === '/seed-unavailable-models' && request.method === 'POST') {
+    fixtureDb(db => db.prepare('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)')
+      .run('native.endpoint.ollama', 'http://127.0.0.1:' + server.address().port + '/unavailable/v1'))
+    response.end('ok')
+  }
   else if (request.url === '/game-proof') { const saves = fixtureDb(db => db.prepare('SELECT game_id,state FROM game_saves WHERE account_id=? ORDER BY game_id').all(user.id).map(row => ({ game: row.game_id, state: JSON.parse(row.state) })).filter(row => !row.state.Deleted)); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ saves })) }
   else if (request.url === '/local-reply-proof') { const count = fixtureDb(db => db.prepare("SELECT count(*) AS n FROM messages WHERE role='assistant' AND content='Native local endpoint reply.'").get().n); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ count })) }
   else if (request.url === '/corrupt-game') { fixtureDb(db => db.prepare("UPDATE game_saves SET state='{}' WHERE game_id='Snake'").run()); response.end('ok') }

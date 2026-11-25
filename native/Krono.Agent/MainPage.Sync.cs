@@ -49,14 +49,15 @@ public sealed partial class MainPage
             var result = await workspace.Synchronize(cancellation.Token, () => generation == sessionGeneration && SafeToSync());
             if (generation != sessionGeneration) return;
             syncMessage = result.Offline ? $"Account service unavailable · {result.Queued} queued" : result.Conflicts > 0 ? $"{result.Conflicts} differences to review · {result.Queued} queued" : result.Queued > 0 ? $"{result.Queued} changes will retry automatically" : "Account data is up to date.";
-            if (manual) ShowNotice(syncMessage, !result.Offline && result.Conflicts == 0 && result.Queued == 0);
+            if (manual && syncStatus?.IsLoaded != true)
+                ShowNotice(syncMessage, !result.Offline && result.Conflicts == 0 && result.Queued == 0);
             if (result.Pulled > 0) RefreshSyncedViews();
         } catch (OperationCanceledException) {
             if (generation == sessionGeneration && workspace.SyncEnabled) syncMessage = "Sync will retry when the workspace is idle.";
         } catch (Exception error) {
             if (generation == sessionGeneration) {
                 syncMessage = FriendlyError(error);
-                if (manual) Error(error);
+                if (manual && syncStatus?.IsLoaded != true) Error(error);
             }
         } finally {
             if (ReferenceEquals(syncRun, cancellation)) syncRun = null;

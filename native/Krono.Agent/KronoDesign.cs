@@ -208,7 +208,9 @@ public static class KronoDesign
 
     internal static MenuFlyout CreateMenu()
     {
-        var menu = new MenuFlyout();
+        var menu = new MenuFlyout {
+            MenuFlyoutPresenterStyle = (Style)Application.Current.Resources["KronoMenuPresenter"]
+        };
         menu.Closed += (_, _) => ResetItems(menu.Items);
         return menu;
 

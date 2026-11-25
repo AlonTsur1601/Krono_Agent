@@ -1186,3 +1186,9 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Constrain dropdowns to their trigger width and disable horizontal scrolling.
 - Expose only the provider, model and API key in Models. Continue using previously saved provider configuration.
 - Keep native text and caret coordinates stable during input feedback. Disable press scaling in the instructions editor and other large multiline fields.
+
+## v0.2.15 desktop feedback
+
+- Keep model discovery status inside the model selector. Show update check results through notifications and keep visible account-sync results inline.
+- Put plugin connection actions on the same line and offer an icon to copy approval codes while sign-in is pending.
+- Share dropdown surfaces between empty and populated selectors. Store interactive control templates and styles in resource dictionaries by control family.

@@ -28,7 +28,7 @@ export async function githubGet(profile: string, path: string, signal?: AbortSig
   return { data: JSON.parse(stdout.slice(boundary.index + boundary[0].length)), link: /^link:\s*([^\r\n]+)/im.exec(header)?.[1] ?? null }
 }
 
-export async function connectCli(id: Provider, profile: string, signal: AbortSignal, open: (url: string) => void, notify: (message: string) => void) {
+export async function connectCli(id: Provider, profile: string, signal: AbortSignal, open: (url: string) => void, showDeviceCode: (code: string) => void) {
   if (signal.aborted) return { success: false as const, message: 'Sign-in cancelled.' }
   try {
     await mkdir(profile, { recursive: true })
@@ -40,9 +40,10 @@ export async function connectCli(id: Provider, profile: string, signal: AbortSig
     const code = await new Promise<number | null>((resolve, reject) => {
       const child = spawn(program, args, { cwd: profile, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
       const abort = () => {
-        if (windows && child.pid) {
+        if (windows && id === 'firebase' && child.pid) {
           const killer = spawn(join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
           killer.once('error', () => child.kill())
+          killer.once('exit', code => { if (code !== 0) child.kill() })
         } else child.kill()
       }
       signal.addEventListener('abort', abort, { once: true })
@@ -52,7 +53,7 @@ export async function connectCli(id: Provider, profile: string, signal: AbortSig
         if (id !== 'github' || announcedCode && opened) return
         tail = (tail + chunk.toString('utf8')).slice(-512)
         const device = /(?:code|enter)\b[^\r\n]{0,100}\b([A-Z0-9]{4}-[A-Z0-9]{4})\b/i.exec(tail)?.[1]
-        if (!announcedCode && device) { announcedCode = true; notify(`Enter ${device.toUpperCase()} on GitHub’s approval page.`) }
+        if (!announcedCode && device) { announcedCode = true; showDeviceCode(device.toUpperCase()) }
         if (!opened && /https:\/\/github\.com\/login\/device\b/i.test(tail)) { opened = true; open('https://github.com/login/device') }
       }
       child.stdout.on('data', read); child.stderr.on('data', read)

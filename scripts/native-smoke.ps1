@@ -572,11 +572,25 @@ function TestAgentBrowser {
     if (!$proof.agentBrowserRan -or !$proof.profilesSeparate -or !$proof.agentCookiePresent) { throw 'Agent browser visit, link follow, or profile isolation failed' }
 }
 try {
+    if ($env:KRONO_SMOKE_SCOPE -eq 'plugins-install-ui') {
+        Add-Type -OutputAssembly (Join-Path $ReportDirectory 'gh.exe') -OutputType ConsoleApplication -TypeDefinition @'
+using System;
+using System.Threading;
+public static class PluginFixture {
+    public static int Main() {
+        Console.WriteLine("one-time code KRNO-TEST");
+        Thread.Sleep(15000);
+        return 1;
+    }
+}
+'@
+        $env:PATH = "$ReportDirectory;$env:PATH"
+    }
     Launch
     $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
     if ($windowPattern.Current.WindowVisualState -ne [Windows.Automation.WindowVisualState]::Maximized) { throw 'Krono did not open maximized' }
     Find 'EmailInput' | Out-Null
-    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'games-lifecycle', 'tray-lifecycle', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui', 'markdown-ui', 'browser-feedback', 'plugins-layout', 'plugins-install-ui', 'appearance-layout', 'dropdown-empty-ui')) {
+    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'games-lifecycle', 'tray-lifecycle', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui', 'markdown-ui', 'browser-feedback', 'plugins-layout', 'plugins-install-ui', 'appearance-layout', 'dropdown-empty-ui', 'desktop-notices')) {
         SetValue 'EmailInput' 'native-fixture@example.com'
         SetValue 'PasswordInput' 'fixture-password'
         Invoke 'LoginButton'
@@ -631,17 +645,53 @@ try {
             Write-Output 'NATIVE_SMOKE_PASS: bookmark create/edit/delete, rapid browser tab creation and closure, and history'
             return
         }
+        if ($env:KRONO_SMOKE_SCOPE -eq 'desktop-notices') {
+            Invoke-RestMethod ($Fixture + '/seed-unavailable-models') -Method Post | Out-Null
+            SelectNav 'Settings'
+            SelectSettingsCategory 'Models'
+            SelectChoice 'Provider' 'Ollama'
+            (Find 'ModelSelector').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+            $empty = Find 'EmptyDropdownMessage'
+            $emptyStates = @('Could not load models', 'No models available')
+            $deadline = (Get-Date).AddSeconds(8)
+            while ($empty.Current.Name -notin $emptyStates -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+            Capture 'native-model-discovery-failure.png' -Screen
+            $toast = FindOptional 'ErrorNotice'
+            if ($empty.Current.Name -notin $emptyStates -or $toast) {
+                throw "Unexpected model failure display. Dropdown: $($empty.Current.Name). Toast shown: $([bool]$toast)"
+            }
+            SelectSettingsCategory 'Updates'
+            Invoke 'Check for updates' -ByName
+            $notice = $null
+            $deadline = (Get-Date).AddSeconds(34)
+            do {
+                $notice = FindOptional 'SuccessNotice'
+                if (!$notice) { $notice = FindOptional 'ErrorNotice' }
+                if (!$notice) { Start-Sleep -Milliseconds 100 }
+            } while (!$notice -and (Get-Date) -lt $deadline)
+            if (!$notice -or (FindOptional 'UpdateCheckStatus')) { throw 'The update check did not report its result exclusively in the toast' }
+            Write-Output 'NATIVE_SMOKE_PASS: model failures remain inline and update checks report through the toast'
+            return
+        }
         if ($env:KRONO_SMOKE_SCOPE -eq 'dropdown-empty-ui') {
             SelectNav 'Scheduled tasks'
             Invoke '+ New task' -ByName
             $provider = (Find 'ScheduleProvider').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
             if ($provider.Count -ne 1 -or $provider[0].Current.Name -ne 'OpenAI') { SelectChoice 'ScheduleProvider' 'OpenAI' }
             $picker = (Find 'ScheduleModel').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
+            $trigger = (Find 'ScheduleModel').Current.BoundingRectangle
             $picker.Expand()
-            $empty = (Find 'EmptyDropdownMessage').Current.BoundingRectangle
-            Capture 'native-empty-dropdown.png'
+            $label = Find 'EmptyDropdownMessage'
+            Start-Sleep -Milliseconds 200
+            $empty = $label.Current.BoundingRectangle
+            Capture 'native-empty-dropdown.png' -Screen
             if ($empty.IsEmpty -or $empty.Height -lt 15) { throw 'Empty dropdown did not leave room for its label' }
-            Write-Output 'NATIVE_SMOKE_PASS: empty dropdown label is readable'
+            $leftInset = $empty.Left - $trigger.Left
+            $rightInset = $trigger.Right - $empty.Right
+            if ($leftInset -lt 10 -or $leftInset -gt 32 -or [Math]::Abs($leftInset - $rightInset) -gt 2) {
+                throw "Empty dropdown did not match its trigger. Label: $empty. Trigger: $trigger"
+            }
+            Write-Output 'NATIVE_SMOKE_PASS: empty dropdown label is readable and surface matches trigger width'
             return
         }
         if ($env:KRONO_SMOKE_SCOPE -eq 'games-lifecycle') {
@@ -785,8 +835,36 @@ try {
             (Find 'PluginRemove-github').SetFocus()
             $removeBounds = WaitForBounds 'PluginRemove-github'
             $badgeBounds = WaitForBounds 'PluginStatus-github'
+            $connectBounds = WaitForBounds 'PluginPrimary-github'
             if ($badgeBounds.Top -ge $removeBounds.Bottom -or $badgeBounds.Bottom -le $removeBounds.Top) {
                 throw 'The plugin status and remove action are on different rows'
+            }
+            if ($connectBounds.Left -lt $badgeBounds.Right -or $connectBounds.Top -ge $removeBounds.Bottom -or $connectBounds.Bottom -le $removeBounds.Top) {
+                throw 'Connect was not on the same row to the right of the other plugin actions'
+            }
+            if ($env:KRONO_SMOKE_SCOPE -eq 'plugins-install-ui') {
+                Invoke 'PluginPrimary-github'
+                Find 'PluginCopyCode-github' | Out-Null
+                Start-Sleep -Milliseconds 230
+                $copyBounds = WaitForBounds 'PluginCopyCode-github'
+                $cancelBounds = WaitForBounds 'PluginPrimary-github'
+                $badgeBounds = WaitForBounds 'PluginStatus-github'
+                Capture 'native-plugin-device-code.png'
+                if ($copyBounds.Left -lt $badgeBounds.Right -or $cancelBounds.Left -lt $copyBounds.Right -or
+                    $copyBounds.Top -ge $cancelBounds.Bottom -or $copyBounds.Bottom -le $cancelBounds.Top) {
+                    throw "Device action row geometry mismatch. Status: $badgeBounds. Copy: $copyBounds. Cancel: $cancelBounds"
+                }
+                if (FindOptional 'PluginProgress-github') { throw 'Device-code approval rendered a second row' }
+                Invoke 'PluginPrimary-github'
+                $deadline = (Get-Date).AddSeconds(8)
+                do {
+                    Start-Sleep -Milliseconds 100
+                    $label = (Find 'PluginPrimary-github').Current.Name
+                } while ($label -ne 'Connect' -and (Get-Date) -lt $deadline)
+                $copy = FindOptional 'PluginCopyCode-github'
+                if ($label -ne 'Connect' -or ($copy -and !$copy.Current.IsOffscreen -and !$copy.Current.BoundingRectangle.IsEmpty)) {
+                    throw "Cancelling approval did not restore the card. Primary action: $label"
+                }
             }
             SelectChoice 'PluginFilter' 'Installed'
             if (FindOptional 'PluginPrimary-vercel') { throw 'Installed filter shows an uninstalled plugin' }

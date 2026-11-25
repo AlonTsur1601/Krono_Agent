@@ -3,9 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
-using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 
 namespace Krono_Agent;
 
@@ -23,75 +21,6 @@ public sealed partial class MainPage
     ProgressBar? settingsUpdateProgress;
     int? updateDownloadPercent;
     bool installingUpdate;
-    (Symbol Icon, string Title, string Detail)? updateCheckResult;
-    Border? updateStatusCard;
-    ContentControl? updateStatusIcon;
-    TextBlock? updateStatusTitle, updateStatusDetail;
-
-    void ShowUpdateCheck(Symbol icon, string title, string detail)
-    {
-        updateCheckResult = (icon, title, detail);
-        RefreshUpdateStatus();
-    }
-
-    void RefreshUpdateStatus()
-    {
-        if (updateStatusCard is null) return;
-        if (updateCheckResult is not { } result) {
-            updateStatusCard.Visibility = Visibility.Collapsed;
-            return;
-        }
-        var icon = result.Icon == Symbol.Download
-            ? (IconElement)KronoDesign.NavigationIcon(Symbol.Download) : new SymbolIcon(result.Icon);
-        icon.Foreground = updateStatusIcon!.Foreground;
-        updateStatusIcon.Content = icon;
-        updateStatusTitle!.Text = result.Title;
-        updateStatusDetail!.Text = result.Detail;
-        updateStatusCard.Visibility = Visibility.Visible;
-        if (FrameworkElementAutomationPeer.CreatePeerForElement(updateStatusTitle) is { } peer)
-            peer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
-    }
-
-    void AddUpdateStatus(StackPanel panel)
-    {
-        var icon = new ContentControl { VerticalAlignment = VerticalAlignment.Center, HorizontalContentAlignment = HorizontalAlignment.Center };
-        updateStatusIcon = icon;
-        var iconTile = new Border { Child = icon, Width = 36, Height = 36,
-            CornerRadius = new CornerRadius(10), VerticalAlignment = VerticalAlignment.Top };
-        updateStatusTitle = new TextBlock { FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
-        AutomationProperties.SetLiveSetting(updateStatusTitle, AutomationLiveSetting.Polite);
-        var detail = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        updateStatusDetail = detail;
-        var text = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
-        text.Children.Add(updateStatusTitle);
-        text.Children.Add(detail);
-        var row = new Grid { ColumnSpacing = 12 };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.ColumnDefinitions.Add(new ColumnDefinition());
-        row.Children.Add(iconTile);
-        Grid.SetColumn(text, 1);
-        row.Children.Add(text);
-        var card = new Border { Child = row, CornerRadius = new CornerRadius(14), Padding = new Thickness(12),
-            BorderThickness = new Thickness(1), MinWidth = 240, Visibility = Visibility.Collapsed };
-        AutomationProperties.SetAutomationId(card, "UpdateCheckStatus");
-        void ApplyPalette()
-        {
-            Brush Role(string name) => KronoDesign.ThemeBrush(name, card.ActualTheme);
-            card.Background = Role("KronoSurface");
-            card.BorderBrush = Role("KronoBorder");
-            iconTile.Background = Role("KronoSidebar");
-            icon.Foreground = Role("KronoAccentForeground");
-            if (icon.Content is IconElement glyph) glyph.Foreground = icon.Foreground;
-            detail.Foreground = Role("KronoMuted");
-        }
-        card.Loaded += (_, _) => ApplyPalette();
-        card.ActualThemeChanged += (_, _) => ApplyPalette();
-        KronoInputMotion.RegisterPaletteRefresh(card, ApplyPalette);
-        updateStatusCard = card;
-        panel.Children.Add(card);
-        RefreshUpdateStatus();
-    }
-
     bool checkingUpdate, showUpdateCheckResult, updateInProgress;
     static Version InstalledVersion => typeof(MainPage).Assembly.GetName().Version ?? new Version(0, 0);
     bool HasRunningWork => runId is not null || scheduledRun is not null || sideChat?.IsRunning == true;
@@ -115,14 +44,13 @@ public sealed partial class MainPage
         settingsUpdateProgress = new ProgressBar { Maximum = 100, HorizontalAlignment = HorizontalAlignment.Stretch };
         AutomationProperties.SetName(settingsUpdateProgress, "Update download progress");
         panel.Children.Add(settingsUpdateProgress);
-        AddUpdateStatus(panel);
         RefreshUpdateButton();
     }
 
     async Task CheckUpdates(bool manual = false)
     {
         if (updateInProgress || downloadedInstaller is not null) {
-            if (manual && availableUpdate is { } update) ShowAvailableUpdate(update.Version);
+            if (manual && availableUpdate is { } update) ShowNotice($"Krono Agent v{update.Version.ToString(3)} is available.");
             return;
         }
         showUpdateCheckResult |= manual;
@@ -142,14 +70,7 @@ public sealed partial class MainPage
                 throw new InvalidDataException("The published release has an invalid version.");
             if (version <= current) {
                 availableUpdate = null;
-                if (showUpdateCheckResult) {
-                    ShowUpdateCheck(Symbol.Accept, "You’re up to date", $"Krono Agent v{current.ToString(3)} is the latest version.");
-                    ShowNotice("Krono Agent is up to date.");
-                }
-                else if (updateCheckResult?.Icon == Symbol.Download) {
-                    updateCheckResult = null;
-                    RefreshUpdateStatus();
-                }
+                if (showUpdateCheckResult) ShowNotice("Krono Agent is up to date.");
                 return;
             }
             var url = new Uri($"{ReleaseRoot}/download/v{version}/{InstallerName}");
@@ -161,14 +82,12 @@ public sealed partial class MainPage
                     !digest.StartsWith("sha256:", StringComparison.Ordinal) ||
                     asset.GetProperty("browser_download_url").GetString() != url.AbsoluteUri) break;
                 availableUpdate = new(version, url, size, Convert.ToHexString(Convert.FromHexString(digest[7..])));
-                ShowAvailableUpdate(version);
                 if (showUpdateCheckResult) ShowNotice($"Krono Agent v{version.ToString(3)} is available.");
                 return;
             }
             throw new InvalidDataException("The release has no verified Windows installer.");
         } catch (Exception error) {
             if (showUpdateCheckResult && !updateLifetime.IsCancellationRequested) {
-                ShowUpdateCheck(Symbol.Important, "Couldn’t check for updates", FriendlyError(error));
                 ShowNotice("Couldn’t check for updates. " + FriendlyError(error), success: false);
             }
         } finally {
@@ -176,10 +95,6 @@ public sealed partial class MainPage
             RefreshUpdateButton();
         }
     }
-
-    void ShowAvailableUpdate(Version version) =>
-        ShowUpdateCheck(Symbol.Download, $"Version {version.ToString(3)} is available",
-            $"You’re running v{InstalledVersion.ToString(3)}.");
 
     void RefreshUpdateButton()
     {
