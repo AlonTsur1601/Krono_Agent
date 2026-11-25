@@ -88,7 +88,8 @@ public sealed partial class MainPage
         row.Children.Add(label);
         var surface = new Border {
             Child = row, CornerRadius = new CornerRadius(14), Padding = new Thickness(16, 10, 16, 11),
-            Background = new SolidColorBrush(fill), BorderBrush = ink, BorderThickness = new Thickness(1, 1, 1, 3)
+            Background = new SolidColorBrush(fill), BackgroundSizing = BackgroundSizing.OuterBorderEdge,
+            BorderBrush = ink, BorderThickness = new Thickness(1)
         };
         AutomationProperties.SetAutomationId(label, success ? "SuccessNotice" : "ErrorNotice");
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };

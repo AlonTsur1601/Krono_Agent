@@ -2,6 +2,12 @@ const { buildSync } = require('esbuild')
 const result = buildSync({ entryPoints: ['src/sidecar/index.ts'], bundle: true, platform: 'node', target: 'node24', outfile: 'dist/sidecar/engine.cjs', format: 'cjs', external: ['node-pty'], logLevel: 'warning', metafile: true })
 const fs = require('fs')
 const path = require('path')
+const firebase = buildSync({ entryPoints: ['src/sidecar/firebase-login.cjs'], bundle: true, platform: 'node',
+  target: 'node24', outfile: 'dist/sidecar/firebase/firebase-login.cjs', format: 'cjs', logLevel: 'warning', metafile: true,
+  alias: { open: './src/sidecar/firebase-browser.cjs' } })
+fs.mkdirSync('dist/sidecar/templates', { recursive: true })
+for (const template of ['loginSuccess.html', 'loginFailure.html'])
+  fs.copyFileSync(path.join('node_modules/firebase-tools/templates', template), path.join('dist/sidecar/templates', template))
 fs.copyFileSync(process.execPath, 'dist/sidecar/node.exe')
 fs.copyFileSync('src/db/schema.sql', 'dist/sidecar/schema.sql')
 fs.copyFileSync('src/agent/providers/catalog.json', 'dist/sidecar/providers.json')
@@ -16,7 +22,7 @@ for (const item of ['lib', 'prebuilds/win32-x64', 'package.json', 'LICENSE']) {
   if (fs.existsSync(source)) fs.cpSync(source, path.join('dist/sidecar/node_modules/node-pty', item), { recursive: true })
 }
 const packages = new Set(['node-pty'])
-for (const file of Object.keys(result.metafile.inputs)) {
+for (const file of [...Object.keys(result.metafile.inputs), ...Object.keys(firebase.metafile.inputs)]) {
   const match = file.match(/^node_modules\/((?:@[^/]+\/)?[^/]+)/)
   if (match) packages.add(match[1])
 }

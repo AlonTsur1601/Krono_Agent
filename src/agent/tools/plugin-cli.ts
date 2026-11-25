@@ -1,6 +1,7 @@
 import { execFile, spawn } from 'node:child_process'
-import { access, mkdir } from 'node:fs/promises'
-import { delimiter, isAbsolute, join } from 'node:path'
+import { mkdir } from 'node:fs/promises'
+import { isAbsolute, join } from 'node:path'
+import { createInterface } from 'node:readline'
 import { promisify } from 'node:util'
 import { z } from 'zod'
 import { sensitiveVariable } from './commands'
@@ -9,24 +10,11 @@ const execute = promisify(execFile)
 export const CliProfile = z.string().min(1).max(3000).refine(value => isAbsolute(value) && !value.includes('\0'))
 export type CliAccount = { profile: string }
 type Provider = 'github' | 'firebase'
-const firebaseSetup = 'Install Google Cloud CLI, then return to Plugins and try connecting Firebase again.'
-
-async function cloudSdkPath(env: NodeJS.ProcessEnv) {
-  const folders = [
-    ...(env.Path ?? env.PATH ?? '').split(delimiter),
-    ...[env.LOCALAPPDATA, env.ProgramFiles, env['ProgramFiles(x86)']].filter(Boolean)
-      .map(root => join(root!, 'Google', 'Cloud SDK', 'google-cloud-sdk', 'bin')),
-  ]
-  for (const folder of folders.map(folder => folder.replace(/^"|"$/g, '')).filter(isAbsolute)) {
-    try { await access(join(folder, 'gcloud.cmd')); return folder } catch { /* keep looking */ }
-  }
-}
-
 function environment(id: Provider, profile: string): NodeJS.ProcessEnv {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !sensitiveVariable.test(key) &&
-    !/^(GH_|GITHUB_|CLOUDSDK_|GIT_CONFIG|BROWSER$|NODE_OPTIONS$|PYTHONPATH$)/i.test(key)))
+    !/^(GH_|GITHUB_|CLOUDSDK_|GOOGLE_|GCLOUD_|FIREBASE_|XDG_CONFIG_HOME$|GIT_CONFIG|BROWSER$|NODE_OPTIONS$|PYTHONPATH$)/i.test(key)))
   if (id === 'github') Object.assign(env, { GH_CONFIG_DIR: profile, GH_NO_UPDATE_NOTIFIER: '1', GH_TELEMETRY: '0', GH_PROMPT_DISABLED: '1' })
-  else Object.assign(env, { CLOUDSDK_CONFIG: profile, CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: '1' })
+  else Object.assign(env, { XDG_CONFIG_HOME: profile })
   return env
 }
 
@@ -40,37 +28,50 @@ export async function githubGet(profile: string, path: string, signal?: AbortSig
   return { data: JSON.parse(stdout.slice(boundary.index + boundary[0].length)), link: /^link:\s*([^\r\n]+)/im.exec(header)?.[1] ?? null }
 }
 
+async function firebaseLogin(profile: string, signal: AbortSignal, open: (url: string) => void) {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, [join(__dirname, 'firebase', 'firebase-login.cjs'), 'login'], {
+      cwd: profile, env: environment('firebase', profile), signal, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    const output = createInterface({ input: child.stdout })
+    output.on('line', line => {
+      try {
+        const address = new URL(JSON.parse(line).authorize)
+        if (address.origin === 'https://accounts.google.com' && address.pathname === '/o/oauth2/auth')
+          open(address.href)
+      } catch { /* Ignore unexpected output from the helper. */ }
+    })
+    child.once('error', reject)
+    child.once('close', code => code === 0 ? resolve() : reject(new Error('Firebase sign-in failed')))
+  })
+}
+
+export async function firebaseAccessToken(profile: string, signal?: AbortSignal) {
+  const { stdout } = await execute(process.execPath, [join(__dirname, 'firebase', 'firebase-login.cjs'), 'access'], {
+    cwd: profile, env: environment('firebase', profile), timeout: 15_000, signal, windowsHide: true, maxBuffer: 64 * 1024,
+  })
+  return z.object({ token: z.string().min(1).max(4096).regex(/^[!-~]+$/), expires: z.number().optional() }).parse(JSON.parse(stdout))
+}
+
 export async function connectCli(id: Provider, profile: string, signal: AbortSignal, open: (url: string) => void, showDeviceCode: (code: string) => void) {
   if (signal.aborted) return { success: false as const, message: 'Sign-in cancelled.' }
   try {
     await mkdir(profile, { recursive: true })
-    const windows = process.platform === 'win32'
-    const env = environment(id, profile)
-    const program = id === 'github' ? windows ? 'gh.exe' : 'gh' : windows ? join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe') : 'gcloud'
-    const googleLogin = ['auth', 'application-default', 'login', '--launch-browser', '--disable-quota-project',
-      '--scopes=openid,https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/cloud-platform.read-only']
-    if (id === 'firebase' && windows) {
-      const sdk = await cloudSdkPath(env)
-      if (!sdk) return { success: false as const, message: firebaseSetup, needsSetup: true }
-      const pathKey = Object.keys(env).find(key => key.toLowerCase() === 'path') ?? 'Path'
-      env[pathKey] = [sdk, env[pathKey]].filter(Boolean).join(delimiter)
+    if (id === 'firebase') {
+      await firebaseLogin(profile, signal, open)
+      return { success: true as const, profile }
     }
-    const args = id === 'github' ? ['auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https', '--skip-ssh-key'] :
-      windows ? ['/d', '/s', '/c', 'gcloud.cmd ' + googleLogin.join(' ')] : googleLogin
+    const program = process.platform === 'win32' ? 'gh.exe' : 'gh'
+    const args = ['auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https', '--skip-ssh-key']
+    const env = environment(id, profile)
     const code = await new Promise<number | null>((resolve, reject) => {
       const child = spawn(program, args, { cwd: profile, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
-      const abort = () => {
-        if (windows && id === 'firebase' && child.pid) {
-          const killer = spawn(join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
-          killer.once('error', () => child.kill())
-          killer.once('exit', code => { if (code !== 0) child.kill() })
-        } else child.kill()
-      }
+      const abort = () => { child.kill() }
       signal.addEventListener('abort', abort, { once: true })
       if (signal.aborted) abort()
       let tail = '', announcedCode = false, opened = false
       function read(chunk: Buffer) {
-        if (id !== 'github' || announcedCode && opened) return
+        if (announcedCode && opened) return
         tail = (tail + chunk.toString('utf8')).slice(-512)
         const device = /(?:code|enter)\b[^\r\n]{0,100}\b([A-Z0-9]{4}-[A-Z0-9]{4})\b/i.exec(tail)?.[1]
         if (!announcedCode && device) { announcedCode = true; showDeviceCode(device.toUpperCase()) }
@@ -82,11 +83,13 @@ export async function connectCli(id: Provider, profile: string, signal: AbortSig
       child.once('error', error => { cleanup(); reject(error) })
     })
     if (signal.aborted) return { success: false as const, message: 'Sign-in was cancelled or timed out.' }
-    if (code !== 0) return { success: false as const, message: id === 'github' ? 'GitHub sign-in did not finish. Update GitHub CLI and try again.' : 'Google sign-in did not finish. Try again and approve access with the Google account that has access to Firebase.' }
+    if (code !== 0) return { success: false as const, message: 'GitHub sign-in did not finish. Update GitHub CLI and try again.' }
     return { success: true as const, profile }
   } catch {
     return signal.aborted
       ? { success: false as const, message: 'Sign-in was cancelled or timed out.' }
-      : { success: false as const, message: id === 'github' ? 'Install GitHub CLI before connecting.' : firebaseSetup, needsSetup: true }
+      : id === 'github'
+        ? { success: false as const, message: 'Install GitHub CLI before connecting.', needsSetup: true }
+        : { success: false as const, message: 'Firebase sign-in did not finish. Try again and approve access with your Firebase Google account.' }
   }
 }
