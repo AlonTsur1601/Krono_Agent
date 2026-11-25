@@ -104,6 +104,20 @@ const server = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'application/json')
     response.end(JSON.stringify({ project }))
   }
+  else if (request.url === '/seed-provider-settings' && request.method === 'POST') {
+    const origin = 'http://127.0.0.1:' + server.address().port
+    fixtureDb(db => {
+      const set = db.prepare('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)')
+      set.run('native.endpoint.ollama', origin + '/local/v1')
+      for (const id of ['azure', 'xai', 'groq', 'mistral', 'openrouter']) {
+        set.run('native.endpoint.' + id, origin + '/cloud/' + id + '/v1')
+      }
+      for (const model of ['local-fixture-model', 'basic-fixture-model']) {
+        set.run('native.tools.ollama.' + model, 'false')
+      }
+    })
+    response.end('ok')
+  }
   else if (request.url === '/game-proof') { const saves = fixtureDb(db => db.prepare('SELECT game_id,state FROM game_saves WHERE account_id=? ORDER BY game_id').all(user.id).map(row => ({ game: row.game_id, state: JSON.parse(row.state) })).filter(row => !row.state.Deleted)); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ saves })) }
   else if (request.url === '/local-reply-proof') { const count = fixtureDb(db => db.prepare("SELECT count(*) AS n FROM messages WHERE role='assistant' AND content='Native local endpoint reply.'").get().n); response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ count })) }
   else if (request.url === '/corrupt-game') { fixtureDb(db => db.prepare("UPDATE game_saves SET state='{}' WHERE game_id='Snake'").run()); response.end('ok') }

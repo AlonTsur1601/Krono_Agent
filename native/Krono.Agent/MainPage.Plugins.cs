@@ -134,12 +134,11 @@ public sealed partial class MainPage
                 var installed = PluginCatalog.Installed(workspace, plugin);
                 var connected = installed && plugin.RequiresAccount && PluginCatalog.Configuration(workspace, plugin) is not null;
                 var connecting = pluginOperation?.Plugin == plugin.Id;
-                var changing = changingPlugin == plugin.Id;
-                bool actionNeeded = changing || !installed || plugin.RequiresAccount && !connected || connecting;
+                bool actionNeeded = !installed || plugin.RequiresAccount && !connected || connecting;
                 primary.Content = connecting ? "Cancel" : installed ? "Connect" : "Install";
                 primary.Visibility = actionNeeded ? Visibility.Visible : Visibility.Collapsed;
                 primary.IsEnabled = connecting || changingPlugin is null && pluginOperation is null;
-                remove.Visibility = installed || changing ? Visibility.Visible : Visibility.Collapsed;
+                remove.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
                 remove.IsEnabled = changingPlugin is null && pluginOperation is null;
                 more.Visibility = installed && (connected || plugin.Id == "node" || plugin.SetupUrl is not null) ? Visibility.Visible : Visibility.Collapsed;
                 more.IsEnabled = changingPlugin is null && pluginOperation is null;

@@ -130,6 +130,8 @@ public sealed class KronoComboBox : ComboBox
 
     public KronoComboBox()
     {
+        ScrollViewer.SetHorizontalScrollBarVisibility(this, ScrollBarVisibility.Disabled);
+        ScrollViewer.SetHorizontalScrollMode(this, ScrollMode.Disabled);
         outsidePress = (_, args) => {
             var point = args.GetCurrentPoint(this).Position;
             if (point.X < 0 || point.Y < 0 || point.X >= ActualWidth || point.Y >= ActualHeight)
@@ -153,8 +155,10 @@ public sealed class KronoComboBox : ComboBox
             while (scope is not null && scope is not ContentDialog) scope = VisualTreeHelper.GetParent(scope);
             outsideRoot = scope as UIElement ?? XamlRoot?.Content;
             outsideRoot?.AddHandler(UIElement.PointerPressedEvent, outsidePress, true);
-            if (GetTemplateChild("PopupBorder") is FrameworkElement surface)
+            if (GetTemplateChild("PopupBorder") is FrameworkElement surface) {
+                surface.Width = ActualWidth;
                 KronoDesign.AnimateMenuOpening(surface);
+            }
         };
         Items.VectorChanged += (_, _) => { if (Items.Count != 0) emptyMenu?.Hide(); };
         DropDownClosed += (_, _) => {
@@ -183,6 +187,8 @@ public sealed class KronoComboBox : ComboBox
             popup.Padding = new Thickness(2);
             popup.BorderThickness = new Thickness(1, 1, 1, 3);
         }
+        if (GetTemplateChild("ScrollViewer") is ScrollViewer items)
+            items.MinWidth = 0;
         RefreshPalette();
     }
 
@@ -198,7 +204,10 @@ public sealed class KronoComboBox : ComboBox
             emptyMenu.Opened += (_, _) => KronoDesign.AnimateMenuOpening(message);
         }
         if (emptyMenu.Content is TextBlock label) {
-            label.MinWidth = Math.Max(140, ActualWidth - 24);
+            var style = new Style(typeof(FlyoutPresenter));
+            style.Setters.Add(new Setter(FrameworkElement.MinWidthProperty, 0d));
+            style.Setters.Add(new Setter(FrameworkElement.WidthProperty, ActualWidth));
+            emptyMenu.FlyoutPresenterStyle = style;
             label.FontFamily = FontFamily;
             label.FontSize = FontSize;
         }
@@ -349,7 +358,7 @@ internal static class KronoInputMotion
             var active = field.IsEnabled && (focused || hover);
             var pressing = field.IsEnabled && (pressed || pressFeedback.IsEnabled);
             if (field is not PasswordBox && field is not KronoTextBox { PressMotionEnabled: false })
-                AnimateSurface(field, pressing ? .98f : 1, companion);
+                AnimateSurface(field, pressing && (field is not TextBox { AcceptsReturn: true } || field.ActualHeight < 100) ? .98f : 1, companion);
             if (rim is null || shade is null || fill is null) return;
             var theme = field.ActualTheme;
             shade.Color = ((SolidColorBrush)KronoDesign.ThemeBrush(field.IsEnabled ? "KronoInputShade" : "KronoInputFace", theme)).Color;
@@ -495,6 +504,8 @@ internal static class KronoInputMotion
         var surfaces = root.Children.OfType<FrameworkElement>().Where(element => Grid.GetRow(element) == 1 && element is not Popup).ToArray();
         var face = surfaces.FirstOrDefault(element => element.Name is "BorderElement" or "Background" or "InputBox");
         if (face is null) return;
+        // Native text hit testing and the caret must share untransformed editor coordinates.
+        if (field is TextBox or RichEditBox) surfaces = [face];
         var center = face.ActualOffset + new System.Numerics.Vector3(face.ActualSize / 2, 0);
         var animationsEnabled = new UISettings().AnimationsEnabled;
         if (!animationsEnabled) scale = 1;

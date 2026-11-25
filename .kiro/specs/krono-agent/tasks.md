@@ -1179,3 +1179,10 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 ## November 22 desktop feedback
 
 - See [the November 22 review](review-2026-11-22.md) for implementation and verification.
+
+## v0.2.14 desktop feedback
+
+- Keep plugin action rows stable while installation or removal is pending.
+- Constrain dropdowns to their trigger width and disable horizontal scrolling.
+- Expose only the provider, model and API key in Models. Continue using previously saved provider configuration.
+- Keep native text and caret coordinates stable during input feedback. Disable press scaling in the instructions editor and other large multiline fields.
