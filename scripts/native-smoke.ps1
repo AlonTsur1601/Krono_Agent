@@ -117,17 +117,12 @@ function SelectChoice([string]$Id, [string]$Name) {
     } while ((Get-Date) -lt $deadline)
     throw "Choice '$Name' did not appear in '$Id'"
 }
-function OpenProviderConnection {
-    $expander = (Find 'ProviderConnectionOptions').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
-    if ($expander.Current.ExpandCollapseState -ne [Windows.Automation.ExpandCollapseState]::Expanded) { $expander.Expand() }
-}
 function UseFixtureModel {
     SelectNav 'Settings'
     SelectSettingsCategory 'Models'
     # Make the cloud fixture selection explicit even when OpenAI is already displayed during local discovery.
     SelectChoice 'Provider' 'Anthropic'
     SelectChoice 'Provider' 'OpenAI'
-    OpenProviderConnection
     SetValue 'ProviderKey' 'fixture-provider-key'
     Invoke 'Save key' -ByName
     $model = Find 'ModelSelector'
@@ -185,8 +180,28 @@ function TestLiveMarkdown {
     SetToggle 'LiveMarkdownEditing' Off
     SelectSettingsCategory 'Instructions'
     Invoke 'Edit global instructions' -ByName
-    $plain = (Find 'GlobalInstructions').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
+    $editor = Find 'GlobalInstructions'
+    $value = $editor.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
+    $plain = $value.Current.Value
     if (($plain -replace "`r`n?", "`n") -ne $markdown) { throw ('Toggling live Markdown changed the editable source from ' + ($markdown | ConvertTo-Json -Compress) + ' to ' + ($plain | ConvertTo-Json -Compress)) }
+    $before = 'abcdefghijklmnopqrstuvwxyz' * 2
+    SetValue 'GlobalInstructions' ($before + '|end')
+    $editor.SetFocus()
+    Start-Sleep -Milliseconds 300
+    $pattern = $editor.GetCurrentPattern([Windows.Automation.TextPattern]::Pattern)
+    $marker = $pattern.DocumentRange.FindText('|', $false, $false).GetBoundingRectangles()
+    [KronoWindowCapture]::SetCursorPos([int][Math]::Ceiling($marker[0].Left), [int]($marker[0].Top + $marker[0].Height / 2)) | Out-Null
+    [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+    [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 100
+    (New-Object -ComObject WScript.Shell).SendKeys('X')
+    $deadline = (Get-Date).AddSeconds(3)
+    while ($value.Current.Value -eq ($before + '|end') -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 50 }
+    if ($value.Current.Value -cnotmatch ('^' + $before + '.\|end$')) {
+        Capture 'native-caret-click-failure.png' -Screen
+        throw "Instructions caret click at $($marker[0]) in $($editor.Current.BoundingRectangle) produced '$($value.Current.Value)'"
+    }
+    SetValue 'GlobalInstructions' $markdown
     Invoke 'Save instructions' -ByName
     Capture 'native-markdown-saved.png'
 }
@@ -851,8 +866,15 @@ try {
                 SelectNav 'Chats'
                 $picker = (Find 'Mode').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
                 $picker.Expand()
-                Find 'plan' -ByName | Out-Null
-                Capture ('native-input-dropdown-' + $theme + '.png')
+                $item = Find 'plan' -ByName
+                Start-Sleep -Milliseconds 230
+                $row = $item.Current.BoundingRectangle
+                $trigger = (Find 'Mode').Current.BoundingRectangle
+                Capture ('native-input-dropdown-' + $theme + '.png') -Screen
+                $leftInset = $row.Left - $trigger.Left
+                $rightInset = $trigger.Right - $row.Right
+                if ($row.IsEmpty -or $leftInset -lt 0 -or $rightInset -lt 0 -or $leftInset -gt 12 -or
+                    [Math]::Abs($leftInset - $rightInset) -gt 2) { throw "Dropdown geometry mismatch ($theme). Row: $row. Trigger: $trigger" }
                 $picker.Collapse()
             }
             $mode = (Find 'Mode').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
@@ -980,19 +1002,18 @@ try {
             Invoke 'Edit task' -ByName
             if ((Find 'ScheduleName').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value -ne 'Schedule from Enter') { throw 'The task editor lost the saved task name' }
             Capture 'native-schedule-editor.png'
+            Invoke-RestMethod ($Fixture + '/seed-provider-settings') -Method Post | Out-Null
             SelectNav 'Settings'
             SelectSettingsCategory 'Models'
             SelectChoice 'Provider' 'Ollama'
             $modelBounds = (Find 'ModelSelector').Current.BoundingRectangle
-            $modelWidth = $modelBounds.Width
             if ([Math]::Abs($modelBounds.Left - (Find 'Provider').Current.BoundingRectangle.Left) -gt 2) { throw 'The model selector did not align with the provider field' }
-            OpenProviderConnection
-            SetValue 'ProviderEndpoint' ($Fixture + '/local/v1')
-            if ([Math]::Abs($modelWidth - (Find 'ModelSelector').Current.BoundingRectangle.Width) -gt 2 -or $modelWidth -lt 400) {
-                throw 'The model selector changed width when opening connection settings'
+            foreach ($id in @('ProviderConnectionOptions', 'ProviderEndpoint', 'ProviderTools')) {
+                if (FindOptional $id) { throw ('Removed model setting is still visible: ' + $id) }
             }
-            PressEnterOn 'ProviderEndpoint'
-            $savedNotice = Find 'Endpoint saved.' -ByName
+            SetValue 'ProviderKey' 'fixture-placeholder'
+            PressEnterOn 'ProviderKey'
+            $savedNotice = Find 'Ollama API key saved.' -ByName
             Invoke 'Save key' -ByName
             $errorNotice = Find 'Enter an API key before saving.' -ByName
             if ($savedNotice.Current.AutomationId -ne 'SuccessNotice' -or $errorNotice.Current.AutomationId -ne 'ErrorNotice' -or
@@ -1000,8 +1021,6 @@ try {
                 throw 'Success and error notifications did not stack'
             }
             Capture 'native-stacked-notices.png'
-            SetValue 'ProviderKey' 'fixture-placeholder'
-            PressEnterOn 'ProviderKey'
             $deadline = (Get-Date).AddSeconds(5)
             do {
                 $saved = Test-Path -LiteralPath (Join-Path $ReportDirectory 'native-credentials/33333333-3333-4333-8333-333333333333/ollama.bin')
@@ -1010,8 +1029,7 @@ try {
             } while ((Get-Date) -lt $deadline)
             if (!$saved) { throw 'Enter did not save the fixture credential' }
             SelectChoice 'ModelSelector' 'native-keyboard-model'
-            if ((Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw 'Tool calling was not enabled by default' }
-            Capture 'native-provider-expanded.png'
+            Capture 'native-provider-models.png'
             SelectChoice 'Provider' 'OpenAI'
             SelectChoice 'Provider' 'Ollama'
             $selected = (Find 'ModelSelector').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
@@ -1249,23 +1267,14 @@ try {
     $deadline = (Get-Date).AddSeconds(15)
     do { Start-Sleep -Milliseconds 100; $assertions = Invoke-RestMethod ($Fixture + '/assertions') } while (!$assertions.commandRan -and (Get-Date) -lt $deadline)
     if (!$assertions.commandRan) { throw 'Approved agent command did not write its marker and return 42 to the model' }
+    Invoke-RestMethod ($Fixture + '/seed-provider-settings') -Method Post | Out-Null
     SelectNav 'Settings'
     SelectSettingsCategory 'Models'
     SelectChoice 'Provider' 'Ollama'
-    OpenProviderConnection
-    SetValue 'ProviderEndpoint' ($Fixture + '/local/v1')
-    Invoke 'Save endpoint' -ByName
-    Invoke 'Test connection' -ByName
-    $deadline = (Get-Date).AddSeconds(10)
-    do { Start-Sleep -Milliseconds 200; $connected = (Find 'ProviderConnectionStatus').Current.Name } while ($connected -notmatch '^Connected' -and (Get-Date) -lt $deadline)
-    if ($connected -notmatch '^Connected') { throw 'Native local endpoint connection test failed' }
     SetValue 'ProviderKey' 'fixture-local-placeholder'
     Invoke 'Save key' -ByName
-    Invoke 'Refresh models' -ByName
     Start-Sleep -Milliseconds 500
     SelectChoice 'ModelSelector' 'local-fixture-model'
-    if ((Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw 'Tool calling was not enabled by default' }
-    (Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
     Capture 'native-local-model.png'
     SelectNav 'Chats'
     SetValue 'Composer' 'Reply using the local endpoint, without tools'
@@ -1284,13 +1293,7 @@ try {
     if ($storedReply -ne 1) { throw 'Final streamed fragments were not persisted together' }
     SelectNav 'Settings'
     SelectSettingsCategory 'Models'
-    OpenProviderConnection
-    $toggle = (Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
-    $toggle.Toggle()
     SelectChoice 'ModelSelector' 'basic-fixture-model'
-    $toggle = (Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
-    if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw 'Tool calling was not enabled by default for model B' }
-    $toggle.Toggle()
     SelectNav 'Chats'
     SetValue 'Composer' 'Native manual model B without tool support'
     Invoke 'Send' -ByName
@@ -1300,10 +1303,6 @@ try {
     SelectNav 'Settings'
     SelectSettingsCategory 'Models'
     SelectChoice 'ModelSelector' 'local-fixture-model'
-    OpenProviderConnection
-    $toggle = (Find 'ProviderTools').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
-    if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw 'Model A lost its explicit tool capability' }
-    $toggle.Toggle()
     SelectChoice 'Provider' 'OpenAI'
     $selected = (Find 'ModelSelector').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
     if ($selected.Count -ne 1 -or $selected[0].Current.Name -ne 'gpt-native-fixture-model') { throw 'Provider switching lost its model selection' }
@@ -1311,12 +1310,8 @@ try {
         SelectNav 'Settings'
         SelectSettingsCategory 'Models'
         SelectChoice 'Provider' $cloudProfile.Name
-        OpenProviderConnection
-        SetValue 'ProviderEndpoint' ($Fixture + '/cloud/' + $cloudProfile.Id + '/v1')
-        Invoke 'Save endpoint' -ByName
         SetValue 'ProviderKey' ('fixture-' + $cloudProfile.Id + '-key')
         Invoke 'Save key' -ByName
-        Invoke 'Refresh models' -ByName
         Start-Sleep -Milliseconds 300
         SelectChoice 'ModelSelector' ($cloudProfile.Id + '-fixture')
         SelectNav 'Chats'

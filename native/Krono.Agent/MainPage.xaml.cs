@@ -753,76 +753,41 @@ public sealed partial class MainPage : Page
         AddSyncSettings(panel);
         panel = AddCategory("Models");
         var modelPanel = panel;
-        var secret = new PasswordBox { Header = "Provider API key", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var secret = new PasswordBox { Header = "API key", HorizontalAlignment = HorizontalAlignment.Stretch };
         KronoInputMotion.Attach(secret, "KronoPasswordInput");
-        var endpoint = new KronoTextBox { Header = "Server base URL · include /v1", Text = ProviderEndpoint };
-        AutomationProperties.SetAutomationId(endpoint, "ProviderEndpoint");
-        var tools = new KronoCheckBox { Content = "Enable tool calling for this model", IsChecked = ProviderToolsEnabled };
-        AutomationProperties.SetAutomationId(tools, "ProviderTools");
-        var connectionStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = .7 }; AutomationProperties.SetAutomationId(connectionStatus, "ProviderConnectionStatus");
+        AutomationProperties.SetAutomationId(secret, "ProviderKey");
         var models = new KronoComboBox { Header = "Model", HorizontalAlignment = HorizontalAlignment.Stretch,
             PlaceholderText = "Choose an available model", ItemsSource = ModelChoices(provider, [], model, false), SelectedItem = model };
-        var profileHelp = new TextBlock { Text = ProviderCatalog.Help(provider), TextWrapping = TextWrapping.Wrap, Opacity = .65 };
-        var modelSettings = new StackPanel { Spacing = 8 };
-        var remoteConnection = new StackPanel { Spacing = 10 };
-        var modelStatus = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        var connectionFields = new StackPanel { Spacing = 10 };
-        var advanced = KronoDesign.Section("Advanced connection settings", connectionFields);
-        AutomationProperties.SetAutomationId(advanced, "ProviderConnectionOptions");
+        AutomationProperties.SetAutomationId(models, "ModelSelector");
         int modelRequest = 0;
+        bool updatingModels = false, loadingModels = false;
         var saveKey = Button("Save key", SaveKey);
-        void SaveEndpoint() { try {
-            var url = ProviderCatalog.ParseEndpoint(endpoint.Text);
-            workspace.SetSetting("native.endpoint." + provider, url.AbsoluteUri.TrimEnd('/'));
-            ShowNotice("Endpoint saved.");
-            discoveredModels.Remove(provider);
-            _ = LoadProviderModels();
-        } catch (Exception error) { Error(error); } }
-        var saveEndpoint = Button("Save endpoint", SaveEndpoint);
-        endpoint.PreviewKeyDown += (_, args) => { if (args.Key == Windows.System.VirtualKey.Enter) { args.Handled = true; SaveEndpoint(); } };
-        void RefreshModelVisibility()
+        void ShowKeyField() => secret.Visibility = saveKey.Visibility =
+            ProviderCatalog.AutomaticLocal(provider) ? Visibility.Collapsed : Visibility.Visible;
+        void ListModels(string[] ids)
         {
-            modelRequest++;
-            modelStatus.Text = "";
-            modelSettings.Visibility = !ProviderCatalog.RequiresKey(provider) || workspace.Key(provider).Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            updatingModels = true;
+            try { models.ItemsSource = ids; models.SelectedItem = model; }
+            finally { updatingModels = false; }
         }
-        void EndpointVisibility()
-        {
-            var automatic = ProviderCatalog.AutomaticLocal(provider);
-            endpoint.Visibility = saveEndpoint.Visibility = CompatibleEndpoint && !automatic ? Visibility.Visible : Visibility.Collapsed;
-            secret.Visibility = saveKey.Visibility = automatic ? Visibility.Collapsed : Visibility.Visible;
-            remoteConnection.Visibility = automatic ? Visibility.Collapsed : Visibility.Visible;
-            advanced.Visibility = !automatic || model.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-            advanced.IsExpanded = !automatic && ProviderCatalog.RequiresKey(provider) && workspace.Key(provider).Length == 0;
-            tools.Visibility = CompatibleEndpoint ? Visibility.Visible : Visibility.Collapsed;
-            tools.IsEnabled = model.Length > 0;
-            RefreshModelVisibility();
-        }
-        ToolTipService.SetToolTip(tools, "Override tool support for a custom provider and model.");
-        var updatingModels = false;
-        var providerIds = ProviderCatalog.Ids; var providerNames = providerIds.Select(ProviderCatalog.Name).ToArray();
+        var providerIds = ProviderCatalog.Ids.Where(id => !ProviderCatalog.Compatible(id) ||
+            ProviderCatalog.AutomaticLocal(id) || ProviderCatalog.Endpoint(id).Length > 0 ||
+            workspace.Setting("native.endpoint." + id).Length > 0 || id == provider).ToArray();
+        var providerNames = providerIds.Select(ProviderCatalog.Name).ToArray();
         panel.Children.Add(Choices("Provider", providerNames, ProviderCatalog.Name(provider), value => {
             provider = providerIds[Array.IndexOf(providerNames, value)];
             workspace.SetSetting("native.provider", provider);
             secret.Password = "";
             model = workspace.Setting("native.model." + provider);
-            updatingModels = true;
-            models.ItemsSource = ModelChoices(provider, [], model, false);
-            models.SelectedItem = model;
-            updatingModels = false;
+            ListModels(ModelChoices(provider, [], model, false));
             RefreshChatModelLabel();
-            endpoint.Text = ProviderEndpoint;
-            tools.IsChecked = ProviderToolsEnabled;
-            connectionStatus.Text = "";
-            profileHelp.Text = ProviderCatalog.Help(provider);
-            EndpointVisibility();
+            ShowKeyField();
             _ = LoadProviderModels();
         }));
-        tools.Checked += (_, _) => { if (!updatingModels && CompatibleEndpoint && model.Length > 0) workspace.SetSetting(ModelToolsSetting, "true"); }; tools.Unchecked += (_, _) => { if (!updatingModels && CompatibleEndpoint && model.Length > 0) workspace.SetSetting(ModelToolsSetting, "false"); };
-        EndpointVisibility();
-        connectionFields.Children.Add(remoteConnection);
-        remoteConnection.Children.Add(endpoint); remoteConnection.Children.Add(saveEndpoint); remoteConnection.Children.Add(secret);
-        AutomationProperties.SetAutomationId(secret, "ProviderKey");
+        panel.Children.Add(models);
+        panel.Children.Add(secret);
+        panel.Children.Add(saveKey);
+        ShowKeyField();
         void SaveKey()
         {
             if (string.IsNullOrWhiteSpace(secret.Password)) {
@@ -833,72 +798,47 @@ public sealed partial class MainPage : Page
                 workspace.SaveKey(provider, secret.Password.Trim());
                 secret.Password = "";
                 ShowNotice(ProviderCatalog.Name(provider) + " API key saved.");
-                discoveredModels.Remove(provider);
-                RefreshModelVisibility();
-                _ = LoadProviderModels();
-            }
-            catch (Exception error) { Error(error); }
+                _ = LoadProviderModels(refresh: true);
+            } catch (Exception error) { Error(error); }
         }
-        secret.PreviewKeyDown += (_, args) => { if (args.Key == Windows.System.VirtualKey.Enter) { args.Handled = true; SaveKey(); } };
-        remoteConnection.Children.Add(saveKey);
-        remoteConnection.Children.Add(Button("Test connection", async () => {
-            var id = provider;
-            var key = workspace.Key(id);
-            if (key.Length == 0 && (ProviderCatalog.RequiresKey(id) || CompatibleEndpoint && !ProviderCatalog.Local(ProviderCatalog.ParseEndpoint(ProviderEndpoint))))
-                throw new InvalidOperationException("Save the provider’s API key before testing the connection.");
-            var result = await worker!.Request(Guid.NewGuid().ToString(), "test", new { providerId = id, apiKey = key, endpoint = ProviderEndpoint, toolsEnabled = ProviderToolsEnabled });
-            if (provider != id) return;
-            if (result?["success"]?.GetValue<bool>() != true)
-                throw new InvalidOperationException("Connection failed. Check the server, endpoint and credentials.");
-            connectionStatus.Text = "Connected · " + result["latencyMs"] + " ms";
-            ShowNotice(ProviderCatalog.Name(id) + " connection succeeded.");
-        }));
-        remoteConnection.Children.Add(connectionStatus);
-        remoteConnection.Children.Add(profileHelp);
-        connectionFields.Children.Add(tools);
-        panel.Children.Add(modelSettings);
-        modelSettings.Children.Add(models);
-        AutomationProperties.SetAutomationId(models, "ModelSelector");
-        modelSettings.Children.Add(Button("Refresh models", () => LoadProviderModels(true)));
-        modelSettings.Children.Add(modelStatus);
-        panel.Children.Add(advanced);
+        secret.PreviewKeyDown += (_, args) => {
+            if (args.Key != Windows.System.VirtualKey.Enter || args.KeyStatus.WasKeyDown) return;
+            args.Handled = true;
+            SaveKey();
+        };
         async Task LoadProviderModels(bool refresh = false)
         {
-            var selectedProvider = provider;
-            var key = workspace.Key(selectedProvider);
-            if (key.Length == 0 && ProviderCatalog.RequiresKey(selectedProvider) || worker is null) return;
             var request = ++modelRequest;
+            loadingModels = false;
+            var selectedProvider = provider;
             var generation = sessionGeneration;
-            modelStatus.Text = "Loading models…";
+            if (workspace.Key(selectedProvider).Length == 0 && ProviderCatalog.RequiresKey(selectedProvider)) {
+                models.PlaceholderText = "Save an API key to load models";
+                return;
+            }
+            if (worker is null) return;
+            loadingModels = true;
+            models.PlaceholderText = "Loading models…";
+            bool Current() => request == modelRequest && generation == sessionGeneration && provider == selectedProvider;
             try {
                 var result = await DiscoverModels(selectedProvider, refresh);
-                if (request != modelRequest || generation != sessionGeneration || provider != selectedProvider) return;
+                if (!Current()) return;
                 ChooseDefaultModel(result);
                 var ids = ModelChoices(selectedProvider, result, model, false);
-                updatingModels = true;
-                try {
-                    models.ItemsSource = ids;
-                    models.SelectedItem = model;
-                    models.IsEnabled = ids.Length > 0;
-                    tools.IsChecked = ProviderToolsEnabled;
-                    tools.IsEnabled = model.Length > 0;
-                    if (ProviderCatalog.AutomaticLocal(selectedProvider)) advanced.Visibility = model.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-                } finally { updatingModels = false; }
-                modelStatus.Text = ids.Length == 0
-                    ? ProviderCatalog.AutomaticLocal(selectedProvider) ? "No local models found. Start your model server and refresh." : "This provider returned no models."
-                    : "";
+                ListModels(ids);
+                models.PlaceholderText = ids.Length == 0 ? "No models available" : "Choose an available model";
             } catch (Exception) {
-                if (request == modelRequest && generation == sessionGeneration && provider == selectedProvider) {
-                    modelStatus.Text = "Could not load this provider’s models.";
-                    if (refresh) ShowNotice(modelStatus.Text, success: false);
+                if (Current()) {
+                    models.PlaceholderText = "Could not load models";
+                    if (refresh) ShowNotice("Could not load this provider’s models.", success: false);
                 }
-            }
+            } finally { if (Current()) loadingModels = false; }
         }
+        models.DropDownOpened += (_, _) => {
+            if (!loadingModels && models.Items.Count == 0) _ = LoadProviderModels(refresh: true);
+        };
         models.SelectionChanged += (_, _) => {
-            if (updatingModels || models.SelectedItem is not string selected) return;
-            SelectChatModel(selected);
-            tools.IsChecked = ProviderToolsEnabled;
-            tools.IsEnabled = true;
+            if (!updatingModels && models.SelectedItem is string selected) SelectChatModel(selected);
         };
         panel = AddCategory("Appearance");
         panel.Children.Add(Choices("Appearance", ["system", "dark", "light", "halloween"], workspace.Setting("native.theme") is { Length: > 0 } t ? t : "system", value => { workspace.SetSetting("native.theme", value); ApplyTheme(value, animate: true); }));

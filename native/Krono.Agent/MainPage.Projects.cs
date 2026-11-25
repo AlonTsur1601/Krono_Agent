@@ -166,7 +166,7 @@ public sealed partial class MainPage
             editor.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             editor.Children.Add(Heading("Instructions · " + title));
             var field = new KronoTextBox {
-                AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
+                AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, PressMotionEnabled = false,
                 Text = project is null ? workspace.Setting("instructions.global") :
                     workspace.ProjectPreferences(project)["instructions"]?.ToString() ?? ""
             };
