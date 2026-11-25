@@ -1192,3 +1192,8 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Keep model discovery status inside the model selector. Show update check results through notifications and keep visible account-sync results inline.
 - Put plugin connection actions on the same line and offer an icon to copy approval codes while sign-in is pending.
 - Share dropdown surfaces between empty and populated selectors. Store interactive control templates and styles in resource dictionaries by control family.
+
+## v0.2.16 plugin connections
+
+- Publish Vercel client metadata with an exact localhost OAuth callback, validate the browser handoff, and handle provider declines promptly.
+- Find Google Cloud CLI on Windows, request Firebase read-only access through browser sign-in, and offer setup from the plugin card when a CLI is missing.

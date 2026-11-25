@@ -10,14 +10,14 @@ import type { ToolDefinition } from '../types'
 export const McpId = z.enum(['vercel', 'notion', 'linear', 'monday', 'netlify'])
 export type McpId = z.infer<typeof McpId>
 export const McpGrant = z.object({
-  redirect: z.string().regex(/^http:\/\/127\.0\.0\.1:[0-9]{1,5}\/callback$/),
+  redirect: z.string().regex(/^http:\/\/(127\.0\.0\.1|localhost):[0-9]{1,5}\/callback$/),
   client: OAuthClientInformationSchema,
   tokens: OAuthTokensSchema,
 })
 export type McpGrant = z.infer<typeof McpGrant>
 
 type ReadTool = { method: string; description: string; input: z.ZodType }
-type Profile = { endpoint: string; origins: string[]; metadata?: string; port?: number; scope?: string; tools: ReadTool[] }
+type Profile = { endpoint: string; origins: string[]; metadata?: { url: string; callback: string }; scope?: string; tools: ReadTool[] }
 const name = z.string().trim().min(1).max(300)
 const identifier = z.string().trim().min(1).max(128)
 const limit = z.number().int().min(1).max(20).optional()
@@ -26,7 +26,10 @@ const vercelProject = z.string().regex(/^prj_[a-z0-9]+$/i).max(100)
 const profiles: Record<McpId, Profile> = {
   vercel: {
     endpoint: 'https://mcp.vercel.com', origins: ['https://mcp.vercel.com', 'https://vercel.com'],
-    metadata: 'https://kronoagent.github.io/Krono_Agent/oauth-client.json', port: 54127,
+    metadata: {
+      url: 'https://kronoagent.github.io/Krono_Agent/oauth-client-v2.json',
+      callback: 'http://localhost:54127/callback',
+    },
     tools: [
       { method: 'list_teams', description: 'List the connected Vercel account’s teams.', input: z.object({}) },
       { method: 'list_projects', description: 'List projects for a Vercel team. Use vercel_list_teams to find its ID.', input: z.object({ teamId: vercelTeam }) },
@@ -72,7 +75,7 @@ function transport(profile: Profile, redirect: string, state: string, signal: Ab
   let client = connection?.client, tokens = connection?.tokens, verifier = ''
   const provider: OAuthClientProvider = {
     redirectUrl: redirect,
-    clientMetadataUrl: profile.metadata,
+    clientMetadataUrl: profile.metadata?.url,
     clientMetadata: { client_name: 'Krono Agent', redirect_uris: [redirect], token_endpoint_auth_method: 'none',
       grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], scope: profile.scope },
     state: () => state,
@@ -83,7 +86,9 @@ function transport(profile: Profile, redirect: string, state: string, signal: Ab
     redirectToAuthorization: url => {
       if (!onAuthorize) throw new ConnectionFailure(reconnect)
       allow(profile, url)
-      if (url.searchParams.get('state') !== state) throw new ConnectionFailure('The authorization request could not be verified.')
+      if (url.searchParams.get('state') !== state || url.searchParams.get('redirect_uri') !== redirect ||
+          profile.metadata && url.searchParams.get('client_id') !== profile.metadata.url)
+        throw new ConnectionFailure('The authorization request could not be verified.')
       onAuthorize(url.href)
     },
     saveCodeVerifier: value => { verifier = value },
@@ -107,30 +112,33 @@ function allow(profile: Profile, url: URL) {
     throw new ConnectionFailure('The provider returned an unexpected authorization address.')
 }
 
-async function startCallback(state: string, signal: AbortSignal, port = 0) {
-  let finish: (code: string | null) => void = () => {}
-  const result = new Promise<string | null>(resolve => { finish = resolve })
+async function startCallback(state: string, signal: AbortSignal, registeredCallback?: string) {
+  const registered = registeredCallback ? new URL(registeredCallback) : undefined
+  type Callback = { code: string } | { error: string }
+  let finish: (value: Callback) => void = () => {}
+  const result = new Promise<Callback>(resolve => { finish = resolve })
   const server = createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
     const code = url.searchParams.get('code')
     if (request.method !== 'GET' || url.pathname !== '/callback' || url.searchParams.get('state') !== state) {
-      response.writeHead(400).end('This is not a valid sign-in handoff.'); return
+      response.writeHead(400).end('This sign-in link does not match the current attempt. Return to Krono Agent and start a new connection.'); return
     }
     response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' })
     response.end(code ? 'Authorization received. Return to Krono Agent.' : 'Sign-in was declined. Return to Krono Agent.')
-    finish(code)
+    finish(code ? { code } : { error: url.searchParams.get('error') === 'access_denied'
+      ? 'Authorization was declined.' : 'The provider could not approve the connection. Return to Plugins and try again.' })
   })
   server.requestTimeout = 10_000
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
-    server.listen(port, '127.0.0.1', () => { server.off('error', reject); resolve() })
-  }).catch(() => { throw new ConnectionFailure('The local sign-in callback is unavailable. Try again.') })
+    server.listen(registered ? Number(registered.port) : 0, '127.0.0.1', () => { server.off('error', reject); resolve() })
+  }).catch(() => { throw new ConnectionFailure('The local sign-in port is already in use. Close other Krono sign-in attempts and try again.') })
   const address = server.address()
   if (!address || typeof address === 'string') throw new ConnectionFailure('The local sign-in callback is unavailable.')
-  const aborted = () => finish(null)
+  const aborted = () => finish({ error: interrupted })
   signal.addEventListener('abort', aborted, { once: true })
   if (signal.aborted) aborted()
-  return { redirect: `http://127.0.0.1:${address.port}/callback`, result, close: () => {
+  return { redirect: registeredCallback ?? `http://127.0.0.1:${address.port}/callback`, result, close: () => {
     signal.removeEventListener('abort', aborted)
     server.closeIdleConnections()
     server.close()
@@ -156,14 +164,14 @@ export async function connectMcp(id: McpId, signal: AbortSignal, onAuthorize: (u
   let callback: Awaited<ReturnType<typeof startCallback>> | undefined
   let client = createClient()
   try {
-    callback = await startCallback(state, signal, profile.port)
+    callback = await startCallback(state, signal, profile.metadata?.callback)
     let connection = transport(profile, callback.redirect, state, signal, undefined, onAuthorize)
     try { await client.connect(connection.channel, { signal, timeout: requestTimeout }) }
     catch (error) {
       if (!(error instanceof UnauthorizedError)) throw error
-      const code = await callback.result
-      if (!code) throw new ConnectionFailure(signal.aborted ? interrupted : 'Authorization was declined.')
-      await connection.channel.finishAuth(code)
+      const result = await callback.result
+      if ('error' in result) throw new ConnectionFailure(result.error)
+      await connection.channel.finishAuth(result.code)
       const grant = connection.grant()
       if (!grant) throw new ConnectionFailure('The service did not return an authorized account session.')
       client = createClient()

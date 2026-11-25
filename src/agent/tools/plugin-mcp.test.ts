@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { afterEach, expect, it, vi } from 'vitest'
 import { connectMcp, mcpTools, type McpGrant } from './plugin-mcp'
+import vercelMetadata from '../../../docs/oauth-client-v2.json'
 
 const origin = 'https://mcp.notion.com'
 const remoteFetch = globalThis.fetch
@@ -96,4 +97,32 @@ it('rejects provider discovery outside the allowlisted host', async () => {
   expect(await connectMcp('notion', AbortSignal.timeout(1_500), authorize)).toMatchObject({ success: false })
   expect(authorize).not.toHaveBeenCalled()
   expect(fixture.mock.calls.every(([target]) => String(target).startsWith(origin))).toBe(true)
+})
+
+it('uses the published Vercel client ID and exact callback, and reports a declined authorization promptly', async () => {
+  const endpoint = 'https://mcp.vercel.com/'
+  const issuer = 'https://vercel.com'
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async target => {
+    const url = new URL(target instanceof Request ? target.url : target)
+    if (url.pathname.startsWith('/.well-known/oauth-protected-resource'))
+      return Response.json({ resource: endpoint, authorization_servers: [issuer], scopes_supported: ['openid'] })
+    if (url.pathname.startsWith('/.well-known/oauth-authorization-server'))
+      return Response.json({ issuer, authorization_endpoint: issuer + '/oauth/authorize', token_endpoint: issuer + '/oauth/token',
+        response_types_supported: ['code'], code_challenge_methods_supported: ['S256'], client_id_metadata_document_supported: true })
+    if (url.href !== endpoint) throw new Error('Unexpected authorization endpoint')
+    return new Response(null, { status: 401, headers: { 'WWW-Authenticate': 'Bearer resource_metadata="https://mcp.vercel.com/.well-known/oauth-protected-resource"' } })
+  }))
+  let callback: Promise<number> | undefined
+  const result = await connectMcp('vercel', AbortSignal.timeout(5_000), address => {
+    const url = new URL(address)
+    expect(url.searchParams.get('client_id')).toBe(vercelMetadata.client_id)
+    expect(url.searchParams.get('redirect_uri')).toBe(vercelMetadata.redirect_uris[0])
+    expect(url.searchParams.get('resource')).toBe(endpoint)
+    const target = new URL(vercelMetadata.redirect_uris[0])
+    target.searchParams.set('state', url.searchParams.get('state')!)
+    target.searchParams.set('error', 'access_denied')
+    callback = remoteFetch(target).then(response => response.status)
+  })
+  expect(await callback).toBe(200)
+  expect(result).toEqual({ success: false, message: 'Authorization was declined.' })
 })

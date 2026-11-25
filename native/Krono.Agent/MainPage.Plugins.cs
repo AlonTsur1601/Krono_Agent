@@ -16,6 +16,7 @@ public sealed partial class MainPage
     string pluginProgress = "";
     string? pluginDeviceCode;
     bool pluginCancelRequested;
+    readonly HashSet<string> pluginSetupNeeded = [];
     Action? refreshPluginCards;
 
     void AddPluginSettings(StackPanel panel)
@@ -96,6 +97,13 @@ public sealed partial class MainPage
                     if (pluginOperation is { Plugin: var current } && current == plugin.Id) { await CancelPluginConnection(); return; }
                     if (pluginOperation is not null || changingPlugin is not null) return;
                     if (!PluginCatalog.Installed(workspace, plugin)) { await ChangePlugin(plugin, true); return; }
+                    if (pluginSetupNeeded.Contains(plugin.Id) && plugin.SetupUrl is { } setup) {
+                        if (await Windows.System.Launcher.LaunchUriAsync(new Uri(setup))) {
+                            pluginSetupNeeded.Remove(plugin.Id);
+                            refreshPluginCards?.Invoke();
+                        } else ShowNotice("Couldn’t open the setup guide in your browser.", success: false);
+                        return;
+                    }
                     if (plugin.RequiresAccount) await ConnectPlugin(plugin);
                 } catch (Exception error) { Error(error); }
             };
@@ -157,7 +165,8 @@ public sealed partial class MainPage
                 var connected = installed && plugin.RequiresAccount && PluginCatalog.Configuration(workspace, plugin) is not null;
                 var connecting = pluginOperation?.Plugin == plugin.Id;
                 bool actionNeeded = !installed || plugin.RequiresAccount && !connected || connecting;
-                primary.Content = connecting ? "Cancel" : installed ? "Connect" : "Install";
+                primary.Content = connecting ? "Cancel" : !installed ? "Install" :
+                    pluginSetupNeeded.Contains(plugin.Id) ? "Set up" : "Connect";
                 primary.Visibility = actionNeeded ? Visibility.Visible : Visibility.Collapsed;
                 primary.IsEnabled = connecting ? !pluginCancelRequested : changingPlugin is null && pluginOperation is null;
                 remove.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
@@ -205,6 +214,7 @@ public sealed partial class MainPage
             if (generation != sessionGeneration) return;
             if (install) PluginCatalog.Install(workspace, plugin);
             else PluginCatalog.Remove(workspace, plugin);
+            pluginSetupNeeded.Remove(plugin.Id);
             ShowNotice(plugin.Name + (install ? " installed." : " removed."));
         } finally {
             changingPlugin = null;
@@ -236,7 +246,7 @@ public sealed partial class MainPage
         pluginOperation = operation;
         pluginDeviceCode = null;
         pluginCancelRequested = false;
-        pluginProgress = "Opening provider sign-in…";
+        pluginProgress = plugin.Id == "firebase" ? "Waiting for Google sign-in in your browser…" : "Opening provider sign-in…";
         refreshPluginCards?.Invoke();
         async void ShowAuthorize(string id, string kind, JsonNode? value)
         {
@@ -257,12 +267,16 @@ public sealed partial class MainPage
         active.Event += ShowAuthorize;
         try {
             var reply = await active.Request(request, "plugin:connect", new { id = plugin.Id, profile });
-            if (generation != sessionGeneration || !PluginCatalog.Installed(workspace, plugin)) return;
+            if (generation != sessionGeneration || pluginCancelRequested || !PluginCatalog.Installed(workspace, plugin)) return;
             if (reply?["success"]?.GetValue<bool>() == true) {
                 PluginCatalog.SaveConnection(workspace, plugin, reply, profile);
                 retained = true;
                 ShowNotice(plugin.Name + " connected.");
-            } else Error(new InvalidOperationException(reply?["message"]?.ToString() ?? "Could not connect this plugin."));
+            } else {
+                if (reply?["needsSetup"]?.GetValue<bool>() == true && plugin.SetupUrl is not null)
+                    pluginSetupNeeded.Add(plugin.Id);
+                ShowNotice(reply?["message"]?.ToString() ?? "Could not connect this plugin.", success: false);
+            }
         } catch (Exception error) { if (generation == sessionGeneration) Error(error); }
         finally {
             active.Event -= ShowAuthorize;
