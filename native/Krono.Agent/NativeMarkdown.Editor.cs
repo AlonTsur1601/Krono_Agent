@@ -57,7 +57,7 @@ public static partial class NativeMarkdown
             source = input;
             Workspace = workspace;
             if (input.ReadLocalValue(TextBox.TextAlignmentProperty) == DependencyProperty.UnsetValue)
-                input.TextAlignment = TextAlignment.Right;
+                input.TextAlignment = TextAlignment.Left;
             // Keep word-boundary autocorrection from repositioning the caret after Space.
             source.IsSpellCheckEnabled = false;
             source.IsTextPredictionEnabled = false;

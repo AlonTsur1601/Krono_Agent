@@ -1230,3 +1230,7 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 ## v0.2.22 editor alignment
 
 - Right-align the Markdown-backed editors in both source and live preview. Keep language-specific reading order and preserve explicit alignment on caller-configured fields.
+
+## v0.2.23 editor alignment correction
+
+- Left-align the Markdown-backed editors in both source and live preview while retaining language-specific reading order.
