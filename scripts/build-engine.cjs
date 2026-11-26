@@ -9,6 +9,11 @@ fs.mkdirSync('dist/sidecar/templates', { recursive: true })
 for (const template of ['loginSuccess.html', 'loginFailure.html'])
   fs.copyFileSync(path.join('node_modules/firebase-tools/templates', template), path.join('dist/sidecar/templates', template))
 fs.copyFileSync(process.execPath, 'dist/sidecar/node.exe')
+if (process.platform === 'win32') {
+  const cli = 'node_modules/@vercel/vc-native-win32-x64/bin/vercel.exe'
+  fs.mkdirSync('dist/sidecar/vercel', { recursive: true })
+  fs.copyFileSync(cli, 'dist/sidecar/vercel/vercel.exe')
+}
 fs.copyFileSync('src/db/schema.sql', 'dist/sidecar/schema.sql')
 fs.copyFileSync('src/agent/providers/catalog.json', 'dist/sidecar/providers.json')
 const pluginPackages = path.join('dist', 'sidecar', 'plugin-packages')
@@ -42,3 +47,12 @@ async function nodeLicense() {
   fs.writeFileSync(target, process.version + '\n' + await response.text())
 }
 nodeLicense().catch(error => { console.error(error.message); process.exitCode = 1 })
+async function vercelLicense() {
+  if (process.platform !== 'win32') return
+  const target = 'dist/sidecar/vercel/LICENSE.txt'
+  if (fs.existsSync(target)) return
+  const response = await fetch('https://raw.githubusercontent.com/vercel/vercel/main/LICENSE')
+  if (!response.ok) throw new Error('Cannot retrieve the Vercel CLI license for redistribution')
+  fs.writeFileSync(target, await response.text())
+}
+vercelLicense().catch(error => { console.error(error.message); process.exitCode = 1 })

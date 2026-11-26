@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentRuntime } from '../runtime'
 import type { CompletionRequest, ExecutionContext, ProviderAdapter } from '../types'
-import { PluginConfig, pluginGuidance, pluginTools, testPlugin } from './plugins'
+import { PluginConfig, PluginConnect, pluginGuidance, pluginTools, testPlugin } from './plugins'
 
 const firebaseHeaders = vi.hoisted(() => vi.fn())
 vi.mock('google-auth-library', () => ({ GoogleAuth: class { getRequestHeaders = firebaseHeaders } }))
@@ -94,6 +94,23 @@ describe('optional plugins', () => {
     expect(JSON.parse(result.output!)).toEqual({ apps: [{ displayName: 'Demo', appId: 'fixture-app', platform: 'WEB' }], nextPageToken: 'p2' })
     firebaseHeaders.mockRejectedValueOnce(new Error(credential))
     expect(await testPlugin(config)).toMatchObject({ success: false, message: expect.stringContaining('Connect Firebase in Settings') })
+  })
+
+  it('uses the isolated Vercel device sign-in and checks access before saving', async () => {
+    const profile = await mkdtemp(join(tmpdir(), 'krono-vercel-profile-'))
+    try {
+      await writeFile(join(profile, 'auth.json'), JSON.stringify({ token: credential, expiresAt: Date.now() / 1000 + 3600 }))
+      expect(PluginConnect.parse({ id: 'vercel', profile })).toEqual({ id: 'vercel', profile })
+      const config = PluginConfig.parse({ id: 'vercel', profile })
+      const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () =>
+        Response.json({ teams: [{ id: 'team_fixture', name: 'Fixture', ignored: credential }] }))
+      vi.stubGlobal('fetch', fetch)
+      expect(await testPlugin(config)).toMatchObject({ success: true })
+      const result = await pluginTools([config]).find(tool => tool.name === 'vercel_list_teams')!.execute({}, context)
+      expect(new URL(String(fetch.mock.calls[0][0])).pathname).toBe('/v2/teams')
+      expect(new Headers(fetch.mock.calls[0][1]?.headers).get('Authorization')).toBe('Bearer ' + credential)
+      expect(JSON.parse(result.output!)).toEqual({ teams: [{ id: 'team_fixture', name: 'Fixture' }] })
+    } finally { await rm(profile, { recursive: true, force: true }) }
   })
 
   it('requires per-action approval for cloud reads and stops cloud tools at the Project permission boundary', async () => {

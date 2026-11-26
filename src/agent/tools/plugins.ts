@@ -6,7 +6,7 @@ import { GoogleAuth } from 'google-auth-library'
 import { z } from 'zod'
 import type { ExecutionContext, ToolDefinition, ToolResult } from '../types'
 import { authorizePath } from './files'
-import { CliProfile, connectCli, firebaseAccessToken, githubGet } from './plugin-cli'
+import { CliProfile, connectCli, firebaseAccessToken, githubGet, vercelAccessToken } from './plugin-cli'
 import { McpGrant, McpId, checkMcp, connectMcp, mcpTools } from './plugin-mcp'
 import catalog from './plugin-catalog.json'
 
@@ -14,7 +14,7 @@ const token = z.string().min(1).max(4096).regex(/^[\x21-\x7E]+$/)
 const team = z.string().regex(/^team_[a-z0-9_]+$/i).max(100)
 const rest = z.discriminatedUnion('id', [
   z.object({ id: z.literal('github'), token: token.optional(), profile: CliProfile.optional() }).refine(options => !!(options.token || options.profile)),
-  z.object({ id: z.literal('vercel'), token, teamId: team.optional() }),
+  z.object({ id: z.literal('vercel'), token: token.optional(), profile: CliProfile.optional(), teamId: team.optional() }).refine(options => !!(options.token || options.profile)),
   z.object({ id: z.literal('firebase'), profile: CliProfile.optional() }),
 ])
 const mcp = z.object({ id: McpId, connection: McpGrant, grantId: z.uuid() })
@@ -77,7 +77,8 @@ async function requestHeaders(config: RemoteConfig, url: URL, signal?: AbortSign
       throw new PluginError('Connect Firebase in Settings → Plugins using the Google account that has access to your projects.')
     }
   }
-  const headers = new Headers({ Authorization: `Bearer ${config.token}` })
+  const accessToken = config.id === 'vercel' && config.profile ? await vercelAccessToken(config.profile) : config.token
+  const headers = new Headers({ Authorization: `Bearer ${accessToken}` })
   if (config.id === 'github') {
     headers.set('Accept', 'application/vnd.github+json')
     headers.set('X-GitHub-Api-Version', '2022-11-28')
@@ -190,12 +191,15 @@ function githubTools(config: Extract<RestConfig, { id: 'github' }>): ToolDefinit
 function vercelTools(config: Extract<RestConfig, { id: 'vercel' }>): ToolDefinition[] {
   const schemas = { until: z.number().int().min(0).optional(), search: z.string().min(1).max(100).optional() }
   return [
+    remoteTool(config, 'vercel_list_teams', 'List the connected Vercel account’s teams.',
+      z.object({}), () => ({ path: '/v2/teams', query: { limit: pageSize } }),
+      data => ({ teams: items(object(data).teams, ['id', 'slug', 'name']) })),
     remoteTool(config, 'vercel_list_projects', 'List projects for the connected Vercel account or configured team.',
-      z.object(schemas), input => ({ path: '/v10/projects', query: { limit: pageSize, teamId: config.teamId, ...input } }),
+      z.object({ ...schemas, teamId: team.optional() }), ({ teamId, ...input }) => ({ path: '/v10/projects', query: { limit: pageSize, teamId: config.teamId ?? teamId, ...input } }),
       data => ({ projects: items(object(data).projects, ['id', 'name', 'framework', 'updatedAt', 'nodeVersion']), ...fields(object(data).pagination, ['next']) })),
     remoteTool(config, 'vercel_list_deployments', 'List recent deployments of a Vercel project, including target, state and URL.',
-      z.object({ projectId: z.string().min(1).max(120), until: schemas.until }),
-      input => ({ path: '/v7/deployments', query: { limit: pageSize, teamId: config.teamId, ...input } }),
+      z.object({ projectId: z.string().min(1).max(120), until: schemas.until, teamId: team.optional() }),
+      ({ teamId, ...input }) => ({ path: '/v7/deployments', query: { limit: pageSize, teamId: config.teamId ?? teamId, ...input } }),
       data => ({ deployments: items(object(data).deployments, ['uid', 'name', 'url', 'readyState', 'state', 'target', 'created', 'projectId']), ...fields(object(data).pagination, ['next']) })),
   ]
 }
@@ -352,9 +356,10 @@ export function pluginGuidance(configs: readonly Config[]) {
 }
 
 export const PluginConnect = z.union([
-  z.object({ id: McpId }),
   z.object({ id: z.literal('github'), profile: CliProfile }),
   z.object({ id: z.literal('firebase'), profile: CliProfile }),
+  z.object({ id: z.literal('vercel'), profile: CliProfile }),
+  z.object({ id: McpId }).strict(),
 ])
 
 export async function connectPlugin(config: z.infer<typeof PluginConnect>, signal: AbortSignal, open: (url: string) => void, showDeviceCode: (code: string) => void) {
@@ -376,6 +381,11 @@ export async function testPlugin(config: Config, signal = AbortSignal.timeout(20
         return { success: true, message: 'GitHub confirmed the connected account.' }
       }
       case 'vercel': {
+        if (config.profile) {
+          const { data } = await getJson(config, '/v2/teams', { limit: 1 }, signal)
+          if (!Array.isArray(object(data).teams)) throw new PluginError('Vercel did not confirm account access.')
+          return { success: true, message: 'Vercel account access verified.' }
+        }
         const { data } = await getJson(config, '/v10/projects', { teamId: config.teamId, limit: 1 }, signal)
         if (!Array.isArray(object(data).projects)) throw new PluginError('Vercel did not confirm project access.')
         return { success: true, message: 'Vercel project access verified.' }

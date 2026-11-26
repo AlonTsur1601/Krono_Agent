@@ -51,12 +51,15 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
         if (!plugin.success) { send({ id, result: { success: false, message: 'This plugin does not have a supported sign-in.' } }); return }
         const connection = new AbortController()
         active.set(id, connection)
+        let browserReady = false
+        const startup = setTimeout(() => connection.abort(), 25_000)
         const deadline = setTimeout(() => connection.abort(), 5 * 60_000)
-        cleanupRun = () => { clearTimeout(deadline); connection.abort(); active.delete(id) }
+        cleanupRun = () => { clearTimeout(startup); clearTimeout(deadline); connection.abort(); active.delete(id) }
         const result = await connectPlugin(plugin.data, connection.signal,
-          url => send({ id, event: 'plugin:authorize', data: url }),
+          url => { browserReady = true; clearTimeout(startup); send({ id, event: 'plugin:authorize', data: url }) },
           code => send({ id, event: 'plugin:device-code', data: code }))
-        send({ id, result }); return
+        send({ id, result: !browserReady && connection.signal.aborted
+          ? { success: false, message: 'Could not start sign-in. Check your connection and try again.' } : result }); return
       }
       if (method === 'plugin:test') {
         const plugin = PluginConfig.safeParse(data)

@@ -69,7 +69,7 @@ public static partial class NativeMarkdown
                 Rich.Background = KronoDesign.ThemeBrush("KronoInputFace", Rich.ActualTheme);
                 Rich.BorderBrush = KronoDesign.ThemeBrush("KronoInputRim", Rich.ActualTheme);
             }
-            KronoInputMotion.Attach(Rich);
+            KronoInputMotion.Attach(Rich, animate: input is not KronoTextBox { PressMotionEnabled: false });
             KronoInputMotion.RegisterPaletteRefresh(Rich, () => { formattedFont = ""; QueueFormat(); });
             Rich.ActualThemeChanged += (_, _) => { Paint(); formattedFont = ""; QueueFormat(); };
             Paint();
@@ -97,8 +97,8 @@ public static partial class NativeMarkdown
             Rich.GotFocus += (_, _) => {
                 if (showingSaved) {
                     showingSaved = false;
-                    RefreshMode();
-                    if (source.Visibility == Visibility.Visible) source.Focus(FocusState.Programmatic);
+                    // Let pointer or keyboard focus finish positioning the selection before changing editors.
+                    Rich.DispatcherQueue.TryEnqueue(RefreshMode);
                 } else QueueFormat();
             };
             Rich.LostFocus += (_, _) => QueueFormat();
@@ -131,23 +131,32 @@ public static partial class NativeMarkdown
             if (enabled == (Rich.Visibility == Visibility.Visible)) return;
             var focus = enabled ? source.FocusState != FocusState.Unfocused : Rich.FocusState != FocusState.Unfocused;
             if (enabled) {
+                var start = source.SelectionStart;
+                var end = start + source.SelectionLength;
                 Rich.Visibility = Visibility.Visible;
                 source.Visibility = Visibility.Collapsed;
-                SetDocument();
+                SetDocument(start, end);
                 if (focus && !showingSaved) Rich.Focus(FocusState.Programmatic);
             } else {
+                var selection = Rich.Document.Selection;
+                var start = Math.Clamp(selection.StartPosition, 0, source.Text.Length);
+                var end = Math.Clamp(selection.EndPosition, start, source.Text.Length);
                 refresh.Stop();
                 source.Visibility = Visibility.Visible;
                 Rich.Visibility = Visibility.Collapsed;
                 if (focus) source.Focus(FocusState.Programmatic);
+                source.Select(start, end - start);
             }
         }
 
-        void SetDocument()
+        void SetDocument(int? selectionStart = null, int? selectionEnd = null)
         {
             syncing = true;
             try {
                 var text = Normalize(source.Text);
+                var selection = Rich.Document.Selection;
+                var start = Math.Clamp(selectionStart ?? selection.StartPosition, 0, text.Length);
+                var end = Math.Clamp(selectionEnd ?? selection.EndPosition, start, text.Length);
                 var paragraph = Rich.Document.GetDefaultParagraphFormat();
                 paragraph.Alignment = source.TextAlignment switch {
                     Microsoft.UI.Xaml.TextAlignment.Right => ParagraphAlignment.Right,
@@ -158,7 +167,7 @@ public static partial class NativeMarkdown
                 Rich.Document.SetText(TextSetOptions.Unhide | TextSetOptions.Unlink, text);
                 formattedText = null;
                 Rich.Document.GetRange(0, text.Length).ParagraphFormat.Alignment = paragraph.Alignment;
-                Rich.Document.Selection.SetRange(text.Length, text.Length);
+                selection.SetRange(start, end);
             } finally { syncing = false; }
             QueueFormat();
         }
@@ -183,12 +192,11 @@ public static partial class NativeMarkdown
             var start = selection.StartPosition;
             var end = selection.EndPosition;
             var editing = !showingSaved && Rich.FocusState != FocusState.Unfocused;
-            var active = editing && start == end ? decorations.Where(span => span.Start <= start && span.End >= start)
-                .MinBy(span => span.End - span.Start) : null;
-            var revealed = active is not null ? new HashSet<MarkdownDecoration> { active }
-                : editing && start != end
-                    ? decorations.Where(span => span.Start < end && span.End > start).ToHashSet()
-                    : [];
+            var revealed = editing
+                ? decorations.Where(span => start == end
+                    ? span.Start <= start && start < span.End
+                    : span.Start < end && span.End > start).ToHashSet()
+                : [];
             var updateStyles = text != formattedText || formattedFont != font || formattedSize != size;
             if (!updateStyles && shownMarkers.SetEquals(revealed)) return;
 
@@ -236,7 +244,7 @@ public static partial class NativeMarkdown
                 }
                 shownMarkers = revealed;
                 formattedText = text;
-                selection.SetRange(start, end);
+                if (selection.StartPosition != start || selection.EndPosition != end) selection.SetRange(start, end);
                 if (start == end) selection.CharacterFormat.Hidden = FormatEffect.Off;
             } finally { document.ApplyDisplayUpdates(); syncing = false; }
         }

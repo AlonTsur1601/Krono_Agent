@@ -15,6 +15,8 @@ public sealed partial class MainPage
     string? changingPlugin;
     string pluginProgress = "";
     string? pluginDeviceCode;
+    Uri? pluginAuthorization;
+    bool pluginBrowserLaunchFailed;
     bool pluginCancelRequested;
     readonly HashSet<string> pluginSetupNeeded = [];
     Action? refreshPluginCards;
@@ -156,6 +158,15 @@ public sealed partial class MainPage
             AutomationProperties.SetName(copyCode, "Copy sign-in code");
             ToolTipService.SetToolTip(copyCode, "Copy the sign-in code to paste on the approval page");
             actions.Children.Add(copyCode);
+            var openSignIn = Button("", () => {
+                if (pluginOperation?.Plugin == plugin.Id && pluginAuthorization is { } address) OpenPluginBrowser(address);
+            });
+            openSignIn.Content = new SymbolIcon(Symbol.OpenPane);
+            openSignIn.Style = actionStyle;
+            AutomationProperties.SetName(openSignIn, "Open sign-in browser");
+            AutomationProperties.SetAutomationId(openSignIn, "PluginOpenSignIn-" + plugin.Id);
+            ToolTipService.SetToolTip(openSignIn, "Open sign-in in your default browser");
+            actions.Children.Add(openSignIn);
             actions.Children.Add(primary);
             footer.Children.Add(status);
 
@@ -178,6 +189,7 @@ public sealed partial class MainPage
                 badge.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
                 badge.Text = connected ? "Connected" : "Installed";
                 copyCode.Visibility = connecting && pluginDeviceCode is not null ? Visibility.Visible : Visibility.Collapsed;
+                openSignIn.Visibility = connecting && pluginAuthorization is not null && (pluginDeviceCode is null || pluginBrowserLaunchFailed) ? Visibility.Visible : Visibility.Collapsed;
                 status.Text = connecting ? pluginProgress : "";
                 status.Visibility = status.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
             }
@@ -245,10 +257,12 @@ public sealed partial class MainPage
         bool retained = false;
         pluginOperation = operation;
         pluginDeviceCode = null;
+        pluginAuthorization = null;
+        pluginBrowserLaunchFailed = false;
         pluginCancelRequested = false;
-        pluginProgress = plugin.Id == "firebase" ? "Waiting for Google sign-in in your browser…" : "Opening provider sign-in…";
+        pluginProgress = "Opening your browser…";
         refreshPluginCards?.Invoke();
-        async void ShowAuthorize(string id, string kind, JsonNode? value)
+        void ShowAuthorize(string id, string kind, JsonNode? value)
         {
             if (id != request || generation != sessionGeneration || pluginOperation != operation || pluginCancelRequested) return;
             if (kind == "plugin:device-code" && value is JsonValue device && device.TryGetValue<string>(out var code)) {
@@ -256,12 +270,9 @@ public sealed partial class MainPage
                 pluginProgress = "";
                 refreshPluginCards?.Invoke();
             } else if (kind == "plugin:authorize" && Uri.TryCreate(value?.ToString(), UriKind.Absolute, out var uri) && uri.Scheme == "https" && uri.UserInfo.Length == 0) {
-                try {
-                    if (!await Windows.System.Launcher.LaunchUriAsync(uri)) throw new InvalidOperationException();
-                    if (generation != sessionGeneration || pluginOperation != operation || pluginCancelRequested) return;
-                    if (pluginDeviceCode is null) pluginProgress = "Approve the connection in your browser.";
-                    refreshPluginCards?.Invoke();
-                } catch { if (pluginOperation == operation) await CancelPluginConnection(); }
+                if (pluginAuthorization == uri) return;
+                pluginAuthorization = uri;
+                OpenPluginBrowser(uri);
             }
         }
         active.Event += ShowAuthorize;
@@ -282,10 +293,24 @@ public sealed partial class MainPage
             active.Event -= ShowAuthorize;
             if (!retained && generation == sessionGeneration && profile is not null) workspace.ClearPluginProfile(plugin.Id, profile);
             if (pluginOperation == operation) {
-                pluginOperation = null; pluginProgress = ""; pluginDeviceCode = null; pluginCancelRequested = false;
+                pluginOperation = null; pluginProgress = ""; pluginDeviceCode = null; pluginAuthorization = null;
+                pluginCancelRequested = pluginBrowserLaunchFailed = false;
             }
             if (generation == sessionGeneration) refreshPluginCards?.Invoke();
         }
+    }
+
+    void OpenPluginBrowser(Uri address)
+    {
+        try {
+            using var browser = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(address.AbsoluteUri) { UseShellExecute = true });
+            pluginBrowserLaunchFailed = false;
+            pluginProgress = pluginDeviceCode is null ? "Complete sign-in in your browser." : "";
+        } catch (System.ComponentModel.Win32Exception) {
+            pluginBrowserLaunchFailed = true;
+            pluginProgress = "Could not open the browser. Use the open-browser button to try again.";
+        }
+        refreshPluginCards?.Invoke();
     }
 
     async Task CancelPluginConnection()
@@ -293,6 +318,7 @@ public sealed partial class MainPage
         if (pluginOperation is not { } operation || pluginCancelRequested) return;
         pluginCancelRequested = true;
         pluginDeviceCode = null;
+        pluginAuthorization = null;
         pluginProgress = "Cancelling sign-in…";
         refreshPluginCards?.Invoke();
         try { await operation.Worker.Send(Guid.NewGuid().ToString(), "cancel", new { id = operation.Request }); }

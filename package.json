@@ -1,6 +1,6 @@
 {
   "name": "krono-agent",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "description": "Native Windows agent workspace with project memory and games",
   "author": "Alon Tsur",
   "license": "MIT",
@@ -46,5 +46,8 @@
         "uuid": "11.1.1"
       }
     }
+  },
+  "optionalDependencies": {
+    "@vercel/vc-native-win32-x64": "66.6.0"
   }
 }
