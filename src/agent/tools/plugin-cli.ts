@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { promisify } from 'node:util'
@@ -9,12 +9,13 @@ import { sensitiveVariable } from './commands'
 const execute = promisify(execFile)
 export const CliProfile = z.string().min(1).max(3000).refine(value => isAbsolute(value) && !value.includes('\0'))
 export type CliAccount = { profile: string }
-type Provider = 'github' | 'firebase'
+type Provider = 'github' | 'firebase' | 'vercel'
 function environment(id: Provider, profile: string): NodeJS.ProcessEnv {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !sensitiveVariable.test(key) &&
-    !/^(GH_|GITHUB_|CLOUDSDK_|GOOGLE_|GCLOUD_|FIREBASE_|XDG_CONFIG_HOME$|GIT_CONFIG|BROWSER$|NODE_OPTIONS$|PYTHONPATH$)/i.test(key)))
+    !/^(GH_|GITHUB_|CLOUDSDK_|GOOGLE_|GCLOUD_|FIREBASE_|VERCEL_|XDG_CONFIG_HOME$|GIT_CONFIG|BROWSER$|NODE_OPTIONS$|PYTHONPATH$)/i.test(key)))
   if (id === 'github') Object.assign(env, { GH_CONFIG_DIR: profile, GH_NO_UPDATE_NOTIFIER: '1', GH_TELEMETRY: '0', GH_PROMPT_DISABLED: '1' })
-  else Object.assign(env, { XDG_CONFIG_HOME: profile })
+  else if (id === 'firebase') Object.assign(env, { XDG_CONFIG_HOME: profile })
+  else Object.assign(env, { CI: '1', VERCEL_TELEMETRY_DISABLED: '1', VERCEL_TOKEN_STORAGE: 'file', VERCEL_NO_UPDATE_NOTIFIER: '1' })
   return env
 }
 
@@ -46,6 +47,49 @@ async function firebaseLogin(profile: string, signal: AbortSignal, open: (url: s
   })
 }
 
+const vercelProgram = () => join(__dirname, 'vercel', 'vercel.exe')
+const vercelArgs = (command: string, profile: string) => [command, '--global-config', profile, '--no-color']
+const vercelAuthFile = z.object({
+  token: z.string().regex(/^[!-~]{1,4096}$/),
+  expiresAt: z.number().optional(),
+})
+const vercelRefresh = new Map<string, Promise<string>>()
+
+export async function vercelAccessToken(profile: string) {
+  const read = async () => vercelAuthFile.parse(JSON.parse(await readFile(join(profile, 'auth.json'), 'utf8')))
+  const prior = await read()
+  if (prior.expiresAt && prior.expiresAt > Date.now() / 1000 + 60) return prior.token
+  let refresh = vercelRefresh.get(profile)
+  if (!refresh) {
+    refresh = execute(vercelProgram(), vercelArgs('whoami', profile), {
+      cwd: profile, env: environment('vercel', profile), timeout: 12_000, windowsHide: true,
+    }).then(async () => (await read()).token).finally(() => vercelRefresh.delete(profile))
+    vercelRefresh.set(profile, refresh)
+  }
+  return refresh
+}
+
+async function vercelLogin(profile: string, signal: AbortSignal, open: (url: string) => void) {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(vercelProgram(), vercelArgs('login', profile), {
+      cwd: profile, env: environment('vercel', profile), signal, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let opened = false
+    for (const stream of [child.stdout, child.stderr]) {
+      createInterface({ input: stream }).on('line', line => {
+        const candidate = line.match(/https:\/\/vercel\.com\/oauth\/device\?[^\s\x1b]+/i)?.[0]
+        if (opened || !candidate) return
+        const address = new URL(candidate)
+        if (address.origin !== 'https://vercel.com' || address.pathname !== '/oauth/device' || !address.searchParams.has('user_code')) return
+        opened = true
+        open(address.href)
+      })
+    }
+    child.once('error', reject)
+    child.once('close', code => code === 0 && opened ? resolve() : reject(new Error('Vercel sign-in failed')))
+  })
+}
+
 export async function firebaseAccessToken(profile: string, signal?: AbortSignal) {
   const { stdout } = await execute(process.execPath, [join(__dirname, 'firebase', 'firebase-login.cjs'), 'access'], {
     cwd: profile, env: environment('firebase', profile), timeout: 15_000, signal, windowsHide: true, maxBuffer: 64 * 1024,
@@ -59,6 +103,10 @@ export async function connectCli(id: Provider, profile: string, signal: AbortSig
     await mkdir(profile, { recursive: true })
     if (id === 'firebase') {
       await firebaseLogin(profile, signal, open)
+      return { success: true as const, profile }
+    }
+    if (id === 'vercel') {
+      await vercelLogin(profile, signal, open)
       return { success: true as const, profile }
     }
     const program = process.platform === 'win32' ? 'gh.exe' : 'gh'
@@ -90,6 +138,8 @@ export async function connectCli(id: Provider, profile: string, signal: AbortSig
       ? { success: false as const, message: 'Sign-in was cancelled or timed out.' }
       : id === 'github'
         ? { success: false as const, message: 'Install GitHub CLI before connecting.', needsSetup: true }
-        : { success: false as const, message: 'Firebase sign-in did not finish. Try again and approve access with your Firebase Google account.' }
+        : { success: false as const, message: id === 'firebase'
+          ? 'Firebase sign-in did not finish. Try again and approve access with your Firebase Google account.'
+          : 'Vercel sign-in did not finish. Open a new sign-in and approve the device in your browser.' }
   }
 }

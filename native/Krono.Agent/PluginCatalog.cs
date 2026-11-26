@@ -10,7 +10,7 @@ static class PluginCatalog
         internal string Setting => "native.plugin." + Id;
         internal string GrantSetting => Setting + ".grant";
         internal bool RequiresAccount => Type == "account";
-        internal bool UsesCli => Id is "github" or "firebase";
+        internal bool UsesCli => Id is "github" or "firebase" or "vercel";
     }
 
     internal static readonly Plugin[] All = Load();

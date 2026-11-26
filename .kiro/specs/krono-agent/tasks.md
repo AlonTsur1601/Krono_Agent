@@ -1203,3 +1203,9 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Bundle Firebase browser sign-in and keep existing Firebase credentials compatible.
 - Use a public HTTPS Vercel callback that forwards one authorization response to the app. Verify the loopback handoff and the PKCE code exchange.
 - Use a uniform rounded outline on notifications.
+
+## v0.2.18 browser sign-in and editor feedback
+
+- Open provider authorization in the Windows default browser as soon as the provider returns a URL, with an open-browser retry action and a bounded startup wait.
+- Use Vercel’s bundled device sign-in for new Windows connections and retain existing MCP connections.
+- Preserve the text selection across Markdown editor modes, reveal syntax for nested spans around the caret, and disable motion in the instructions editor.
