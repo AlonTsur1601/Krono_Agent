@@ -1226,3 +1226,7 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 
 - Restore the original hover and focus lift of the input face and its neutral inset shadow. Keep the text layout stationary and press scaling disabled for large editors.
 - Keep Space with the native caret until editing moves on. Suspend preview paint during the space insertion and turn off word-boundary correction in the Markdown-backed editors.
+
+## v0.2.22 editor alignment
+
+- Right-align the Markdown-backed editors in both source and live preview. Keep language-specific reading order and preserve explicit alignment on caller-configured fields.
