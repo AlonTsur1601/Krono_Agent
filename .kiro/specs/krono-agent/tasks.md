@@ -1215,3 +1215,9 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Disable press scaling in large instruction editors while keeping focus, hover, and page transitions.
 - Keep the live preview aligned with Markdown source positions. Defer reformatting during pointer selection and IME composition, and restore the caret and active selection edge after layout updates.
 - Exercise nested formatting, mixed-direction text with an emoji, and an actual mouse caret click in the native smoke test.
+
+## v0.2.20 shadow and space-key feedback
+
+- Animate the inset shadow alongside the focus and hover outline without re-enabling press scaling.
+- Match the Markdown editor's reading order to its text input and keep native caret affinity when spaces do not change Markdown syntax.
+- Verify the character typed after a pause following Space in both plain and live Markdown editing.

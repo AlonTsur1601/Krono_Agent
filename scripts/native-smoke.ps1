@@ -136,7 +136,8 @@ function UseFixtureModel {
 }
 function TestLiveMarkdown {
     SelectSettingsCategory 'Instructions'
-    $markdown = "# Title`n`n**Bold phrase** and *italic phrase*`n`n++Underlined phrase++`n`n**outer _inner_ end**`n`n$([char]0x05E9)$([char]0x05DC)$([char]0x05D5)$([char]0x05DD) $([char]::ConvertFromUtf32(0x1F642)) marker|end"
+    $rtlWord = "$([char]0x05E2)$([char]0x05D5)$([char]0x05DC)$([char]0x05DD)"
+    $markdown = "# Title`n`n**Bold phrase** and *italic phrase*`n`n++Underlined phrase++`n`n**outer _inner_ end**`n`n$([char]0x05E9)$([char]0x05DC)$([char]0x05D5)$([char]0x05DD) $([char]::ConvertFromUtf32(0x1F642)) marker|end`n`n$rtlWord"
     Invoke 'Edit global instructions' -ByName
     SetValue 'GlobalInstructions' $markdown
     Invoke 'Save instructions' -ByName
@@ -185,14 +186,29 @@ function TestLiveMarkdown {
     $caret.MoveEndpointByRange([Windows.Automation.Text.TextPatternRangeEndpoint]::End, $target, [Windows.Automation.Text.TextPatternRangeEndpoint]::Start)
     $caret.Move([Windows.Automation.Text.TextUnit]::Character, 3) | Out-Null
     $caret.Select()
+    (New-Object -ComObject WScript.Shell).SendKeys(' ')
+    Start-Sleep -Milliseconds 220
     (New-Object -ComObject WScript.Shell).SendKeys('7')
     $deadline = (Get-Date).AddSeconds(5)
     do {
-        $typed = $pattern.DocumentRange.FindText('mar7ker|end', $false, $false)
+        $typed = $pattern.DocumentRange.FindText('mar 7ker|end', $false, $false)
         if (!$typed) { Start-Sleep -Milliseconds 100 }
     } while (!$typed -and (Get-Date) -lt $deadline)
-    if (!$typed) { throw 'Live Markdown changed the typing position after mixed-direction text' }
-    $markdown = $markdown.Replace('marker|end', 'mar7ker|end')
+    if (!$typed) { throw 'The character after a space moved in the mixed-direction Markdown line' }
+    $markdown = $markdown.Replace('marker|end', 'mar 7ker|end')
+    $rtlCaret = $pattern.DocumentRange.FindText($rtlWord, $false, $false)
+    $rtlCaret.MoveEndpointByRange([Windows.Automation.Text.TextPatternRangeEndpoint]::Start, $rtlCaret, [Windows.Automation.Text.TextPatternRangeEndpoint]::End)
+    $rtlCaret.Select()
+    (New-Object -ComObject WScript.Shell).SendKeys(' ')
+    Start-Sleep -Milliseconds 220
+    (New-Object -ComObject WScript.Shell).SendKeys('7')
+    $deadline = (Get-Date).AddSeconds(5)
+    do {
+        $typed = $pattern.DocumentRange.FindText($rtlWord + ' 7', $false, $false)
+        if (!$typed) { Start-Sleep -Milliseconds 100 }
+    } while (!$typed -and (Get-Date) -lt $deadline)
+    if (!$typed) { throw 'The character after a trailing space moved in the Hebrew Markdown line' }
+    $markdown = $markdown.Replace($rtlWord, $rtlWord + ' 7')
     Invoke 'Save instructions' -ByName
     SelectSettingsCategory 'Appearance'
     SetToggle 'LiveMarkdownEditing' Off
@@ -212,10 +228,12 @@ function TestLiveMarkdown {
     [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
     [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 100
-    (New-Object -ComObject WScript.Shell).SendKeys('X')
+    (New-Object -ComObject WScript.Shell).SendKeys(' ')
+    Start-Sleep -Milliseconds 220
+    (New-Object -ComObject WScript.Shell).SendKeys('7')
     $deadline = (Get-Date).AddSeconds(3)
     while ($value.Current.Value -eq ($before + '|end') -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 50 }
-    if ($value.Current.Value -cnotmatch ('^' + $before + '.\|end$')) {
+    if ($value.Current.Value -cne ($before + ' 7|end')) {
         Capture 'native-caret-click-failure.png' -Screen
         throw "Instructions caret click at $($marker[0]) in $($editor.Current.BoundingRectangle) produced '$($value.Current.Value)'"
     }
