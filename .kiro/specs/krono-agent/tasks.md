@@ -1221,3 +1221,8 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Animate the inset shadow alongside the focus and hover outline without re-enabling press scaling.
 - Match the Markdown editor's reading order to its text input and keep native caret affinity when spaces do not change Markdown syntax.
 - Verify the character typed after a pause following Space in both plain and live Markdown editing.
+
+## v0.2.21 input lift and caret stability
+
+- Restore the original hover and focus lift of the input face and its neutral inset shadow. Keep the text layout stationary and press scaling disabled for large editors.
+- Keep Space with the native caret until editing moves on. Suspend preview paint during the space insertion and turn off word-boundary correction in the Markdown-backed editors.
