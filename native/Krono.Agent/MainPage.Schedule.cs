@@ -52,7 +52,7 @@ public sealed partial class MainPage
             var automatic = ProviderCatalog.AutomaticLocal(task.Provider);
             var address = compatible && !automatic ? ProviderCatalog.ParseEndpoint(endpoint) : null;
             credential = automatic ? "" : workspace.Key(task.Provider);
-            if (credential.Length == 0 && (ProviderCatalog.RequiresKey(task.Provider) || address is not null && !ProviderCatalog.Local(address))) throw new InvalidOperationException("Save the task provider's API key in Settings.");
+            if (credential.Length == 0 && ProviderCatalog.RequiresKey(task.Provider, address?.AbsoluteUri ?? "")) throw new InvalidOperationException("Save the task provider's API key in Settings.");
             var toolsEnabled = !compatible || workspace.Setting("native.tools." + task.Provider + "." + task.Model) != "false";
             var dirs = task.Project is null ? [] : workspace.Query("SELECT path FROM project_directories WHERE project_id=$p0", task.Project).Select(row => row["path"]!.ToString()).ToArray();
             var memories = workspace.Query("SELECT content FROM memories WHERE deleted_at IS NULL AND (project_id IS NULL OR project_id=$p0)", task.Project).Select(row => row["content"]!.ToString()).ToArray();

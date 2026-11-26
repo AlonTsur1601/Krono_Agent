@@ -308,6 +308,15 @@ internal static class KronoInputMotion
                 // Center the native editor itself so its text and caret share the placeholder's baseline.
                 viewer.VerticalAlignment = multiline ? VerticalAlignment.Stretch : VerticalAlignment.Center;
                 viewer.VerticalContentAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
+                if (viewer.Parent is Grid { ColumnDefinitions.Count: 2 } grid &&
+                    grid.Children.OfType<ButtonBase>().FirstOrDefault(button => button.Name is "DeleteButton" or "RevealButton") is { } action) {
+                    // Keep the action column on the physical right. The editor still handles bidi text itself.
+                    grid.FlowDirection = FlowDirection.LeftToRight;
+                    Grid.SetColumn(viewer, 0);
+                    Grid.SetColumnSpan(viewer, 1);
+                    Grid.SetColumn(action, 1);
+                    action.HorizontalAlignment = HorizontalAlignment.Right;
+                }
             } else if (part is FrameworkElement { Name: "PlaceholderTextContentPresenter" } placeholder)
                 placeholder.VerticalAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
         }

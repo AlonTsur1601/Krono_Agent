@@ -1248,3 +1248,9 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Allow confirmed deletion from Edit project. Keep files and conversations and pause active schedules linked to the deleted project.
 - Show the selected project name on the chat project button, with the standard label for unassigned chats.
 - Open reasoning controls in a flyout anchored above the model button. Keep Advanced model options in its existing dialog.
+
+## Local model credentials and input controls
+
+- Keep API key entry out of the default flow for loopback providers and retain optional authentication for protected local servers.
+- Keep clear and reveal actions in the right-hand column with a separate text viewport.
+- Use the standard text input scope for the sign-in email field so Windows can offer its system input picker.

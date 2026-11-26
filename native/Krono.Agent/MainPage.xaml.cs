@@ -716,7 +716,7 @@ public sealed partial class MainPage : Page
         if (ProviderCatalog.AutomaticLocal(provider)) return "";
         var endpoint = CompatibleEndpoint ? ProviderCatalog.ParseEndpoint(ProviderEndpoint) : null;
         var key = workspace.Key(provider);
-        if (key.Length == 0 && (ProviderCatalog.RequiresKey(provider) || endpoint is not null && !ProviderCatalog.Local(endpoint))) throw new InvalidOperationException("Save this provider's API key in Settings first.");
+        if (key.Length == 0 && ProviderCatalog.RequiresKey(provider, endpoint?.AbsoluteUri ?? "")) throw new InvalidOperationException("Save this provider's API key in Settings first.");
         return key;
     }
     void ShowSettings()
@@ -753,8 +753,18 @@ public sealed partial class MainPage : Page
         int modelRequest = 0;
         bool updatingModels = false, loadingModels = false;
         var saveKey = Button("Save key", SaveKey);
-        void ShowKeyField() => secret.Visibility = saveKey.Visibility =
-            ProviderCatalog.AutomaticLocal(provider) ? Visibility.Collapsed : Visibility.Visible;
+        var optionalKey = Button("Configure optional server token", () => {
+            secret.Visibility = saveKey.Visibility = Visibility.Visible;
+            secret.Focus(FocusState.Programmatic);
+        });
+        void ShowKeyField()
+        {
+            var automatic = ProviderCatalog.AutomaticLocal(provider);
+            var required = ProviderCatalog.RequiresKey(provider, ProviderEndpoint);
+            secret.Header = required ? "API key" : "Server token (optional)";
+            secret.Visibility = saveKey.Visibility = required ? Visibility.Visible : Visibility.Collapsed;
+            optionalKey.Visibility = !automatic && !required ? Visibility.Visible : Visibility.Collapsed;
+        }
         void ListModels(string[] ids)
         {
             updatingModels = true;
@@ -776,6 +786,7 @@ public sealed partial class MainPage : Page
             _ = LoadProviderModels();
         }));
         panel.Children.Add(models);
+        panel.Children.Add(optionalKey);
         panel.Children.Add(secret);
         panel.Children.Add(saveKey);
         ShowKeyField();
@@ -803,7 +814,7 @@ public sealed partial class MainPage : Page
             loadingModels = false;
             var selectedProvider = provider;
             var generation = sessionGeneration;
-            if (workspace.Key(selectedProvider).Length == 0 && ProviderCatalog.RequiresKey(selectedProvider)) {
+            if (workspace.Key(selectedProvider).Length == 0 && ProviderCatalog.RequiresKey(selectedProvider, ProviderEndpoint)) {
                 SetModelStatus("Save an API key to load models");
                 return;
             }

@@ -1125,6 +1125,8 @@ public static class PluginFixture {
             foreach ($id in @('ProviderConnectionOptions', 'ProviderEndpoint', 'ProviderTools')) {
                 if (FindOptional $id) { throw ('Removed model setting is still visible: ' + $id) }
             }
+            if (FindOptional 'ProviderKey') { throw 'A loopback Ollama server showed a required key field' }
+            Invoke 'Configure optional server token' -ByName
             SetValue 'ProviderKey' 'fixture-placeholder'
             PressEnterOn 'ProviderKey'
             $savedNotice = Find 'Ollama API key saved.' -ByName
@@ -1385,6 +1387,7 @@ public static class PluginFixture {
     SelectNav 'Settings'
     SelectSettingsCategory 'Models'
     SelectChoice 'Provider' 'Ollama'
+    Invoke 'Configure optional server token' -ByName
     SetValue 'ProviderKey' 'fixture-local-placeholder'
     Invoke 'Save key' -ByName
     Start-Sleep -Milliseconds 500
