@@ -32,7 +32,7 @@ public sealed partial class MainPage
     {
         var endpoint = workspace.Setting("native.endpoint." + id) is { Length: > 0 } custom ? custom : ProviderCatalog.Endpoint(id);
         var key = workspace.Key(id);
-        if (key.Length == 0 && ProviderCatalog.RequiresKey(id)) return [];
+        if (key.Length == 0 && ProviderCatalog.RequiresKey(id, endpoint)) return [];
         if (!refresh && !ProviderCatalog.AutomaticLocal(id) && discoveredModels.TryGetValue(id, out var cached)) return cached;
         if (worker is null) return [];
         var generation = sessionGeneration;
