@@ -84,15 +84,12 @@ public sealed partial class MainPage
         RefreshChatModelLabel();
     }
 
-    readonly Border reasoningPanel = new() {
-        Width = 310, MaxWidth = 340, HorizontalAlignment = HorizontalAlignment.Left, Visibility = Visibility.Collapsed,
-        Padding = new Thickness(12), CornerRadius = new CornerRadius(12)
-    };
+    Flyout? reasoningFlyout;
     bool choosingModel;
     async Task ChooseChatModel()
     {
         if (runId is not null || worker is null || choosingModel) return;
-        if (reasoningPanel.Visibility == Visibility.Visible) { reasoningPanel.Visibility = Visibility.Collapsed; return; }
+        if (reasoningFlyout is not null) { reasoningFlyout.Hide(); return; }
         choosingModel = true;
         try {
             var id = provider;
@@ -102,7 +99,7 @@ public sealed partial class MainPage
                 try { available = await DiscoverModels(id); }
                 catch (Exception error) { Error(error); }
             }
-            if (generation != sessionGeneration || id != provider) return;
+            if (generation != sessionGeneration || id != provider || !modelChoice.IsLoaded) return;
             ChooseDefaultModel(available);
             var capabilities = available.FirstOrDefault(item => item?["id"]?.ToString() == model)?["capabilities"];
             var supportsEffort = capabilities?["supportsReasoningEffort"]?.GetValue<bool>() == true;
@@ -114,9 +111,9 @@ public sealed partial class MainPage
             }).ToArray();
             var saved = workspace.Setting(ChatReasoningKey);
             var initial = Array.FindIndex(efforts, name => name.Equals(saved, StringComparison.OrdinalIgnoreCase));
-            var panel = new StackPanel { Spacing = 8 };
+            var panel = new StackPanel { Width = 286, Spacing = 8 };
             var advanced = Button("Advanced…", async () => {
-                reasoningPanel.Visibility = Visibility.Collapsed;
+                reasoningFlyout?.Hide();
                 await ChooseAdvancedModel(id, generation, available);
             });
             if (supportsEffort) panel.Children.Add(KronoDesign.DiscreteSlider("Reasoning effort", labels, Math.Max(0, initial),
@@ -129,16 +126,15 @@ public sealed partial class MainPage
                 panel.Children.Add(fast);
             }
             panel.Children.Add(advanced);
-            if (reasoningPanel.Parent is FrameworkElement host && host.ActualWidth > 0 && modelChoice.IsLoaded) {
-                reasoningPanel.Width = Math.Min(310, host.ActualWidth);
-                var offset = modelChoice.TransformToVisual(host).TransformPoint(default).X;
-                reasoningPanel.Margin = new Thickness(Math.Clamp(offset, 0, host.ActualWidth - reasoningPanel.Width), 0, 0, 0);
-            }
-            reasoningPanel.Background = KronoDesign.ThemeBrush("KronoSidebar", ActualTheme);
-            AutomationProperties.SetAutomationId(reasoningPanel, "ReasoningPanel");
-            reasoningPanel.Child = panel;
-            reasoningPanel.Visibility = Visibility.Visible;
-            KronoDesign.RefreshTypography(reasoningPanel);
+            AutomationProperties.SetAutomationId(panel, "ReasoningPanel");
+            var flyout = new Flyout {
+                Content = panel,
+                Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft
+            };
+            flyout.Closed += (_, _) => { if (ReferenceEquals(reasoningFlyout, flyout)) reasoningFlyout = null; };
+            reasoningFlyout = flyout;
+            KronoDesign.RefreshTypography(panel);
+            flyout.ShowAt(modelChoice);
         } finally { choosingModel = false; }
     }
 

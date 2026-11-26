@@ -961,7 +961,7 @@ public static class PluginFixture {
             SetValue 'ProjectInstructions' 'Project plugin fixture instructions'
             Invoke 'Save instructions' -ByName
             SelectNav 'Chats'
-            Invoke 'Project…' -ByName
+            Invoke 'ChatProjectButton'
             SelectChoice 'ChatProjectSelector' 'Plugin fixture project'
             Invoke 'Choose' -ByName
             SelectChoice 'Mode' 'agent'
@@ -1311,7 +1311,7 @@ public static class PluginFixture {
     Invoke 'Delete chat' -ByName
     Find 'Delete this chat?' -ByName | Out-Null
     Invoke 'Cancel' -ByName
-    Invoke 'Project…' -ByName
+    Invoke 'ChatProjectButton'
     SelectChoice 'ChatProjectSelector' 'Original fixture project'
     Invoke 'Move' -ByName
     function WaitForChatProject([string]$expected) {
@@ -1323,7 +1323,7 @@ public static class PluginFixture {
         throw "The chat move to $expected was not saved"
     }
     WaitForChatProject 'Original fixture project'
-    Invoke 'Project…' -ByName
+    Invoke 'ChatProjectButton'
     Capture 'native-move-current-project.png'
     SelectChoice 'ChatProjectSelector' 'Native fixture project'
     Invoke 'Move' -ByName

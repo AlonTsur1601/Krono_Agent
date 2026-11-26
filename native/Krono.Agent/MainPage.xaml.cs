@@ -18,6 +18,7 @@ public sealed partial class MainPage : Page
     AgentWorker? worker;
     string? chatId, runId, approvalId;
     string? draftProject;
+    Button? chatProjectButton;
     JsonNode? approvalDetails;
     ContentDialog? approvalDialog;
     string? activityChatId;
@@ -68,18 +69,6 @@ public sealed partial class MainPage : Page
             if (args.Key != Windows.System.VirtualKey.V ||
                 !Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down)) return;
             if (TryPasteComposerImage()) args.Handled = true;
-        };
-        AddHandler(UIElement.PointerPressedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, args) => {
-            if (reasoningPanel.Visibility != Visibility.Visible) return;
-            for (var source = args.OriginalSource as DependencyObject; source is not null; source = VisualTreeHelper.GetParent(source))
-                if (ReferenceEquals(source, reasoningPanel) || ReferenceEquals(source, modelChoice)) return;
-            reasoningPanel.Visibility = Visibility.Collapsed;
-        }), true);
-        PreviewKeyDown += (_, args) => {
-            if (args.Key != Windows.System.VirtualKey.Escape || reasoningPanel.Visibility != Visibility.Visible) return;
-            reasoningPanel.Visibility = Visibility.Collapsed;
-            modelChoice.Focus(FocusState.Keyboard);
-            args.Handled = true;
         };
         modelChoice.Click += async (_, _) => { try { await ChooseChatModel(); } catch (Exception error) { Error(error); } };
         sessionTimer.Tick += async (_, _) => {
@@ -452,7 +441,7 @@ public sealed partial class MainPage : Page
                 MarkFullAccess(permissionBox, value);
             };
             ToolTipService.SetToolTip(permissionSelector, "Ask: approve changes/commands. Project: bounded file tools; no shell or desktop execution. Full: supplied tools run with your Windows account.");
-            toolbar.Children.Add(Button("Project…", async () => {
+            chatProjectButton = Button("Project…", async () => {
                 if (runId is not null) return;
                 var target = chatId;
                 var generation = sessionGeneration;
@@ -473,7 +462,9 @@ public sealed partial class MainPage : Page
                 if (target is null) draftProject = project;
                 else workspace.Execute("UPDATE chats SET project_id=$p0,updated_at=$p1 WHERE id=$p2 AND deleted_at IS NULL", project, Workspace.Now, target);
                 LoadChat();
-            }));
+            });
+            AutomationProperties.SetAutomationId(chatProjectButton, "ChatProjectButton");
+            toolbar.Children.Add(chatProjectButton);
             var transcriptArea = new Grid();
             transcriptArea.ColumnDefinitions.Add(new ColumnDefinition());
             transcriptArea.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -529,12 +520,11 @@ public sealed partial class MainPage : Page
             primaryActions.Children.Add(send);
             Grid.SetColumn(primaryActions, 1);
             actions.Children.Add(primaryActions);
-            input.Children.Add(reasoningPanel);
             input.Children.Add(actions);
             Grid.SetRow(input, 3);
             conversation.Children.Add(input);
         }
-        reasoningPanel.Visibility = Visibility.Collapsed;
+        reasoningFlyout?.Hide();
         if (backToChats is not null) backToChats.Visibility = Visibility.Collapsed;
         ShowContext(chatHistory);
         RefreshChatModelLabel();
@@ -579,6 +569,11 @@ public sealed partial class MainPage : Page
 
     void LoadChat()
     {
+        var project = chatId is null ? draftProject :
+            workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).FirstOrDefault()?["project_id"]?.ToString();
+        if (chatProjectButton is not null)
+            chatProjectButton.Content = (project is null ? null : workspace.Query(
+                "SELECT name FROM projects WHERE id=$p0 AND deleted_at IS NULL", project).FirstOrDefault()?["name"]?.ToString()) ?? "Project…";
         if (sideChatButton is not null)
             sideChatButton.Visibility = chatId is null ? Visibility.Collapsed : Visibility.Visible;
         if (sideChat is not null && sideChat.ParentChatId != chatId) CloseSideChat();
@@ -597,7 +592,6 @@ public sealed partial class MainPage : Page
             welcome.Children.Add(welcomeTitle);
             return;
         }
-        var project = workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).First()["project_id"]?.ToString();
         if (loadedContext != chatId + ":" + project) {
             loadedContext = chatId + ":" + project;
             var saved = workspace.GetChatOptions(chatId);
