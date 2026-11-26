@@ -188,7 +188,7 @@ public sealed partial class MainPage
             actions.Children.Add(Button("Cancel", Return));
             Grid.SetRow(actions, 2);
             editor.Children.Add(actions);
-            KronoDesign.Present(host, editor, animate: false);
+            KronoDesign.Present(host, editor);
         }
         Group("Global").Children.Add(Button("Edit global instructions", () => Edit("Global", null)));
         var projects = Group("Projects");

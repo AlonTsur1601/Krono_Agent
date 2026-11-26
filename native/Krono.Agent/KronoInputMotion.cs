@@ -297,7 +297,7 @@ internal static class KronoInputMotion
 
     internal static void AlignTextContent(Control field, bool centerEditor = false)
     {
-        var multiline = field is TextBox { AcceptsReturn: true };
+        var multiline = field is RichEditBox or TextBox { AcceptsReturn: true };
         foreach (var part in Descendants(field)) {
             if (part is ScrollViewer { Name: "ContentElement" } viewer) {
                 viewer.VerticalAlignment = !multiline && (centerEditor || ReferenceEquals(field.Style, Application.Current.Resources["KronoCompactTextInput"]))
@@ -308,7 +308,7 @@ internal static class KronoInputMotion
         }
     }
 
-    internal static void Attach(Control field, string? style = null, FrameworkElement? companion = null, bool animate = true)
+    internal static void Attach(Control field, string? style = null, FrameworkElement? companion = null, bool animatePress = true)
     {
         if (Attached.TryGetValue(field, out _)) return;
         Attached.Add(field, new object());
@@ -319,7 +319,7 @@ internal static class KronoInputMotion
         bool hover = false, pressed = false;
         long pressStarted = 0;
         var pressFeedback = new DispatcherTimer();
-        bool MotionEnabled() => animate && field is not KronoTextBox { PressMotionEnabled: false };
+        bool PressMotionEnabled() => animatePress && field is not KronoTextBox { PressMotionEnabled: false };
         pressFeedback.Tick += (_, _) => { pressFeedback.Stop(); Refresh(); };
         void StyleParts() {
             if (field is KronoTextBox { SurfaceFeedbackEnabled: false }) return;
@@ -328,7 +328,7 @@ internal static class KronoInputMotion
             foreach (var child in Descendants(field).ToArray())
                 if (child is ButtonBase button) StyleButton(button);
                 else if (child is Border border) {
-                            border.BackgroundTransition = MotionEnabled() ? new BrushTransition { Duration = TimeSpan.FromMilliseconds(180) } : null;
+                            border.BackgroundTransition = new BrushTransition { Duration = TimeSpan.FromMilliseconds(180) };
                 }
             var faceName = field is KronoComboBox ? "Background" : "BorderElement";
             var face = Descendants(field).OfType<Border>().FirstOrDefault(border => border.Name == faceName);
@@ -358,7 +358,7 @@ internal static class KronoInputMotion
                                     storyboard.Children.Remove(animation);
                         }
                     }
-                    if (MotionEnabled() && (group.Name is "CommonStates" or "FocusStates") && group.Transitions.Count == 0)
+                    if ((group.Name is "CommonStates" or "FocusStates") && group.Transitions.Count == 0)
                         group.Transitions.Add(new VisualTransition { GeneratedDuration = new Duration(TimeSpan.FromMilliseconds(180)) });
                 }
             Refresh();
@@ -373,15 +373,14 @@ internal static class KronoInputMotion
                 field is KronoComboBox { IsEditable: true } && Descendants(field).OfType<TextBox>().Any(editor => editor.FocusState != FocusState.Unfocused);
             var active = field.IsEnabled && (focused || hover);
             var pressing = field.IsEnabled && (pressed || pressFeedback.IsEnabled);
-            if (MotionEnabled() && field is not PasswordBox)
-                AnimateSurface(field, pressing && (field is not TextBox { AcceptsReturn: true } || field.ActualHeight < 100) ? .98f : 1, companion);
+            if (PressMotionEnabled() && field is not PasswordBox && (field is not (RichEditBox or TextBox { AcceptsReturn: true }) || field.ActualHeight < 100))
+                AnimateSurface(field, pressing ? .98f : 1, companion);
             if (rim is null || shade is null || fill is null) return;
             var theme = field.ActualTheme;
             shade.Color = ((SolidColorBrush)KronoDesign.ThemeBrush(field.IsEnabled ? "KronoInputShade" : "KronoInputFace", theme)).Color;
             fill.Color = ((SolidColorBrush)KronoDesign.ThemeBrush("KronoInputFace", theme)).Color;
             var role = active ? (focused ? "KronoAccentForeground" : "KronoOutlineHover") : "KronoInputRim";
             var color = ((SolidColorBrush)KronoDesign.ThemeBrush(role, theme)).Color;
-            if (!MotionEnabled()) { rim.Color = color; return; }
             var storyboard = new Storyboard();
             AddColorAnimation(storyboard, rim, color);
             storyboard.Begin();
@@ -398,7 +397,7 @@ internal static class KronoInputMotion
         }
         field.PointerExited += (_, _) => { hover = false; ReleasePress(); Refresh(); };
         field.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) => {
-            if (!MotionEnabled()) return;
+            if (!PressMotionEnabled()) return;
             if (!args.GetCurrentPoint(field).Properties.IsLeftButtonPressed && !args.Pointer.IsInContact) return;
             pressFeedback.Stop();
             pressStarted = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -414,7 +413,7 @@ internal static class KronoInputMotion
         RegisterPaletteRefresh(field, Refresh);
         field.LostFocus += (_, _) => field.DispatcherQueue.TryEnqueue(Refresh);
         field.IsEnabledChanged += (_, _) => { hover = pressed = false; pressFeedback.Stop(); Refresh(); };
-        field.Unloaded += (_, _) => { hover = pressed = false; pressFeedback.Stop(); if (MotionEnabled() && field is not KronoTextBox { SurfaceFeedbackEnabled: false }) AnimateSurface(field, 1, companion); };
+        field.Unloaded += (_, _) => { hover = pressed = false; pressFeedback.Stop(); if (PressMotionEnabled() && field is not KronoTextBox { SurfaceFeedbackEnabled: false }) AnimateSurface(field, 1, companion); };
     }
 
     internal static void StyleButton(ButtonBase button)

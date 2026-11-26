@@ -189,20 +189,11 @@ public static class KronoDesign
             for (var i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++) Refresh(VisualTreeHelper.GetChild(element, i), isCode);
         }
     }
-    public static void Present(ContentControl host, FrameworkElement content, bool animate = true)
+    public static void Present(ContentControl host, FrameworkElement content)
     {
         if (ReferenceEquals(host.Content, content)) { RefreshTypography(content); return; }
         host.Content = content;
         RefreshTypography(content);
-        if (!animate) {
-            ElementCompositionPreview.SetIsTranslationEnabled(host, true);
-            var visual = ElementCompositionPreview.GetElementVisual(host);
-            visual.StopAnimation("Opacity");
-            visual.StopAnimation("Translation");
-            visual.Opacity = 1;
-            host.Translation = System.Numerics.Vector3.Zero;
-            return;
-        }
         AnimateOpacity(host, 0);
         if (new UISettings().AnimationsEnabled) {
             ElementCompositionPreview.SetIsTranslationEnabled(host, true);
