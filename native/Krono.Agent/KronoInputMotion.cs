@@ -295,13 +295,18 @@ internal static class KronoInputMotion
     }
     static readonly ConditionalWeakTable<FrameworkElement, CompositeTransform> SurfaceTransforms = new();
 
-    internal static void AlignTextContent(Control field, bool centerEditor = false)
+    internal static void AlignTextContent(Control field)
     {
+        if (field is NumberBox && Descendants(field).OfType<TextBox>().FirstOrDefault() is { } editor) {
+            editor.ApplyTemplate();
+            AlignTextContent(editor);
+            return;
+        }
         var multiline = field is RichEditBox or TextBox { AcceptsReturn: true };
         foreach (var part in Descendants(field)) {
             if (part is ScrollViewer { Name: "ContentElement" } viewer) {
-                viewer.VerticalAlignment = !multiline && (centerEditor || ReferenceEquals(field.Style, Application.Current.Resources["KronoCompactTextInput"]))
-                    ? VerticalAlignment.Center : VerticalAlignment.Stretch;
+                // Center the native editor itself so its text and caret share the placeholder's baseline.
+                viewer.VerticalAlignment = multiline ? VerticalAlignment.Stretch : VerticalAlignment.Center;
                 viewer.VerticalContentAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
             } else if (part is FrameworkElement { Name: "PlaceholderTextContentPresenter" } placeholder)
                 placeholder.VerticalAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center;
@@ -327,9 +332,9 @@ internal static class KronoInputMotion
         bool NativeTextEditor() => field is TextBox or RichEditBox;
         pressFeedback.Tick += (_, _) => { pressFeedback.Stop(); Refresh(); };
         void StyleParts() {
-            if (field is KronoTextBox { SurfaceFeedbackEnabled: false }) return;
             field.ApplyTemplate();
             AlignTextContent(field);
+            if (field is KronoTextBox { SurfaceFeedbackEnabled: false }) return;
             foreach (var child in Descendants(field).ToArray())
                 if (child is ButtonBase button) StyleButton(button);
                 else if (child is Border border) {
@@ -376,6 +381,10 @@ internal static class KronoInputMotion
             Refresh();
         }
         field.Loaded += (_, _) => StyleParts();
+        if (field is NumberBox)
+            field.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => {
+                if (field.IsLoaded && field.Visibility == Visibility.Visible) StyleParts();
+            });
         if (field.IsLoaded) StyleParts();
 
         void Refresh()

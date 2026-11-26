@@ -1238,3 +1238,7 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 ## Project form alignment
 
 - Anchor the project creation and editing form to the left while keeping its responsive width.
+
+## Single-line input alignment
+
+- Center the native editor and placeholder vertically across single-line text, password, and numeric fields, including numeric fields revealed after the page loads.

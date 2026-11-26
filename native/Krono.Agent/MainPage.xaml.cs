@@ -149,14 +149,11 @@ public sealed partial class MainPage : Page
         HideError();
         EmailInput.Focus(FocusState.Programmatic);
     }
-    void CenterAuthInput(object sender, RoutedEventArgs args)
+    void StyleAuthPassword(object sender, RoutedEventArgs args)
     {
-        if (sender is not Control field) return;
-        if (field is PasswordBox password) {
-            KronoInputMotion.Attach(password, "KronoPasswordInput", PasswordVisibility);
-            KronoInputMotion.StyleButton(PasswordVisibility);
-        }
-        KronoInputMotion.AlignTextContent(field, centerEditor: true);
+        if (sender is not PasswordBox password) return;
+        KronoInputMotion.Attach(password, "KronoPasswordInput", PasswordVisibility);
+        KronoInputMotion.StyleButton(PasswordVisibility);
     }
     void PasswordVisibilityChanged(object sender, RoutedEventArgs args)
     {

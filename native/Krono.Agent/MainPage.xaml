@@ -128,11 +128,11 @@
 <TextBlock Grid.Column="1" x:Name="AuthTitle" Text="Welcome to Krono" FontFamily="{ThemeResource KronoDisplayFont}" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"/>
 </Grid>
 <TextBlock x:Name="AuthSubtitle" Text="Sign in to your workspace." Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-<local:KronoTextBox x:Name="EmailInput" Header="Email" InputScope="EmailSmtpAddress" Loaded="CenterAuthInput"/>
+<local:KronoTextBox x:Name="EmailInput" Header="Email" InputScope="EmailSmtpAddress"/>
 <StackPanel Spacing="4">
 <TextBlock Text="Password"/>
 <Grid>
-<PasswordBox x:Name="PasswordInput" AutomationProperties.Name="Password" PasswordRevealMode="Hidden" Padding="12,8,46,8" Loaded="CenterAuthInput"/>
+<PasswordBox x:Name="PasswordInput" AutomationProperties.Name="Password" PasswordRevealMode="Hidden" Padding="12,8,46,8" Loaded="StyleAuthPassword"/>
 <ToggleButton x:Name="PasswordVisibility" AutomationProperties.Name="Show password" ToolTipService.ToolTip="Show password" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,5,0" Width="34" Height="28" Padding="0" Background="Transparent" BorderThickness="0" Checked="PasswordVisibilityChanged" Unchecked="PasswordVisibilityChanged">
 <FontIcon x:Name="PasswordEye" Glyph="&#xE890;" FontFamily="Segoe Fluent Icons" FontSize="16"/>
 </ToggleButton>
