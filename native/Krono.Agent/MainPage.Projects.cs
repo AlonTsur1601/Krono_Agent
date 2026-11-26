@@ -129,6 +129,35 @@ public sealed partial class MainPage
         }
         page.Children.Add(Button("Save project", async () => await Save()));
         page.Children.Add(Button("Cancel", () => ShowProjects(id)));
+        if (id is not null)
+            page.Children.Add(Button("Delete project…", () => DeleteProject(id)));
+    }
+
+    async Task DeleteProject(string id)
+    {
+        var account = workspace.AccountId;
+        var generation = sessionGeneration;
+        var title = workspace.Query("SELECT name FROM projects WHERE id=$p0 AND account_id=$p1 AND deleted_at IS NULL", id, account)
+            .FirstOrDefault()?["name"]?.ToString();
+        if (title is null || !await Confirm($"Delete {title}?",
+                "Conversations will move out of this project, scheduled tasks linked to it will pause, and files on disk will be kept.",
+                "Delete project") || generation != sessionGeneration) return;
+
+        var now = Workspace.Now;
+        workspace.Execute("BEGIN");
+        try {
+            workspace.Execute("UPDATE scheduled_tasks SET state='paused' WHERE account_id=$p0 AND project_id=$p1 AND state='active'", account, id);
+            workspace.Execute("UPDATE chats SET project_id=NULL,updated_at=$p0 WHERE account_id=$p1 AND project_id=$p2 AND deleted_at IS NULL", now, account, id);
+            workspace.Execute("UPDATE projects SET deleted_at=$p0,updated_at=$p0 WHERE id=$p1 AND account_id=$p2 AND deleted_at IS NULL", now, id, account);
+            workspace.Execute("COMMIT");
+        } catch {
+            workspace.Execute("ROLLBACK");
+            throw;
+        }
+        if (draftProject == id) draftProject = null;
+        ReloadChats();
+        ShowProjects();
+        ShowNotice($"Deleted {title}.");
     }
 
     async Task<string?> PickProjectFolder()

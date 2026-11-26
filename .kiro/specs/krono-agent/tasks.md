@@ -1242,3 +1242,9 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 ## Single-line input alignment
 
 - Center the native editor and placeholder vertically across single-line text, password, and numeric fields, including numeric fields revealed after the page loads.
+
+## Project deletion
+
+- Allow confirmed deletion from Edit project. Keep files and conversations and pause active schedules linked to the deleted project.
+- Show the selected project name on the chat project button, with the standard label for unassigned chats.
+- Open reasoning controls in a flyout anchored above the model button. Keep Advanced model options in its existing dialog.
