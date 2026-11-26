@@ -1234,3 +1234,7 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 ## v0.2.23 editor alignment correction
 
 - Left-align the Markdown-backed editors in both source and live preview while retaining language-specific reading order.
+
+## Project form alignment
+
+- Anchor the project creation and editing form to the left while keeping its responsive width.

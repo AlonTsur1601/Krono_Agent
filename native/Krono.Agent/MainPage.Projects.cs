@@ -43,7 +43,18 @@ public sealed partial class MainPage
             }));
             page.Children.Add(Button("New project", () => ShowProjects(editing: true)));
         }
-        KronoDesign.Present(Body, KronoDesign.ScrollPage(page));
+        FrameworkElement content = page;
+        if (editing) {
+            var layout = new Grid { FlowDirection = FlowDirection.LeftToRight };
+            layout.ColumnDefinitions.Add(new ColumnDefinition { MaxWidth = page.MaxWidth });
+            layout.Children.Add(page);
+            content = new ScrollViewer {
+                Content = layout,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+            };
+        }
+        KronoDesign.Present(Body, KronoDesign.ScrollPage(content));
     }
 
     void AddProjectEditor(StackPanel page, string? id)
