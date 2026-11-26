@@ -1209,3 +1209,9 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Open provider authorization in the Windows default browser as soon as the provider returns a URL, with an open-browser retry action and a bounded startup wait.
 - Use Vercel’s bundled device sign-in for new Windows connections and retain existing MCP connections.
 - Preserve the text selection across Markdown editor modes, reveal syntax for nested spans around the caret, and disable motion in the instructions editor.
+
+## v0.2.19 live Markdown and editor feedback
+
+- Disable press scaling in large instruction editors while keeping focus, hover, and page transitions.
+- Keep the live preview aligned with Markdown source positions. Defer reformatting during pointer selection and IME composition, and restore the caret and active selection edge after layout updates.
+- Exercise nested formatting, mixed-direction text with an emoji, and an actual mouse caret click in the native smoke test.

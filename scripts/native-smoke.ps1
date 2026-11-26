@@ -136,7 +136,7 @@ function UseFixtureModel {
 }
 function TestLiveMarkdown {
     SelectSettingsCategory 'Instructions'
-    $markdown = "# Title`n`n**Bold phrase** and *italic phrase*`n`n++Underlined phrase++"
+    $markdown = "# Title`n`n**Bold phrase** and *italic phrase*`n`n++Underlined phrase++`n`n**outer _inner_ end**`n`n$([char]0x05E9)$([char]0x05DC)$([char]0x05D5)$([char]0x05DD) $([char]::ConvertFromUtf32(0x1F642)) marker|end"
     Invoke 'Edit global instructions' -ByName
     SetValue 'GlobalInstructions' $markdown
     Invoke 'Save instructions' -ByName
@@ -158,6 +158,9 @@ function TestLiveMarkdown {
     if (!$italic -or $italic.GetAttributeValue([Windows.Automation.TextPattern]::IsItalicAttribute) -ne $true) { throw 'Italic Markdown was not rendered' }
     $underline = $pattern.DocumentRange.FindText('Underlined phrase', $false, $false)
     if (!$underline -or $underline.GetAttributeValue([Windows.Automation.TextPattern]::UnderlineStyleAttribute).ToString() -eq 'None') { throw 'Underline Markdown was not rendered' }
+    $nested = $pattern.DocumentRange.FindText('inner', $false, $false)
+    if (!$nested -or $nested.GetAttributeValue([Windows.Automation.TextPattern]::FontWeightAttribute) -lt 600 -or
+        $nested.GetAttributeValue([Windows.Automation.TextPattern]::IsItalicAttribute) -ne $true) { throw 'Nested Markdown lost its enclosing style' }
     Capture 'native-markdown-editor.png'
     if (!(New-Object -ComObject WScript.Shell).AppActivate($script:process.Id)) { throw 'Could not activate the live Markdown editor' }
     $editor.SetFocus()
@@ -175,6 +178,21 @@ function TestLiveMarkdown {
     } while ((Get-Date) -lt $deadline)
     if (!$typed -or $typed.GetAttributeValue([Windows.Automation.TextPattern]::FontWeightAttribute) -lt 600) { throw ('Typing did not preserve the live Markdown formatting. Editor: ' + ($pattern.DocumentRange.GetText(-1) | ConvertTo-Json -Compress)) }
     $markdown = $markdown.Replace('Bold phrase', 'BolXd phrase')
+    $pattern = (Find 'GlobalInstructions').GetCurrentPattern([Windows.Automation.TextPattern]::Pattern)
+    $target = $pattern.DocumentRange.FindText('marker', $false, $false)
+    if (!$target) { throw 'The mixed-direction Markdown test line was missing' }
+    $caret = $target.Clone()
+    $caret.MoveEndpointByRange([Windows.Automation.Text.TextPatternRangeEndpoint]::End, $target, [Windows.Automation.Text.TextPatternRangeEndpoint]::Start)
+    $caret.Move([Windows.Automation.Text.TextUnit]::Character, 3) | Out-Null
+    $caret.Select()
+    (New-Object -ComObject WScript.Shell).SendKeys('7')
+    $deadline = (Get-Date).AddSeconds(5)
+    do {
+        $typed = $pattern.DocumentRange.FindText('mar7ker|end', $false, $false)
+        if (!$typed) { Start-Sleep -Milliseconds 100 }
+    } while (!$typed -and (Get-Date) -lt $deadline)
+    if (!$typed) { throw 'Live Markdown changed the typing position after mixed-direction text' }
+    $markdown = $markdown.Replace('marker|end', 'mar7ker|end')
     Invoke 'Save instructions' -ByName
     SelectSettingsCategory 'Appearance'
     SetToggle 'LiveMarkdownEditing' Off

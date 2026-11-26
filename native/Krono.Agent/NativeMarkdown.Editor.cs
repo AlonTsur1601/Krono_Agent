@@ -5,6 +5,7 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace Krono_Agent;
@@ -38,14 +39,14 @@ public static partial class NativeMarkdown
     sealed class LiveEditor
     {
         readonly TextBox source;
-        readonly DispatcherTimer refresh = new() { Interval = TimeSpan.FromMilliseconds(35) };
         MarkdownDecoration[] decorations = [];
         string parsedSource = "";
         string? formattedText;
         HashSet<MarkdownDecoration> shownMarkers = [];
+        bool hadDecorations;
         double formattedSize;
         string formattedFont = "";
-        bool syncing, showingSaved;
+        bool syncing, showingSaved, formatQueued, selecting, composing;
         public Workspace Workspace { get; }
         public Grid View { get; } = new();
         public RichEditBox Rich { get; }
@@ -60,6 +61,7 @@ public static partial class NativeMarkdown
                 Padding = new Thickness(12, 8, 12, 8), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10),
                 FlowDirection = input.FlowDirection, IsEnabled = input.IsEnabled,
                 HorizontalAlignment = input.HorizontalAlignment, VerticalAlignment = input.VerticalAlignment,
+                VerticalContentAlignment = VerticalAlignment.Top,
                 Visibility = Visibility.Collapsed
             };
             AutomationProperties.SetAutomationId(Rich, AutomationProperties.GetAutomationId(input));
@@ -69,22 +71,26 @@ public static partial class NativeMarkdown
                 Rich.Background = KronoDesign.ThemeBrush("KronoInputFace", Rich.ActualTheme);
                 Rich.BorderBrush = KronoDesign.ThemeBrush("KronoInputRim", Rich.ActualTheme);
             }
-            KronoInputMotion.Attach(Rich, animate: input is not KronoTextBox { PressMotionEnabled: false });
+            KronoInputMotion.Attach(Rich, animatePress: input is not KronoTextBox { PressMotionEnabled: false });
             KronoInputMotion.RegisterPaletteRefresh(Rich, () => { formattedFont = ""; QueueFormat(); });
             Rich.ActualThemeChanged += (_, _) => { Paint(); formattedFont = ""; QueueFormat(); };
             Paint();
             View.Children.Add(source);
             View.Children.Add(Rich);
             View.Loaded += (_, _) => RefreshMode();
-            View.Unloaded += (_, _) => refresh.Stop();
-            refresh.Tick += (_, _) => { refresh.Stop(); ApplyFormat(); };
+            View.Unloaded += (_, _) => { selecting = composing = false; };
             source.TextChanged += (_, _) => {
                 if (!syncing && Rich.Visibility == Visibility.Visible) SetDocument();
             };
             source.IsEnabledChanged += (_, _) => Rich.IsEnabled = source.IsEnabled;
             Rich.TextChanged += (_, _) => {
-                if (syncing || Rich.Visibility != Visibility.Visible) return;
-                Rich.Document.GetText(TextGetOptions.UseLf, out var text);
+                if (syncing || composing || Rich.Visibility != Visibility.Visible) return;
+                SyncSource();
+            };
+            void SyncSource()
+            {
+                Rich.Document.GetText(TextGetOptions.UseLf, out var raw);
+                var text = Normalize(raw);
                 if (text != Normalize(source.Text)) {
                     syncing = true;
                     try { source.Text = text.Length <= source.MaxLength || source.MaxLength == 0 ? text : text[..source.MaxLength]; }
@@ -92,7 +98,16 @@ public static partial class NativeMarkdown
                     if (Normalize(source.Text) != text) SetDocument();
                 }
                 QueueFormat();
-            };
+            }
+            // Keep native hit testing and IME composition on the same layout until the gesture commits.
+            Rich.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) =>
+                selecting = args.GetCurrentPoint(Rich).Properties.IsLeftButtonPressed || args.Pointer.IsInContact), true);
+            void FinishSelection() { selecting = false; QueueFormat(); }
+            Rich.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, _) => FinishSelection()), true);
+            Rich.PointerCaptureLost += (_, _) => FinishSelection();
+            Rich.PointerCanceled += (_, _) => FinishSelection();
+            Rich.TextCompositionStarted += (_, _) => composing = true;
+            Rich.TextCompositionEnded += (_, _) => { composing = false; SyncSource(); };
             Rich.SelectionChanged += (_, _) => { if (!syncing) QueueFormat(); };
             Rich.GotFocus += (_, _) => {
                 if (showingSaved) {
@@ -127,21 +142,21 @@ public static partial class NativeMarkdown
             var live = Workspace.Setting(LiveEditorSetting) == "true";
             if (live) showingSaved = false;
             var enabled = live || showingSaved;
-            Rich.IsReadOnly = showingSaved;
+            Rich.IsReadOnly = showingSaved || source.IsReadOnly;
             if (enabled == (Rich.Visibility == Visibility.Visible)) return;
             var focus = enabled ? source.FocusState != FocusState.Unfocused : Rich.FocusState != FocusState.Unfocused;
             if (enabled) {
-                var start = source.SelectionStart;
-                var end = start + source.SelectionLength;
+                var raw = source.Text;
+                var start = Normalize(raw[..source.SelectionStart]).Length;
+                var end = Normalize(raw[..(source.SelectionStart + source.SelectionLength)]).Length;
                 Rich.Visibility = Visibility.Visible;
                 source.Visibility = Visibility.Collapsed;
                 SetDocument(start, end);
                 if (focus && !showingSaved) Rich.Focus(FocusState.Programmatic);
             } else {
                 var selection = Rich.Document.Selection;
-                var start = Math.Clamp(selection.StartPosition, 0, source.Text.Length);
-                var end = Math.Clamp(selection.EndPosition, start, source.Text.Length);
-                refresh.Stop();
+                var start = SourceOffset(source.Text, selection.StartPosition);
+                var end = SourceOffset(source.Text, selection.EndPosition);
                 source.Visibility = Visibility.Visible;
                 Rich.Visibility = Visibility.Collapsed;
                 if (focus) source.Focus(FocusState.Programmatic);
@@ -164,7 +179,8 @@ public static partial class NativeMarkdown
                     _ => ParagraphAlignment.Left
                 };
                 Rich.Document.SetDefaultParagraphFormat(paragraph);
-                Rich.Document.SetText(TextSetOptions.Unhide | TextSetOptions.Unlink, text);
+                // RichEdit positions count one character per paragraph break, like the parser’s LF source.
+                Rich.Document.SetText(TextSetOptions.Unhide | TextSetOptions.Unlink, text.Replace('\n', '\r'));
                 formattedText = null;
                 Rich.Document.GetRange(0, text.Length).ParagraphFormat.Alignment = paragraph.Alignment;
                 selection.SetRange(start, end);
@@ -174,12 +190,16 @@ public static partial class NativeMarkdown
 
         void QueueFormat()
         {
-            if (View.IsLoaded && Rich.Visibility == Visibility.Visible && !refresh.IsEnabled) refresh.Start();
+            if (!View.IsLoaded || Rich.Visibility != Visibility.Visible || formatQueued || composing || selecting) return;
+            formatQueued = Rich.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => {
+                formatQueued = false;
+                ApplyFormat();
+            });
         }
 
         void ApplyFormat()
         {
-            if (syncing || Rich.Visibility != Visibility.Visible) return;
+            if (syncing || selecting || composing || !View.IsLoaded || Rich.Visibility != Visibility.Visible) return;
             var document = Rich.Document;
             var text = Normalize(source.Text);
             var font = KronoDesign.TextFont.Source;
@@ -191,6 +211,7 @@ public static partial class NativeMarkdown
             var selection = document.Selection;
             var start = selection.StartPosition;
             var end = selection.EndPosition;
+            var selectionOptions = selection.Options;
             var editing = !showingSaved && Rich.FocusState != FocusState.Unfocused;
             var revealed = editing
                 ? decorations.Where(span => start == end
@@ -212,7 +233,7 @@ public static partial class NativeMarkdown
                     formattedSize = size;
                     formattedFont = font;
                 }
-                if (updateStyles && text.Length > 0) {
+                if (updateStyles && text.Length > 0 && (decorations.Length > 0 || formattedText is null || hadDecorations)) {
                     baseline.Hidden = FormatEffect.Off;
                     baseline.Bold = baseline.Italic = baseline.Strikethrough = FormatEffect.Off;
                     baseline.Underline = UnderlineType.None;
@@ -244,13 +265,28 @@ public static partial class NativeMarkdown
                 }
                 shownMarkers = revealed;
                 formattedText = text;
+                hadDecorations = decorations.Length > 0;
+            } finally {
+                document.ApplyDisplayUpdates();
                 if (selection.StartPosition != start || selection.EndPosition != end) selection.SetRange(start, end);
-                if (start == end) selection.CharacterFormat.Hidden = FormatEffect.Off;
-            } finally { document.ApplyDisplayUpdates(); syncing = false; }
+                if (start != end && selection.Options != selectionOptions) selection.Options = selectionOptions;
+                if (start == end && selection.CharacterFormat.Hidden == FormatEffect.On) selection.CharacterFormat.Hidden = FormatEffect.Off;
+                syncing = false;
+            }
         }
     }
 
-    static string Normalize(string text) => text.ReplaceLineEndings("\n");
+    static string Normalize(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n');
+
+    static int SourceOffset(string source, int offset)
+    {
+        int index = 0;
+        while (offset-- > 0 && index < source.Length) {
+            if (source[index] == '\r' && index + 1 < source.Length && source[index + 1] == '\n') index++;
+            index++;
+        }
+        return index;
+    }
     static string FontName(string source) => source[(source.LastIndexOf('#') + 1)..];
 
     sealed record MarkdownDecoration(int Start, int ContentStart, int ContentEnd, int End, string Kind, int Level = 0);
