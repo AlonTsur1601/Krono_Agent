@@ -44,6 +44,7 @@ public static partial class NativeMarkdown
         string? formattedText;
         HashSet<MarkdownDecoration> shownMarkers = [];
         bool hadDecorations;
+        int? pendingSpaceCaret;
         double formattedSize;
         string formattedFont = "";
         bool syncing, showingSaved, formatQueued, selecting, composing;
@@ -57,6 +58,9 @@ public static partial class NativeMarkdown
             Workspace = workspace;
             if (input.ReadLocalValue(TextBox.TextAlignmentProperty) == DependencyProperty.UnsetValue)
                 input.TextAlignment = TextAlignment.DetectFromContent;
+            // Keep word-boundary autocorrection from repositioning the caret after Space.
+            source.IsSpellCheckEnabled = false;
+            source.IsTextPredictionEnabled = false;
             Rich = new RichEditBox {
                 Header = input.Header, PlaceholderText = input.PlaceholderText,
                 TextWrapping = input.TextWrapping, MinHeight = input.MinHeight, MaxHeight = input.MaxHeight,
@@ -65,6 +69,7 @@ public static partial class NativeMarkdown
                 TextAlignment = input.TextAlignment, TextReadingOrder = input.TextReadingOrder,
                 HorizontalAlignment = input.HorizontalAlignment, VerticalAlignment = input.VerticalAlignment,
                 VerticalContentAlignment = VerticalAlignment.Top,
+                IsSpellCheckEnabled = false, IsTextPredictionEnabled = false,
                 Visibility = Visibility.Collapsed
             };
             AutomationProperties.SetAutomationId(Rich, AutomationProperties.GetAutomationId(input));
@@ -178,6 +183,7 @@ public static partial class NativeMarkdown
                 // RichEdit positions count one character per paragraph break, like the parser’s LF source.
                 Rich.Document.SetText(TextSetOptions.Unhide | TextSetOptions.Unlink, text.Replace('\n', '\r'));
                 formattedText = null;
+                pendingSpaceCaret = null;
                 selection.SetRange(start, end);
             } finally { syncing = false; }
             QueueFormat();
@@ -199,19 +205,28 @@ public static partial class NativeMarkdown
             var text = Normalize(source.Text);
             var font = KronoDesign.TextFont.Source;
             var size = KronoDesign.TextSize;
-            if (text != parsedSource) {
-                var previous = decorations;
-                decorations = ReadDecorations(text);
-                if (formattedText == parsedSource && formattedFont == font && formattedSize == size &&
-                    TryKeepSpaceFormatting(parsedSource, text, previous))
-                    formattedText = text;
-                parsedSource = text;
-            }
             var selection = document.Selection;
             var start = selection.StartPosition;
             var end = selection.EndPosition;
             var selectionOptions = selection.Options;
             var editing = !showingSaved && Rich.FocusState != FocusState.Unfocused;
+            if (text != parsedSource) {
+                var previous = decorations;
+                decorations = ReadDecorations(text);
+                var added = text.Length - parsedSource.Length;
+                var at = FindSpaceInsertion(parsedSource, text, added);
+                if (at >= 0) {
+                    if (formattedText == parsedSource && formattedFont == font && formattedSize == size &&
+                        TryKeepSpaceFormatting(previous, at, added))
+                        formattedText = text;
+                    if (editing && start == end) pendingSpaceCaret = start;
+                } else pendingSpaceCaret = null;
+                parsedSource = text;
+            }
+            // Leave the visible caret with RichEdit after the key press. Repaint on the next
+            // non-space edit, a deliberate selection change, or focus loss.
+            if (editing && start == end && pendingSpaceCaret == start) return;
+            pendingSpaceCaret = null;
             var revealed = editing
                 ? decorations.Where(span => start == end
                     ? span.Start <= start && start < span.End
@@ -276,15 +291,18 @@ public static partial class NativeMarkdown
 
         // RichEdit keeps range formatting while inserting spaces. If the Markdown did not
         // change, keep that layout so the caret retains its affinity in bidirectional text.
-        bool TryKeepSpaceFormatting(string before, string after, MarkdownDecoration[] previous)
+        static int FindSpaceInsertion(string before, string after, int added)
         {
-            var added = after.Length - before.Length;
-            if (added <= 0 || previous.Length != decorations.Length) return false;
+            if (added <= 0) return -1;
             var at = 0;
             while (at < before.Length && before[at] == after[at]) at++;
-            if (after.AsSpan(at, added).IndexOfAnyExcept(' ') >= 0 ||
-                !before.AsSpan(at).SequenceEqual(after.AsSpan(at + added))) return false;
+            return after.AsSpan(at, added).IndexOfAnyExcept(' ') < 0 &&
+                before.AsSpan(at).SequenceEqual(after.AsSpan(at + added)) ? at : -1;
+        }
 
+        bool TryKeepSpaceFormatting(MarkdownDecoration[] previous, int at, int added)
+        {
+            if (previous.Length != decorations.Length) return false;
             var mappedVisible = new HashSet<MarkdownDecoration>();
             for (var i = 0; i < previous.Length; i++) {
                 var span = previous[i];

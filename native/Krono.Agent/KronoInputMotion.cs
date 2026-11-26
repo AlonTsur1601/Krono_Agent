@@ -317,10 +317,14 @@ internal static class KronoInputMotion
         SolidColorBrush? rim = null;
         GradientStop? shade = null, fill = null;
         (Windows.UI.Color Rim, Windows.UI.Color Shade, Windows.UI.Color Fill)? surfaceColors = null;
+        (float Scale, float Lift)? surfaceMotion = null;
         bool hover = false, pressed = false;
         long pressStarted = 0;
         var pressFeedback = new DispatcherTimer();
         bool PressMotionEnabled() => animatePress && field is not KronoTextBox { PressMotionEnabled: false };
+        bool IsLargeEditor() => field is (TextBox { AcceptsReturn: true } or RichEditBox)
+            && (!PressMotionEnabled() || field.ActualHeight >= 100);
+        bool NativeTextEditor() => field is TextBox or RichEditBox;
         pressFeedback.Tick += (_, _) => { pressFeedback.Stop(); Refresh(); };
         void StyleParts() {
             if (field is KronoTextBox { SurfaceFeedbackEnabled: false }) return;
@@ -339,7 +343,9 @@ internal static class KronoInputMotion
                 fill = new GradientStop { Offset = 1 };
                 rim = new SolidColorBrush();
                 surfaceColors = null;
+                surfaceMotion = null;
                 face.BorderBrush = rim;
+                if (NativeTextEditor()) face.BorderThickness = field.BorderThickness;
                 face.BackgroundSizing = BackgroundSizing.InnerBorderEdge;
                 face.BackgroundTransition = null;
                 face.Background = new LinearGradientBrush {
@@ -353,10 +359,14 @@ internal static class KronoInputMotion
                     if (rim is not null) {
                         foreach (var state in group.States) {
                             foreach (var setter in state.Setters.OfType<Setter>().Where(setter =>
-                                setter.Target?.Path?.Path is "BorderElement.BorderBrush" or "Background.BorderBrush" or "BorderElement.Background" or "Background.Background").ToArray())
+                                setter.Target?.Path?.Path is "BorderElement.BorderBrush" or "Background.BorderBrush" or "BorderElement.Background" or "Background.Background" ||
+                                NativeTextEditor() && setter.Target?.Path?.Path == "BorderElement.BorderThickness").ToArray())
                                 state.Setters.Remove(setter);
                             if (state.Storyboard is { } storyboard)
-                                foreach (var animation in storyboard.Children.Where(animation => (Storyboard.GetTargetName(animation) is "BorderElement" or "Background") && (Storyboard.GetTargetProperty(animation) is "BorderBrush" or "Background")).ToArray())
+                                foreach (var animation in storyboard.Children.Where(animation =>
+                                    (Storyboard.GetTargetName(animation) is "BorderElement" or "Background") &&
+                                    ((Storyboard.GetTargetProperty(animation) is "BorderBrush" or "Background") ||
+                                     NativeTextEditor() && Storyboard.GetTargetProperty(animation) == "BorderThickness")).ToArray())
                                     storyboard.Children.Remove(animation);
                         }
                     }
@@ -375,20 +385,20 @@ internal static class KronoInputMotion
                 field is KronoComboBox { IsEditable: true } && Descendants(field).OfType<TextBox>().Any(editor => editor.FocusState != FocusState.Unfocused);
             var active = field.IsEnabled && (focused || hover);
             var pressing = field.IsEnabled && (pressed || pressFeedback.IsEnabled);
-            if (PressMotionEnabled() && field is not PasswordBox && (field is not (RichEditBox or TextBox { AcceptsReturn: true }) || field.ActualHeight < 100))
-                AnimateSurface(field, pressing ? .98f : 1, companion);
+            if (IsLargeEditor() || PressMotionEnabled() && field is not PasswordBox) {
+                var motion = IsLargeEditor() && active ? (1.006f, -1.5f) :
+                    (PressMotionEnabled() && !IsLargeEditor() && pressing ? .98f : 1f, 0f);
+                if (surfaceMotion != motion) {
+                    surfaceMotion = motion;
+                    AnimateSurface(field, motion.Item1, companion, motion.Item2);
+                }
+            }
             if (rim is null || shade is null || fill is null) return;
             var theme = field.ActualTheme;
             var role = active ? (focused ? "KronoAccentForeground" : "KronoOutlineHover") : "KronoInputRim";
             var border = ((SolidColorBrush)KronoDesign.ThemeBrush(role, theme)).Color;
             var face = ((SolidColorBrush)KronoDesign.ThemeBrush("KronoInputFace", theme)).Color;
             var shadow = field.IsEnabled ? ((SolidColorBrush)KronoDesign.ThemeBrush("KronoInputShade", theme)).Color : face;
-            if (active) {
-                // Echo the focus/hover tint in the inset shadow without scaling the input.
-                double tint = focused ? .18 : .10;
-                byte Blend(byte shade, byte accent) => (byte)Math.Round(shade + (accent - shade) * tint);
-                shadow = Windows.UI.Color.FromArgb(255, Blend(shadow.R, border.R), Blend(shadow.G, border.G), Blend(shadow.B, border.B));
-            }
             var colors = (border, shadow, face);
             if (surfaceColors == colors) return;
             if (surfaceColors is null) {
@@ -433,7 +443,12 @@ internal static class KronoInputMotion
         RegisterPaletteRefresh(field, Refresh);
         field.LostFocus += (_, _) => field.DispatcherQueue.TryEnqueue(Refresh);
         field.IsEnabledChanged += (_, _) => { hover = pressed = false; pressFeedback.Stop(); Refresh(); };
-        field.Unloaded += (_, _) => { hover = pressed = false; pressFeedback.Stop(); if (PressMotionEnabled() && field is not KronoTextBox { SurfaceFeedbackEnabled: false }) AnimateSurface(field, 1, companion); };
+        field.Unloaded += (_, _) => {
+            hover = pressed = false;
+            pressFeedback.Stop();
+            if (surfaceMotion is not null) AnimateSurface(field, 1, companion);
+            surfaceMotion = null;
+        };
     }
 
     internal static void StyleButton(ButtonBase button)
@@ -535,7 +550,7 @@ internal static class KronoInputMotion
         button.Unloaded += (_, _) => Reset();
     }
 
-    static void AnimateSurface(Control field, float scale, FrameworkElement? companion)
+    static void AnimateSurface(Control field, float scale, FrameworkElement? companion, float lift = 0)
     {
         if (VisualTreeHelper.GetChildrenCount(field) == 0 || VisualTreeHelper.GetChild(field, 0) is not Grid root) return;
         // The native templates put the header in row 0, input in row 1, and description in row 2.
@@ -546,7 +561,7 @@ internal static class KronoInputMotion
         if (field is TextBox or RichEditBox) surfaces = [face];
         var center = face.ActualOffset + new System.Numerics.Vector3(face.ActualSize / 2, 0);
         var animationsEnabled = new UISettings().AnimationsEnabled;
-        if (!animationsEnabled) scale = 1;
+        if (!animationsEnabled) { scale = 1; lift = 0; }
         var duration = new Duration(TimeSpan.FromMilliseconds(animationsEnabled ? 180 : 0));
         var storyboard = new Storyboard();
         foreach (var element in companion is null ? surfaces : surfaces.Append(companion)) {
@@ -561,8 +576,8 @@ internal static class KronoInputMotion
             var origin = element == companion ? center + field.ActualOffset : center;
             transform.CenterX = origin.X - element.ActualOffset.X;
             transform.CenterY = origin.Y - element.ActualOffset.Y;
-            foreach (var property in new[] { "ScaleX", "ScaleY" }) {
-                var animation = new DoubleAnimation { To = scale, Duration = duration,
+            foreach (var (property, value) in new[] { ("ScaleX", scale), ("ScaleY", scale), ("TranslateY", lift) }) {
+                var animation = new DoubleAnimation { To = value, Duration = duration,
                     EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }, EnableDependentAnimation = true };
                 Storyboard.SetTarget(animation, transform);
                 Storyboard.SetTargetProperty(animation, property);
