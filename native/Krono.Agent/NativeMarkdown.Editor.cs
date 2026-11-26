@@ -55,11 +55,14 @@ public static partial class NativeMarkdown
         {
             source = input;
             Workspace = workspace;
+            if (input.ReadLocalValue(TextBox.TextAlignmentProperty) == DependencyProperty.UnsetValue)
+                input.TextAlignment = TextAlignment.DetectFromContent;
             Rich = new RichEditBox {
                 Header = input.Header, PlaceholderText = input.PlaceholderText,
                 TextWrapping = input.TextWrapping, MinHeight = input.MinHeight, MaxHeight = input.MaxHeight,
                 Padding = new Thickness(12, 8, 12, 8), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10),
                 FlowDirection = input.FlowDirection, IsEnabled = input.IsEnabled,
+                TextAlignment = input.TextAlignment, TextReadingOrder = input.TextReadingOrder,
                 HorizontalAlignment = input.HorizontalAlignment, VerticalAlignment = input.VerticalAlignment,
                 VerticalContentAlignment = VerticalAlignment.Top,
                 Visibility = Visibility.Collapsed
@@ -172,17 +175,9 @@ public static partial class NativeMarkdown
                 var selection = Rich.Document.Selection;
                 var start = Math.Clamp(selectionStart ?? selection.StartPosition, 0, text.Length);
                 var end = Math.Clamp(selectionEnd ?? selection.EndPosition, start, text.Length);
-                var paragraph = Rich.Document.GetDefaultParagraphFormat();
-                paragraph.Alignment = source.TextAlignment switch {
-                    Microsoft.UI.Xaml.TextAlignment.Right => ParagraphAlignment.Right,
-                    Microsoft.UI.Xaml.TextAlignment.Center => ParagraphAlignment.Center,
-                    _ => ParagraphAlignment.Left
-                };
-                Rich.Document.SetDefaultParagraphFormat(paragraph);
                 // RichEdit positions count one character per paragraph break, like the parser’s LF source.
                 Rich.Document.SetText(TextSetOptions.Unhide | TextSetOptions.Unlink, text.Replace('\n', '\r'));
                 formattedText = null;
-                Rich.Document.GetRange(0, text.Length).ParagraphFormat.Alignment = paragraph.Alignment;
                 selection.SetRange(start, end);
             } finally { syncing = false; }
             QueueFormat();
@@ -205,7 +200,11 @@ public static partial class NativeMarkdown
             var font = KronoDesign.TextFont.Source;
             var size = KronoDesign.TextSize;
             if (text != parsedSource) {
+                var previous = decorations;
                 decorations = ReadDecorations(text);
+                if (formattedText == parsedSource && formattedFont == font && formattedSize == size &&
+                    TryKeepSpaceFormatting(parsedSource, text, previous))
+                    formattedText = text;
                 parsedSource = text;
             }
             var selection = document.Selection;
@@ -273,6 +272,35 @@ public static partial class NativeMarkdown
                 if (start == end && selection.CharacterFormat.Hidden == FormatEffect.On) selection.CharacterFormat.Hidden = FormatEffect.Off;
                 syncing = false;
             }
+        }
+
+        // RichEdit keeps range formatting while inserting spaces. If the Markdown did not
+        // change, keep that layout so the caret retains its affinity in bidirectional text.
+        bool TryKeepSpaceFormatting(string before, string after, MarkdownDecoration[] previous)
+        {
+            var added = after.Length - before.Length;
+            if (added <= 0 || previous.Length != decorations.Length) return false;
+            var at = 0;
+            while (at < before.Length && before[at] == after[at]) at++;
+            if (after.AsSpan(at, added).IndexOfAnyExcept(' ') >= 0 ||
+                !before.AsSpan(at).SequenceEqual(after.AsSpan(at + added))) return false;
+
+            var mappedVisible = new HashSet<MarkdownDecoration>();
+            for (var i = 0; i < previous.Length; i++) {
+                var span = previous[i];
+                if (span.Start < at && at <= span.ContentStart || span.ContentEnd <= at && at < span.End)
+                    return false;
+                var shifted = span with {
+                    Start = span.Start >= at ? span.Start + added : span.Start,
+                    ContentStart = span.ContentStart >= at ? span.ContentStart + added : span.ContentStart,
+                    ContentEnd = span.ContentEnd > at ? span.ContentEnd + added : span.ContentEnd,
+                    End = span.End > at ? span.End + added : span.End
+                };
+                if (shifted != decorations[i]) return false;
+                if (shownMarkers.Contains(span)) mappedVisible.Add(shifted);
+            }
+            shownMarkers = mappedVisible;
+            return true;
         }
     }
 

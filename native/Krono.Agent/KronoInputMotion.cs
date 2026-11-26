@@ -316,6 +316,7 @@ internal static class KronoInputMotion
         Border? inputFace = null;
         SolidColorBrush? rim = null;
         GradientStop? shade = null, fill = null;
+        (Windows.UI.Color Rim, Windows.UI.Color Shade, Windows.UI.Color Fill)? surfaceColors = null;
         bool hover = false, pressed = false;
         long pressStarted = 0;
         var pressFeedback = new DispatcherTimer();
@@ -337,6 +338,7 @@ internal static class KronoInputMotion
                 shade = new GradientStop { Offset = 0 };
                 fill = new GradientStop { Offset = 1 };
                 rim = new SolidColorBrush();
+                surfaceColors = null;
                 face.BorderBrush = rim;
                 face.BackgroundSizing = BackgroundSizing.InnerBorderEdge;
                 face.BackgroundTransition = null;
@@ -377,12 +379,30 @@ internal static class KronoInputMotion
                 AnimateSurface(field, pressing ? .98f : 1, companion);
             if (rim is null || shade is null || fill is null) return;
             var theme = field.ActualTheme;
-            shade.Color = ((SolidColorBrush)KronoDesign.ThemeBrush(field.IsEnabled ? "KronoInputShade" : "KronoInputFace", theme)).Color;
-            fill.Color = ((SolidColorBrush)KronoDesign.ThemeBrush("KronoInputFace", theme)).Color;
             var role = active ? (focused ? "KronoAccentForeground" : "KronoOutlineHover") : "KronoInputRim";
-            var color = ((SolidColorBrush)KronoDesign.ThemeBrush(role, theme)).Color;
+            var border = ((SolidColorBrush)KronoDesign.ThemeBrush(role, theme)).Color;
+            var face = ((SolidColorBrush)KronoDesign.ThemeBrush("KronoInputFace", theme)).Color;
+            var shadow = field.IsEnabled ? ((SolidColorBrush)KronoDesign.ThemeBrush("KronoInputShade", theme)).Color : face;
+            if (active) {
+                // Echo the focus/hover tint in the inset shadow without scaling the input.
+                double tint = focused ? .18 : .10;
+                byte Blend(byte shade, byte accent) => (byte)Math.Round(shade + (accent - shade) * tint);
+                shadow = Windows.UI.Color.FromArgb(255, Blend(shadow.R, border.R), Blend(shadow.G, border.G), Blend(shadow.B, border.B));
+            }
+            var colors = (border, shadow, face);
+            if (surfaceColors == colors) return;
+            if (surfaceColors is null) {
+                rim.Color = border;
+                shade.Color = shadow;
+                fill.Color = face;
+                surfaceColors = colors;
+                return;
+            }
+            surfaceColors = colors;
             var storyboard = new Storyboard();
-            AddColorAnimation(storyboard, rim, color);
+            AddColorAnimation(storyboard, rim, border);
+            AddColorAnimation(storyboard, shade, shadow);
+            AddColorAnimation(storyboard, fill, face);
             storyboard.Begin();
         }
         field.PointerEntered += (_, _) => { hover = true; Refresh(); };
