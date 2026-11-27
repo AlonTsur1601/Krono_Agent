@@ -1,6 +1,6 @@
 {
   "name": "krono-agent",
-  "version": "0.2.30",
+  "version": "0.2.31",
   "description": "Native Windows agent workspace with project memory and games",
   "author": "Alon Tsur",
   "license": "MIT",
@@ -42,6 +42,8 @@
   "overrides": {
     "minimatch": "11.0.4",
     "firebase-tools": {
+      "@google-cloud/pubsub": "6.4.1",
+      "glob": "14.0.2",
       "gaxios": {
         "uuid": "11.1.1"
       }

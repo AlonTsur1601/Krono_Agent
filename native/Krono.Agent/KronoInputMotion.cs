@@ -23,6 +23,23 @@ public sealed class KronoPressSurface : Grid
 
     static readonly ConditionalWeakTable<UIElement, object> Pulses = new();
 
+    internal static void LiftFace(UIElement target, float lift, bool instant = false)
+    {
+        ElementCompositionPreview.SetIsTranslationEnabled(target, true);
+        var visual = ElementCompositionPreview.GetElementVisual(target);
+        if (instant || !new UISettings().AnimationsEnabled) {
+            visual.StopAnimation("Translation");
+            visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
+            return;
+        }
+        var motion = visual.Compositor.CreateVector3KeyFrameAnimation();
+        motion.Duration = TimeSpan.FromMilliseconds(135);
+        motion.InsertExpressionKeyFrame(0, "this.StartingValue");
+        motion.InsertKeyFrame(1, new System.Numerics.Vector3(0, lift, 0),
+            visual.Compositor.CreateCubicBezierEasingFunction(new(.18f, .72f), new(.34f, 1)));
+        visual.StartAnimation("Translation", motion);
+    }
+
     internal static void AttachPulse(UIElement source, UIElement target, float depth)
     {
         if (!Pulses.TryAdd(target, new object())) return;
@@ -34,13 +51,23 @@ public sealed class KronoPressSurface : Grid
         motion.Duration = TimeSpan.FromMilliseconds(200);
         motion.InsertExpressionKeyFrame(0, "this.StartingValue");
         motion.InsertKeyFrame(.44f, new System.Numerics.Vector3(0, depth, 0), ease);
-        motion.InsertKeyFrame(1, System.Numerics.Vector3.Zero, ease);
         var settings = new UISettings();
+        bool over = false;
+        source.PointerEntered += (_, args) => {
+            over = args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse;
+            if (over) LiftFace(target, -3);
+        };
+        source.PointerExited += (_, _) => { over = false; LiftFace(target, 0); };
+        if (source is FrameworkElement host)
+            host.Unloaded += (_, _) => { over = false; LiftFace(target, 0, instant: true); };
         source.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) => {
             var point = args.GetCurrentPoint(source);
             if (!point.Properties.IsLeftButtonPressed &&
                 (args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse || !args.Pointer.IsInContact)) return;
-            if (settings.AnimationsEnabled) visual.StartAnimation("Translation", motion);
+            if (settings.AnimationsEnabled) {
+                motion.InsertKeyFrame(1, new System.Numerics.Vector3(0, over ? -3 : 0, 0), ease);
+                visual.StartAnimation("Translation", motion);
+            }
         }), true);
     }
 }
@@ -529,6 +556,9 @@ internal static class KronoInputMotion
             var role = down ? "ButtonBackgroundPressed" : "ButtonBackgroundPointerOver";
             var color = ((SolidColorBrush)KronoDesign.ThemeBrush(role, button.ActualTheme)).Color;
             var visible = button.IsEnabled && (over || down);
+            var lift = button.IsEnabled && over && !down && !highContrast ? -2 : 0;
+            KronoPressSurface.LiftFace(tint, lift, immediate);
+            if (content is not null) KronoPressSurface.LiftFace(content, lift, immediate);
             if (highContrast) color = Microsoft.UI.Colors.Transparent;
             else if (!visible) color.A = 0;
             var from = paint.Color;

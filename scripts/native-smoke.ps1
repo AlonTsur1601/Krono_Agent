@@ -657,7 +657,7 @@ public static class PluginFixture {
                 } while ((Get-Date) -lt $deadline)
                 throw "Project or chat row not visible: $label"
             }
-            function DragProject($from, $to, [bool]$before) {
+            function DragProject($from, $to, [bool]$before, [string]$preview = '') {
                 (New-Object -ComObject WScript.Shell).AppActivate($script:process.Id) | Out-Null
                 $x = [int]($from.Left + $from.Width / 2)
                 $y = [int]($from.Top + $from.Height / 2)
@@ -669,8 +669,10 @@ public static class PluginFixture {
                 try {
                     foreach ($step in 1..12) {
                         [KronoWindowCapture]::SetCursorPos([int]($x + ($targetX - $x) * $step / 12), [int]($y + ($targetY - $y) * $step / 12)) | Out-Null
+                        [KronoWindowCapture]::mouse_event(1, 0, 2, 0, [UIntPtr]::Zero)
                         Start-Sleep -Milliseconds 35
                     }
+                    if ($preview) { Capture $preview -Screen }
                     Start-Sleep -Milliseconds 300
                 } finally { [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero) }
                 Start-Sleep -Milliseconds 350
@@ -685,7 +687,7 @@ public static class PluginFixture {
             AssertProjectOrder 'Alpha project' 'Zulu project'
             $zulu = ProjectBounds 'Zulu project'
             $alpha = ProjectBounds 'Alpha project'
-            DragProject $zulu $alpha $true
+            DragProject $zulu $alpha $true 'native-project-drag-preview.png'
             AssertProjectOrder 'Zulu project' 'Alpha project'
             DragProject (ProjectBounds 'Collapse Zulu project') (ProjectBounds 'Collapse Alpha project') $false
             AssertProjectOrder 'Alpha project' 'Zulu project'
@@ -696,13 +698,30 @@ public static class PluginFixture {
             [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
             [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
             Find 'Most recent project message' -ByName | Out-Null
-            DragProject (ProjectBounds 'Alpha first') (ProjectBounds 'Alpha second') $true
+            if ((ProjectBounds 'Alpha second').Top -ge (ProjectBounds 'Alpha first').Top) { throw 'Default project chat order was not recent activity' }
+            SelectNav 'Settings'
+            SelectSettingsCategory 'Appearance'
+            SelectChoice 'Projectconversationorder' 'Manual'
+            SelectNav 'Chats'
+            if ((ProjectBounds 'Alpha second').Top -ge (ProjectBounds 'Alpha first').Top) { throw 'Switching to manual changed the current order' }
+            DragProject (ProjectBounds 'Alpha first') (ProjectBounds 'Alpha second') $true 'native-project-chat-drag.png'
             if ((ProjectBounds 'Alpha first').Top -ge (ProjectBounds 'Alpha second').Top) { throw 'Chat drag did not change its order' }
+            SelectNav 'Settings'
+            SelectSettingsCategory 'Appearance'
+            SelectChoice 'Projectconversationorder' 'Recent activity'
+            SelectNav 'Chats'
+            if ((ProjectBounds 'Alpha second').Top -ge (ProjectBounds 'Alpha first').Top) { throw 'Recent activity did not restore chronological order' }
+            SelectNav 'Settings'
+            SelectSettingsCategory 'Appearance'
+            SelectChoice 'Projectconversationorder' 'Manual'
+            SelectNav 'Chats'
             DragProject (ProjectBounds 'Outside project') (ProjectBounds 'Alpha first') $true
-            DragProject (ProjectBounds 'Alpha first') (ProjectBounds 'Outside project') $false
-            if ((ProjectBounds 'Alpha first').Top -ge (ProjectBounds 'Outside project').Top) { throw 'Drag crossed the project boundary' }
+            DragProject (ProjectBounds 'Alpha second') (ProjectBounds 'Outside project') $false 'native-project-drag-boundary.png'
+            if ((ProjectBounds 'Alpha first').Top -ge (ProjectBounds 'Alpha second').Top -or
+                (ProjectBounds 'Alpha second').Top -ge (ProjectBounds 'Outside project').Top) { throw 'Drag did not stop at the project boundary' }
             Invoke 'New chat in Alpha project' -ByName
             Find 'New chat' -ByName | Out-Null
+            if ((ProjectBounds 'New chat').Top -ge (ProjectBounds 'Alpha second').Top) { throw 'A new chat was not inserted at the top of its project' }
             if ((Find 'ChatProjectButton').Current.Name -ne 'Alpha project') { throw 'New chat did not open in the project' }
             $permissions = (Find 'Permissions').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
             if ($permissions.Count -ne 1 -or $permissions[0].Current.Name -ne 'project') { throw 'New project chat did not reuse permissions' }

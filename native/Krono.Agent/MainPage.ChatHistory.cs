@@ -71,9 +71,6 @@ public sealed partial class MainPage
             row.HorizontalContentAlignment = HorizontalAlignment.Stretch;
             row.IsTabStop = entry.Kind == RailKind.Chat || entry.Project;
             row.IsHitTestVisible = entry.Kind != RailKind.Heading;
-            // Disclosure buttons paint their own hover. Conversation rows use the list's single hover surface.
-            if (entry.Kind == RailKind.Chat) row.Resources.Remove("ListViewItemBackgroundPointerOver");
-            else row.Resources["ListViewItemBackgroundPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
             AutomationProperties.SetName(row, entry.Name);
             row.ContextFlyout = entry.Kind == RailKind.Chat ? ChatActions(entry) : null;
         };
@@ -111,7 +108,9 @@ public sealed partial class MainPage
     void LoadChatRailButton(object sender, RoutedEventArgs args)
     {
         if (sender is not Button button) return;
-        if (button.Width == 28) KronoInputMotion.StyleButton(button);
+        if (button.Name == "RailDisclosureButton")
+            button.Template = (ControlTemplate)Application.Current.Resources["KronoFlatIconTemplate"];
+        else if (button.Width == 28) KronoInputMotion.StyleButton(button);
         else KronoInputMotion.AttachFlatHover(button);
     }
 
@@ -178,19 +177,31 @@ public sealed partial class MainPage
         } catch (Exception error) { Error(error); }
     }
 
+    List<JsonObject> ChatOrderRows()
+    {
+        var order = OrderPositions("native.chatOrder");
+        var manual = ManualProjectChats;
+        var rows = workspace.Query("""
+            SELECT c.id, c.name, p.id AS project_id, c.pinned, c.archived, c.created_at
+            FROM chats c
+            LEFT JOIN projects p ON p.id = c.project_id AND p.deleted_at IS NULL
+            WHERE c.account_id=$p0 AND c.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM side_chats side WHERE side.chat_id = c.id)
+            ORDER BY c.updated_at DESC, c.id
+            """, workspace.AccountId);
+        var sorted = rows.OrderBy(row => manual || row["project_id"] is null
+            ? order.GetValueOrDefault(row["id"]!.ToString(), -1) : -1)
+            .ThenByDescending(row => manual && row["project_id"] is not null && !order.ContainsKey(row["id"]!.ToString())
+                ? row["created_at"]?.GetValue<long>() ?? 0 : 0).ToList();
+        if (manual && sorted.Any(row => !order.ContainsKey(row["id"]!.ToString())))
+            workspace.SetSetting("native.chatOrder", string.Join(" ", sorted.Select(row => row["id"]!.ToString())));
+        return sorted;
+    }
+
     void ReloadChats()
     {
         var search = chatSearchInput?.Text.Trim() ?? "";
         var searching = search.Length > 0;
-        var order = OrderPositions("native.chatOrder");
-        var rows = workspace.Query("""
-            SELECT c.id, c.name, p.id AS project_id, p.name AS project_name, c.pinned, c.archived
-            FROM chats c
-            LEFT JOIN projects p ON p.id = c.project_id AND p.deleted_at IS NULL
-            WHERE c.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM side_chats side WHERE side.chat_id = c.id)
-            ORDER BY c.updated_at DESC, c.id
-            """).Where(row => row["name"]!.ToString().Contains(search, StringComparison.OrdinalIgnoreCase))
-                .OrderBy(row => order.GetValueOrDefault(row["id"]!.ToString(), -1)).ToArray();
+        var rows = ChatOrderRows().Where(row => row["name"]!.ToString().Contains(search, StringComparison.OrdinalIgnoreCase)).ToArray();
         var entries = new List<RailEntry>();
         bool Pinned(JsonObject row) => row["pinned"]?.GetValue<long>() == 1;
         bool Archived(JsonObject row) => row["archived"]?.GetValue<long>() == 1;

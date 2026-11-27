@@ -50,8 +50,12 @@ public sealed partial class MainPage
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition());
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.Background = KronoDesign.ThemeBrush("KronoSurface", ActualTheme);
-            row.ActualThemeChanged += (_, _) => row.Background = KronoDesign.ThemeBrush("KronoSurface", row.ActualTheme);
+            bool hovered = false;
+            void PaintRow() => row.Background = KronoDesign.ThemeBrush(hovered ? "KronoInputFace" : "KronoSurface", row.ActualTheme);
+            PaintRow();
+            row.PointerEntered += (_, _) => { hovered = true; PaintRow(); };
+            row.PointerExited += (_, _) => { hovered = false; PaintRow(); };
+            row.ActualThemeChanged += (_, _) => PaintRow();
             var icon = KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Folder);
             icon.VerticalAlignment = VerticalAlignment.Center;
             var title = new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
@@ -70,7 +74,7 @@ public sealed partial class MainPage
             AutomationProperties.SetName(open, name);
             AutomationProperties.SetAutomationId(open, "ProjectRow-" + id);
             ToolTipService.SetToolTip(open, name);
-            KronoInputMotion.AttachFlatHover(open);
+            open.Template = (ControlTemplate)Application.Current.Resources["KronoFlatIconTemplate"];
             Grid.SetColumnSpan(open, 2);
             row.Children.Add(open);
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };

@@ -1273,3 +1273,9 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 
 - Reuse shared hover and flyout controls in the chat sidebar. Open a project's most recently active conversation from its project row.
 - Collapse completed actions and file changes into one expandable section and preserve UTF-8 labels in Windows acceptance tests.
+
+## Ordering preview and button motion
+
+- Track the dragged row vertically, show an insertion marker, and clamp drops to the active group.
+- Default project conversations to recent activity. Preserve the displayed order when switching to Manual and insert new conversations at the top.
+- Share project and conversation row backgrounds, animate hover lift, and use the hand cursor on site controls.

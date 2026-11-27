@@ -4,7 +4,7 @@
         <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
     </DataTemplate>
     <DataTemplate x:Key="ChatRailDisclosure">
-        <Grid ColumnSpacing="3" Loaded="RailOrderRowLoaded" Background="Transparent">
+        <Grid ColumnSpacing="3" Padding="0,3,6,3" Loaded="RailOrderRowLoaded" Background="Transparent">
             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <Button x:Name="RailDisclosureButton" Loaded="LoadChatRailButton" Click="ChatRailDisclosureClicked"
                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="34" Padding="13,0,6,0"
@@ -29,7 +29,7 @@
                 AutomationProperties.Name="{Binding ActionLabel}"/>
     </DataTemplate>
     <DataTemplate x:Key="ChatRailConversation">
-        <Grid Background="Transparent" MinHeight="34" ColumnSpacing="8" Margin="{Binding Indent}" Loaded="RailOrderRowLoaded">
+        <Grid Background="Transparent" MinHeight="38" ColumnSpacing="8" Padding="0,3,2,3" Margin="{Binding Indent}" Loaded="RailOrderRowLoaded">
             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
             <ProgressRing Grid.Column="1" Width="13" Height="13" Foreground="{ThemeResource KronoAccentForeground}" Visibility="{Binding WorkingVisibility}" IsActive="{Binding Working}" AutomationProperties.Name="Agent working"/>
@@ -149,5 +149,6 @@
 <TextBlock x:Name="ConfirmationStatus" Visibility="Collapsed" TextWrapping="Wrap" Foreground="{ThemeResource KronoMuted}" AutomationProperties.LiveSetting="Polite"/>
 </StackPanel>
 </Grid></Border></Grid></ScrollViewer>
+<Canvas x:Name="OrderOverlay" IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw"/>
 </Grid></Page>
 

@@ -913,6 +913,10 @@ public sealed partial class MainPage : Page
             NativeMarkdown.RefreshEditors(workspace);
         };
         panel.Children.Add(liveMarkdown);
+        var projectOrder = Choices("Project conversation order", ["Recent activity", "Manual"],
+            ManualProjectChats ? "Manual" : "Recent activity",
+            choice => SetProjectChatOrder(choice == "Manual" ? "manual" : "activity"));
+        panel.Children.Add(projectOrder);
         AddCategory("Plugins");
         AddUpdateSettings(AddCategory("Updates"));
         var names = pages.Keys.ToList();

@@ -98,7 +98,7 @@ it('rejects provider discovery outside the allowlisted host', async () => {
   const authorize = vi.fn()
   expect(await connectMcp('notion', AbortSignal.timeout(1_500), authorize)).toMatchObject({ success: false })
   expect(authorize).not.toHaveBeenCalled()
-  expect(fixture.mock.calls.every(([target]) => String(target).startsWith(origin))).toBe(true)
+  expect(fixture.mock.calls.every(([target]) => new URL(target instanceof Request ? target.url : target).origin === new URL(origin).origin)).toBe(true)
 })
 
 it('relays the published HTTPS Vercel callback to the app and exchanges the code with PKCE', async () => {
