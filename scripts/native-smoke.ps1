@@ -246,8 +246,12 @@ function SelectConfiguredModel([string]$Name) {
     Find $Name -ByName | Out-Null
 }
 function OpenAdvancedModel {
-    Invoke 'ComposerModelButton'
-    Find 'Advanced…' -ByName | Out-Null
+    $condition = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Advanced…')
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        if ($script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)) { break }
+        Invoke 'ComposerModelButton'
+        Start-Sleep -Milliseconds 450
+    }
     Invoke 'Advanced…' -ByName
     Find 'ChatModelPicker' | Out-Null
 }
