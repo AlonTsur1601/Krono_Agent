@@ -421,15 +421,7 @@ public sealed partial class MainPage : Page
             history.Children.Add(header);
             header.Children.Add(Button("+ New chat", () => {
                 if (runId is not null) return;
-                draftProject = chatId is null ? draftProject : workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).FirstOrDefault()?["project_id"]?.ToString();
-                CloseSideChat();
-                chatId = null;
-                mode = "agent";
-                if (modeSelector is not null) modeSelector.SelectedItem = mode;
-                chatList.SelectedItem = null;
-                if (!ReferenceEquals(Body.Content, chatView)) ShowChats();
-                else LoadChat();
-                NativeMarkdown.Focus(composer);
+                OpenDraft(null);
             }));
             InitializeChatRail();
             Grid.SetRow(chatList, 1);
@@ -451,15 +443,21 @@ public sealed partial class MainPage : Page
                     permissionBox.IsEnabled = false;
                     var generation = sessionGeneration;
                     var selectedChat = chatId;
+                    var selectedContext = loadedContext;
                     try {
-                        if (!await Confirm("Enable full access?", "Tools can run commands and change files with your Windows permissions without asking.", "Enable full access") || generation != sessionGeneration || selectedChat != chatId) return;
+                        if (!await Confirm("Enable full access?", "Tools can run commands and change files with your Windows permissions without asking.", "Enable full access") ||
+                            generation != sessionGeneration || selectedChat != chatId || selectedContext != loadedContext) return;
                         permissions = "full";
                         permissionBox.SelectedItem = permissions;
+                        MarkFullAccess(permissionBox, permissions);
+                        RememberChatChoices();
                     } finally { permissionBox.IsEnabled = true; }
                     return;
                 }
+                if (permissions == value) return;
                 permissions = value;
                 MarkFullAccess(permissionBox, value);
+                RememberChatChoices();
             };
             ToolTipService.SetToolTip(permissionSelector, "Ask: approve changes/commands. Project: bounded file tools; no shell or desktop execution. Full: supplied tools run with your Windows account.");
             chatProjectButton = Button("Project…", () => ChooseChatProject(chatId));
@@ -499,7 +497,7 @@ public sealed partial class MainPage : Page
             }
             RefreshComposerAction();
             modelChoice.MaxWidth = 240;
-            toolbar.Children.Add(currentModelLabel);
+            AutomationProperties.SetAutomationId(modelChoice, "ComposerModelButton");
             toolbar.Children.Add(modelChoice);
             sideChatButton = Button("Side chat", OpenSideChat);
             AutomationProperties.SetAutomationId(sideChatButton, "OpenSideChatButton");
@@ -570,8 +568,7 @@ public sealed partial class MainPage : Page
 
     void LoadChat()
     {
-        var project = chatId is null ? draftProject :
-            workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).FirstOrDefault()?["project_id"]?.ToString();
+        var project = ComposerProject;
         if (chatProjectButton is not null)
             chatProjectButton.Content = (project is null ? null : workspace.Query(
                 "SELECT name FROM projects WHERE id=$p0 AND deleted_at IS NULL", project).FirstOrDefault()?["name"]?.ToString()) ?? "Project…";
@@ -582,6 +579,27 @@ public sealed partial class MainPage : Page
         messages.Children.Clear();
         conversationMap.Children.Clear();
         welcomeChat.Visibility = chatId is null ? Visibility.Visible : Visibility.Collapsed;
+        var contextKey = (chatId ?? "draft") + ":" + project;
+        if (loadedContext != contextKey) {
+            loadedContext = contextKey;
+            absentLocalModel = null;
+            var saved = chatId is null ? ComposerDefaults(project) : workspace.GetChatOptions(chatId) ?? ComposerDefaults(project);
+            provider = saved?.Provider ?? workspace.Setting("native.provider");
+            if (provider.Length == 0) provider = "openai";
+            model = saved?.Model ?? workspace.Setting("native.model." + provider);
+            reasoningEffort = saved?.Reasoning ?? workspace.Setting(ChatReasoningKey);
+            mode = chatId is null ? "agent" : saved?.Mode ?? "agent";
+            var legacyPermission = project is null ? "" : workspace.Setting("native.lastProjectPermission." + project);
+            permissions = saved?.Permissions ?? (legacyPermission.Length > 0 ? legacyPermission :
+                project is null ? "ask" : workspace.ProjectPreferences(project)["permissions"]?.ToString() ?? "ask");
+            if (modeSelector is not null) modeSelector.SelectedItem = mode;
+            if (permissionSelector is not null) {
+                permissionSelector.SelectedItem = permissions;
+                MarkFullAccess(permissionSelector, permissions);
+            }
+            RefreshChatModelLabel();
+            _ = SelectInitialModel();
+        }
         if (chatId is null) {
             if (welcomeChat.Children.Count > 0) return;
             var welcome = welcomeChat;
@@ -592,17 +610,6 @@ public sealed partial class MainPage : Page
             Grid.SetColumn(welcomeTitle, 1);
             welcome.Children.Add(welcomeTitle);
             return;
-        }
-        if (loadedContext != chatId + ":" + project) {
-            loadedContext = chatId + ":" + project;
-            var saved = workspace.GetChatOptions(chatId);
-            permissions = saved?.Permissions ?? (project is null ? "ask" : workspace.ProjectPreferences(project)["permissions"]?.ToString() ?? "ask");
-            if (permissionSelector is not null) permissionSelector.SelectedItem = permissions;
-            if (saved is not null) {
-                provider = saved.Provider; model = saved.Model; mode = saved.Mode;
-                if (modeSelector is not null) modeSelector.SelectedItem = mode;
-                RefreshChatModelLabel();
-            }
         }
         foreach (var message in workspace.Query("SELECT id,role,content FROM messages WHERE chat_id=$p0 AND deleted_at IS NULL ORDER BY created_at,rowid", chatId)) AddBubble(message["role"]!.ToString(), message["content"]?.ToString() ?? "", message["id"]!.ToString());
     }
@@ -638,12 +645,12 @@ public sealed partial class MainPage : Page
             var text = TextAttachment.Compose(composer.Text, attachments);
             if (image is not null) text = (text.Length == 0 ? "" : text + "\n\n") + "[Clipboard image attached]";
             chatId ??= workspace.CreateChat(draftProject);
-            var reasoning = workspace.Setting(ChatReasoningKey);
+            var reasoning = reasoningEffort;
             var context = workspace.Setting("native.chatContext");
             var fastMode = workspace.Setting(ChatFastModeKey) == "true";
             workspace.SaveChatOptions(chatId, new(provider, model, mode, permissions, reasoning, context, fastMode));
             var project = workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).First()["project_id"]?.ToString();
-            if (project is not null) workspace.SetSetting("native.lastProjectPermission." + project, permissions);
+            workspace.SetSetting(ComposerDefaultsKey(project), JsonSerializer.Serialize(CurrentChatOptions()));
             var messageId = workspace.AddMessage(chatId, "user", text);
             composer.Text = ""; ClearAttachments();
             if (workspace.Query("SELECT id FROM messages WHERE chat_id=$p0", chatId).Count == 1) workspace.Execute("UPDATE chats SET name=$p0 WHERE id=$p1", title[..Math.Min(42, title.Length)], chatId);
@@ -762,60 +769,58 @@ public sealed partial class MainPage : Page
         var secret = new PasswordBox { Header = "API key", HorizontalAlignment = HorizontalAlignment.Stretch };
         KronoInputMotion.Attach(secret, "KronoPasswordInput");
         AutomationProperties.SetAutomationId(secret, "ProviderKey");
-        var models = new KronoComboBox { Header = "Model", HorizontalAlignment = HorizontalAlignment.Stretch,
-            PlaceholderText = "Choose an available model", ItemsSource = ModelChoices(provider, [], model, false), SelectedItem = model };
-        AutomationProperties.SetAutomationId(models, "ModelSelector");
-        int modelRequest = 0;
-        bool updatingModels = false, loadingModels = false;
+        var models = new StackPanel { Spacing = 4, Visibility = Visibility.Collapsed };
+        AutomationProperties.SetAutomationId(models, "ModelCatalog");
+        var status = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        AutomationProperties.SetAutomationId(status, "ModelCatalogStatus");
+        string? catalogProvider = null;
+        var modelRequest = 0;
         var saveKey = Button("Save key", SaveKey);
         var optionalKey = Button("Configure optional server token", () => {
             secret.Visibility = saveKey.Visibility = Visibility.Visible;
             secret.Focus(FocusState.Programmatic);
         });
+        var refreshModels = Button("Refresh models", () => LoadProviderModels(refresh: true));
         void ShowKeyField()
         {
-            var automatic = ProviderCatalog.AutomaticLocal(provider);
-            var required = ProviderCatalog.RequiresKey(provider, ProviderEndpoint);
-            secret.Header = required ? "API key" : "Server token (optional)";
+            var endpoint = catalogProvider is null ? "" : ModelEndpoint(catalogProvider);
+            var required = catalogProvider is not null && ProviderCatalog.RequiresKey(catalogProvider, endpoint);
             secret.Visibility = saveKey.Visibility = required ? Visibility.Visible : Visibility.Collapsed;
-            optionalKey.Visibility = !automatic && !required ? Visibility.Visible : Visibility.Collapsed;
-        }
-        void ListModels(string[] ids)
-        {
-            updatingModels = true;
-            try { models.ItemsSource = ids; models.SelectedItem = model; }
-            finally { updatingModels = false; }
+            optionalKey.Visibility = catalogProvider is not null && !ProviderCatalog.AutomaticLocal(catalogProvider) && !required
+                ? Visibility.Visible : Visibility.Collapsed;
         }
         var providerIds = ProviderCatalog.Ids.Where(id => !ProviderCatalog.Compatible(id) ||
-            ProviderCatalog.AutomaticLocal(id) || ProviderCatalog.Endpoint(id).Length > 0 ||
-            workspace.Setting("native.endpoint." + id).Length > 0 || id == provider).ToArray();
+            ModelEndpoint(id).Length > 0 || ProviderCatalog.AutomaticLocal(id) || id == provider).ToArray();
         var providerNames = providerIds.Select(ProviderCatalog.Name).ToArray();
-        panel.Children.Add(Choices("Provider", providerNames, ProviderCatalog.Name(provider), value => {
-            provider = providerIds[Array.IndexOf(providerNames, value)];
-            workspace.SetSetting("native.provider", provider);
+        var catalogPicker = Choices("Provider", providerNames, "", value => {
+            catalogProvider = providerIds[Array.IndexOf(providerNames, value)];
+            workspace.SetSetting("native.catalogProvider", catalogProvider);
+            workspace.SetSetting("native.catalogEnabled." + catalogProvider, "true");
             secret.Password = "";
-            model = workspace.Setting("native.model." + provider);
-            if (IsLocalModelProvider(provider)) model = "";
-            ListModels(ModelChoices(provider, [], model, false));
-            RefreshChatModelLabel();
+            models.Visibility = refreshModels.Visibility = Visibility.Visible;
             ShowKeyField();
             _ = LoadProviderModels();
-        }));
-        panel.Children.Add(models);
+        });
+        catalogPicker.PlaceholderText = "Choose a provider";
+        panel.Children.Add(catalogPicker);
         panel.Children.Add(optionalKey);
         panel.Children.Add(secret);
         panel.Children.Add(saveKey);
+        panel.Children.Add(models);
+        panel.Children.Add(refreshModels);
+        refreshModels.Visibility = Visibility.Collapsed;
         ShowKeyField();
         void SaveKey()
         {
+            if (catalogProvider is not { } id) return;
             if (string.IsNullOrWhiteSpace(secret.Password)) {
                 ShowNotice("Enter an API key before saving.", success: false);
                 return;
             }
             try {
-                workspace.SaveKey(provider, secret.Password.Trim());
+                workspace.SaveKey(id, secret.Password.Trim());
                 secret.Password = "";
-                ShowNotice(ProviderCatalog.Name(provider) + " API key saved.");
+                ShowNotice(ProviderCatalog.Name(id) + " API key saved.");
                 _ = LoadProviderModels(refresh: true);
             } catch (Exception error) { Error(error); }
         }
@@ -826,40 +831,42 @@ public sealed partial class MainPage : Page
         };
         async Task LoadProviderModels(bool refresh = false)
         {
+            if (catalogProvider is not { } id) return;
             var request = ++modelRequest;
-            loadingModels = false;
-            var selectedProvider = provider;
             var generation = sessionGeneration;
-            if (workspace.Key(selectedProvider).Length == 0 && ProviderCatalog.RequiresKey(selectedProvider, ProviderEndpoint)) {
-                SetModelStatus("Save an API key to load models");
+            models.Children.Clear();
+            models.Children.Add(status);
+            if (workspace.Key(id).Length == 0 && ProviderCatalog.RequiresKey(id, ModelEndpoint(id))) {
+                status.Text = "Save an API key to load models";
                 return;
             }
-            if (worker is null) return;
-            loadingModels = true;
-            SetModelStatus("Loading models…");
-            bool Current() => request == modelRequest && generation == sessionGeneration && provider == selectedProvider;
+            status.Text = "Loading models…";
+            bool Current() => request == modelRequest && generation == sessionGeneration && catalogProvider == id;
             try {
-                var result = await DiscoverModels(selectedProvider, refresh);
+                var result = await DiscoverModels(id, refresh);
                 if (!Current()) return;
-                ChooseDefaultModel(result);
-                var ids = ModelChoices(selectedProvider, result, model, false);
-                ListModels(ids);
-                SetModelStatus(ids.Length == 0 ? "No models available" : "Choose an available model");
+                var ids = ModelChoices(id, result, "", false);
+                status.Text = ids.Length == 0 ? "No models available" : "Show in the chat model picker";
+                var hidden = HiddenModels(id);
+                foreach (var name in ids) {
+                    var check = new CheckBox { Content = name, IsChecked = !hidden.Contains(name) };
+                    AutomationProperties.SetName(check, name);
+                    void SaveVisibility()
+                    {
+                        if (!Current()) return;
+                        if (check.IsChecked == true) hidden.Remove(name);
+                        else hidden.Add(name);
+                        workspace.SetSetting("native.hiddenModels." + id, JsonSerializer.Serialize(hidden));
+                    }
+                    check.Checked += (_, _) => SaveVisibility();
+                    check.Unchecked += (_, _) => SaveVisibility();
+                    models.Children.Add(check);
+                }
+                KronoDesign.RefreshTypography(models);
             } catch (Exception) {
-                if (Current()) SetModelStatus("Could not load models");
-            } finally { if (Current()) loadingModels = false; }
+                if (Current()) status.Text = "Could not load models";
+            }
         }
-        void SetModelStatus(string status)
-        {
-            models.PlaceholderText = status;
-            models.EmptyText = status;
-        }
-        models.DropDownOpened += (_, _) => {
-            if (!loadingModels && models.Items.Count == 0) _ = LoadProviderModels(refresh: true);
-        };
-        models.SelectionChanged += (_, _) => {
-            if (!updatingModels && models.SelectedItem is string selected) SelectChatModel(selected);
-        };
         panel = AddCategory("Appearance");
         panel.Children.Add(Choices("Appearance", ["system", "dark", "light", "halloween"], workspace.Setting("native.theme") is { Length: > 0 } t ? t : "system", value => { workspace.SetSetting("native.theme", value); ApplyTheme(value, animate: true); }));
         KronoComboBox FontChoice(string header, string key, string[] choices) {

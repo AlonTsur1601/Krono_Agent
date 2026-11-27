@@ -67,32 +67,47 @@ public sealed partial class Workspace
 
         deadline.Token.ThrowIfCancellationRequested();
         Process.Start(new ProcessStartInfo(target.AbsoluteUri) { UseShellExecute = true })?.Dispose();
-        HttpListenerContext context;
-        try { context = await listener.GetContextAsync().WaitAsync(deadline.Token); }
-        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) {
-            throw new TimeoutException("Google sign-in timed out. Start it again in Krono.");
-        }
-
+        var (session, context) = await WaitForGoogleSession(listener, callbackPath, verifier, link ? account : null, deadline.Token, cancellation);
         using var response = context.Response;
-        var code = context.Request.QueryString["code"];
-        if (context.Request.HttpMethod != "GET" || context.Request.Url?.AbsolutePath != callbackPath || string.IsNullOrEmpty(code)) {
-            await Reply(response, false);
-            throw new InvalidOperationException("Google authorization was declined or could not be completed.");
-        }
         try {
-            var session = await Auth("token?grant_type=pkce", new { auth_code = code, code_verifier = verifier });
             deadline.Token.ThrowIfCancellationRequested();
             if (epoch != sessionEpoch) throw new OperationCanceledException();
-            if (session["user"] is not { } user || ReadGoogleEmail(user) is null ||
-                (link && user["id"]?.ToString() != account))
-                throw new InvalidOperationException("The account service did not return the expected Google identity.");
             if (link) {
                 SaveSession(session);
-                GoogleEmail = ReadGoogleEmail(user);
+                GoogleEmail = ReadGoogleEmail(session["user"]!);
             } else Accept(session);
         }
         catch { await Reply(response, false); throw; }
         await Reply(response, true);
+    }
+
+    async Task<(JsonNode Session, HttpListenerContext Context)> WaitForGoogleSession(
+        HttpListener listener, string callbackPath, string verifier, string? account,
+        CancellationToken deadline, CancellationToken cancellation)
+    {
+        while (true) {
+            deadline.ThrowIfCancellationRequested();
+            HttpListenerContext context;
+            try { context = await listener.GetContextAsync().WaitAsync(deadline); }
+            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) {
+                throw new TimeoutException("Google sign-in timed out. Start it again in Krono.");
+            }
+
+            var request = context.Request;
+            var codes = request.QueryString.GetValues("code");
+            if (request.HttpMethod == "GET" && request.Url?.AbsolutePath == callbackPath &&
+                codes is [string code] && code.Length is > 0 and <= 2048) {
+                JsonNode? session;
+                try {
+                    session = await Auth("token?grant_type=pkce", new { auth_code = code, code_verifier = verifier });
+                } catch (InvalidOperationException) { session = null; }
+                if (session?["user"] is { } user && ReadGoogleEmail(user) is not null &&
+                    (account is null || user["id"]?.ToString() == account))
+                    return (session, context);
+            }
+            using var rejected = context.Response;
+            await Reply(rejected, false);
+        }
     }
 
     static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');

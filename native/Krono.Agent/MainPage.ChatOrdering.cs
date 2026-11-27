@@ -289,7 +289,7 @@ public sealed partial class MainPage
             runId is not null || (target is null ? chatId is not null : scheduledRun?.Chat == target)) return;
         var project = selector.SelectedIndex > 0 ? projects[selector.SelectedIndex - 1].Id : null;
         if (project == currentProject || project is not null && !OrderedProjects().Any(item => item.Id == project)) return;
-        if (target is null) draftProject = project;
+        if (target is null) { draftProject = project; loadedContext = null; }
         else workspace.Execute("UPDATE chats SET project_id=$p0,updated_at=$p1 WHERE id=$p2 AND account_id=$p3 AND deleted_at IS NULL",
             project, Workspace.Now, target, workspace.AccountId);
         ReloadChats();
@@ -305,22 +305,17 @@ public sealed partial class MainPage
     void NewProjectChat(string project)
     {
         if (runId is not null || !OrderedProjects().Any(item => item.Id == project)) return;
-        var last = workspace.Setting("native.lastProjectPermission." + project);
-        if (last.Length == 0) {
-            var previous = workspace.Query("""
-                SELECT chats.id FROM chats JOIN settings ON settings.key='native.chatOptions.' || chats.id
-                WHERE account_id=$p0 AND project_id=$p1 AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1
-                """, workspace.AccountId, project).FirstOrDefault()?["id"]?.ToString();
-            last = (previous is null ? null : workspace.GetChatOptions(previous)?.Permissions)
-                ?? workspace.ProjectPreferences(project)["permissions"]?.ToString() ?? "ask";
-        }
-        var newChat = workspace.CreateChat(project);
-        workspace.SaveChatOptions(newChat, new(provider, model, "agent", last, workspace.Setting(ChatReasoningKey),
-            workspace.Setting("native.chatContext"), workspace.Setting(ChatFastModeKey) == "true"));
+        collapsedChatProjects.Remove(project);
+        OpenDraft(project);
+    }
+
+    void OpenDraft(string? project)
+    {
         CloseSideChat();
         draftProject = project;
-        chatId = newChat;
-        collapsedChatProjects.Remove(project);
+        chatId = loadedContext = null;
+        composer.Text = "";
+        ClearAttachments();
         ShowChats();
         NativeMarkdown.Focus(composer);
     }

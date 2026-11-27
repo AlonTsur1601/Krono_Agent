@@ -1287,3 +1287,10 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - [x] Style the reasoning popover and link its empty state directly to Models.
 - [x] Restore available local models automatically and default new chats to Agent.
 - [x] Apply project and conversation list changes to the existing views.
+
+## Conversation defaults and model catalog
+
+- Open the most recently active project conversation or an unsent project draft.
+- Show the active model on the composer button and manage picker visibility with provider-specific checkboxes.
+- Remember the model, reasoning effort, and permissions independently for each project and for unassigned chats.
+- Keep Google sign-in pending through invalid callback requests. Apply account sessions after PKCE and identity verification.

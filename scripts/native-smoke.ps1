@@ -125,14 +125,8 @@ function UseFixtureModel {
     SelectChoice 'Provider' 'OpenAI'
     SetValue 'ProviderKey' 'fixture-provider-key'
     Invoke 'Save key' -ByName
-    $model = Find 'ModelSelector'
-    $selection = $model.GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern)
-    $deadline = (Get-Date).AddSeconds(10)
-    do {
-        if ($selection.Current.GetSelection().Count -gt 0) { break }
-        Start-Sleep -Milliseconds 100
-    } while ((Get-Date) -lt $deadline)
-    SelectChoice 'ModelSelector' 'gpt-native-fixture-model'
+    Find 'gpt-native-fixture-model' -ByName | Out-Null
+    SelectConfiguredModel 'gpt-native-fixture-model'
 }
 function TestLiveMarkdown {
     SelectSettingsCategory 'Instructions'
@@ -241,8 +235,16 @@ function TestLiveMarkdown {
     Invoke 'Save instructions' -ByName
     Capture 'native-markdown-saved.png'
 }
+function SelectConfiguredModel([string]$Name) {
+    SelectNav 'Chats'
+    if ((Find 'ComposerModelButton').Current.Name -eq $Name) { return }
+    OpenAdvancedModel
+    SelectChoice 'ChatModelPicker' $Name
+    Invoke 'Apply' -ByName
+    Find $Name -ByName | Out-Null
+}
 function OpenAdvancedModel {
-    Invoke 'Choose model' -ByName
+    Invoke 'ComposerModelButton'
     Find 'Advanced…' -ByName | Out-Null
     Invoke 'Advanced…' -ByName
     Find 'ChatModelPicker' | Out-Null
@@ -662,7 +664,7 @@ public static class PluginFixture {
                 $x = [int]($from.Left + $from.Width / 2)
                 $y = [int]($from.Top + $from.Height / 2)
                 $targetX = [int]($to.Left + $to.Width / 2)
-                $targetY = [int]($to.Top + $to.Height * $(if ($before) { 0.2 } else { 0.8 }))
+                $targetY = [int]$(if ($before) { $to.Top - 8 } else { $to.Bottom + 8 })
                 [KronoWindowCapture]::SetCursorPos($x, $y) | Out-Null
                 Start-Sleep -Milliseconds 80
                 [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
@@ -720,11 +722,22 @@ public static class PluginFixture {
             if ((ProjectBounds 'Alpha first').Top -ge (ProjectBounds 'Alpha second').Top -or
                 (ProjectBounds 'Alpha second').Top -ge (ProjectBounds 'Outside project').Top) { throw 'Drag did not stop at the project boundary' }
             Invoke 'New chat in Alpha project' -ByName
-            Find 'New chat' -ByName | Out-Null
-            if ((ProjectBounds 'New chat').Top -ge (ProjectBounds 'Alpha second').Top) { throw 'A new chat was not inserted at the top of its project' }
+            Find 'What would you like to work on?' -ByName | Out-Null
+            if ($script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'New chat')))) { throw 'An unsent draft appeared in the sidebar' }
             if ((Find 'ChatProjectButton').Current.Name -ne 'Alpha project') { throw 'New chat did not open in the project' }
             $permissions = (Find 'Permissions').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
             if ($permissions.Count -ne 1 -or $permissions[0].Current.Name -ne 'project') { throw 'New project chat did not reuse permissions' }
+            SelectChoice 'Permissions' 'ask'
+            Invoke '+ New chat' -ByName
+            SelectChoice 'Permissions' 'project'
+            Invoke 'New chat in Alpha project' -ByName
+            $permissions = (Find 'Permissions').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
+            if ($permissions.Count -ne 1 -or $permissions[0].Current.Name -ne 'ask') { throw 'Project draft did not retain its own permissions' }
+            UseFixtureModel
+            SelectChoice 'Mode' 'chat'
+            SetValue 'Composer' 'Project draft fixture'
+            Invoke 'Send' -ByName
+            Find 'Native fixture response.' -ByName | Out-Null
             Invoke 'Chat actions' -ByName
             Invoke ('Move to project' + [char]0x2026) -ByName
             Find 'ChatProjectSelector' | Out-Null
@@ -826,8 +839,7 @@ public static class PluginFixture {
             SelectNav 'Settings'
             SelectSettingsCategory 'Models'
             SelectChoice 'Provider' 'Ollama'
-            (Find 'ModelSelector').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-            $empty = Find 'EmptyDropdownMessage'
+            $empty = Find 'ModelCatalogStatus'
             $emptyStates = @('Could not load models', 'No models available')
             $deadline = (Get-Date).AddSeconds(8)
             while ($empty.Current.Name -notin $emptyStates -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
@@ -933,10 +945,10 @@ public static class PluginFixture {
         if ($env:KRONO_SMOKE_SCOPE -eq 'markdown-ui') {
             UseFixtureModel
             SelectNav 'Chats'
-            Invoke 'Choose model' -ByName
+            Invoke 'ComposerModelButton'
             Find 'Advanced…' -ByName | Out-Null
             Find 'Composer' | Out-Null
-            Invoke 'Choose model' -ByName
+            Invoke 'ComposerModelButton'
             SelectNav 'Settings'
             SelectSettingsCategory 'Instructions'
             Invoke 'Edit global instructions' -ByName
@@ -956,23 +968,9 @@ public static class PluginFixture {
             SelectChoice 'Provider' 'Local Model'
             if (FindOptional 'ProviderEndpoint') { throw 'Automatic local discovery showed a manual endpoint' }
             if (FindOptional 'ProviderKey') { throw 'Automatic local discovery showed a key field' }
-            $deadline = (Get-Date).AddSeconds(10)
-            do {
-                $selected = (Find 'ModelSelector').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
-                if ($selected.Count -eq 1) { break }
-                Start-Sleep -Milliseconds 100
-            } while ((Get-Date) -lt $deadline)
-            if ($selected.Count -ne 1) { throw 'No model was selected automatically' }
-            $default = $selected[0].Current.Name
-            $popup = (Find 'ModelSelector').GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
-            $popup.Expand()
             Find 'native-discovered-model:latest · Jan' -ByName | Out-Null
-            $first = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) |
-                Where-Object { $_.Current.ClassName -like '*ComboBoxItem' -and !$_.Current.IsOffscreen } | Select-Object -First 1
-            if (!$first -or $first.Current.Name -ne $default) { throw 'The first listed model was not selected automatically' }
-            $popup.Collapse()
-            SelectChoice 'ModelSelector' 'alpha-discovered-model:latest · Jan'
-            SelectChoice 'ModelSelector' 'native-discovered-model:latest · Jan'
+            SelectConfiguredModel 'alpha-discovered-model:latest · Jan'
+            SelectConfiguredModel 'native-discovered-model:latest · Jan'
             SelectNav 'Chats'
             SetValue 'Composer' 'NATIVE_AUTOMATIC_LOCAL_MODEL'
             Invoke 'Send' -ByName
@@ -985,16 +983,19 @@ public static class PluginFixture {
             SelectNav 'Settings'
             SelectSettingsCategory 'Models'
             SelectChoice 'Provider' 'Ollama'
-            SelectChoice 'ModelSelector' 'fixture-preferred'
+            $check = (Find 'fixture-first' -ByName).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+            $check.Toggle()
+            if ($check.Current.ToggleState -ne [Windows.Automation.ToggleState]::Off) { throw 'Model visibility checkbox did not turn off' }
+            SelectConfiguredModel 'fixture-preferred'
             SelectNav 'Chats'
             $mode = (Find 'Mode').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
             if ($mode.Count -ne 1 -or $mode[0].Current.Name -ne 'agent') { throw 'New chats did not default to Agent mode' }
             Invoke-RestMethod -Method Post ($Fixture + '/pause-local-models') | Out-Null
-            Invoke 'Choose model' -ByName
+            Invoke 'ComposerModelButton'
             Find 'No models available' -ByName | Out-Null
             Capture 'native-no-model-popover.png'
             Invoke 'Model settings' -ByName
-            Find 'ModelSelector' | Out-Null
+            Find 'Provider' | Out-Null
             SelectNav 'Chats'
             Invoke-RestMethod -Method Post ($Fixture + '/restore-local-models') | Out-Null
             Find 'fixture-preferred' -ByName | Out-Null
@@ -1205,10 +1206,10 @@ public static class PluginFixture {
                 SelectNav 'Chats'
             }
             Capture 'compact-chat.png'
-            Invoke 'Choose model' -ByName
+            Invoke 'ComposerModelButton'
             Find 'Advanced…' -ByName | Out-Null
             Capture 'compact-model.png'
-            Invoke 'Choose model' -ByName
+            Invoke 'ComposerModelButton'
             SelectNav 'Chats'
             Invoke 'Projects' -ByName
             Find 'ProjectName' | Out-Null
@@ -1281,7 +1282,7 @@ public static class PluginFixture {
             SelectNav 'Settings'
             SelectSettingsCategory 'Models'
             SelectChoice 'Provider' 'Ollama'
-            $modelBounds = (Find 'ModelSelector').Current.BoundingRectangle
+            $modelBounds = (Find 'ModelCatalogStatus').Current.BoundingRectangle
             if ([Math]::Abs($modelBounds.Left - (Find 'Provider').Current.BoundingRectangle.Left) -gt 2) { throw 'The model selector did not align with the provider field' }
             foreach ($id in @('ProviderConnectionOptions', 'ProviderEndpoint', 'ProviderTools')) {
                 if (FindOptional $id) { throw ('Removed model setting is still visible: ' + $id) }
@@ -1305,12 +1306,12 @@ public static class PluginFixture {
                 Start-Sleep -Milliseconds 100
             } while ((Get-Date) -lt $deadline)
             if (!$saved) { throw 'Enter did not save the fixture credential' }
-            SelectChoice 'ModelSelector' 'native-keyboard-model'
+            SelectConfiguredModel 'native-keyboard-model'
+            SelectNav 'Settings'
+            SelectSettingsCategory 'Models'
             Capture 'native-provider-models.png'
             SelectChoice 'Provider' 'OpenAI'
             SelectChoice 'Provider' 'Ollama'
-            $selected = (Find 'ModelSelector').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
-            if ($selected.Count -ne 1 -or $selected[0].Current.Name -ne 'native-keyboard-model') { throw 'Manual model selection did not persist' }
             SelectSettingsCategory 'Instructions'
             TestLiveMarkdown
             SelectNav 'Chats'
@@ -1321,7 +1322,7 @@ public static class PluginFixture {
         if ($env:KRONO_SMOKE_SCOPE -eq 'menus-ui') {
             UseFixtureModel
             SelectNav 'Chats'
-            Invoke 'Choose model' -ByName
+            Invoke 'ComposerModelButton'
             Find 'Advanced…' -ByName | Out-Null
             Capture 'native-model-dialog.png'
             if (!(New-Object -ComObject WScript.Shell).AppActivate($script:process.Id)) { throw "Could not activate the popup for pointer input" }
@@ -1455,6 +1456,7 @@ public static class PluginFixture {
     SelectChoice 'Conversationcontext' 'Recent messages'
     Invoke 'Apply' -ByName
     Find 'gpt-native-fixture-model' -ByName | Out-Null
+    SelectChoice 'Mode' 'chat'
     SetValue 'Composer' 'Native test message'
     Invoke 'Send' -ByName
     $deadline = (Get-Date).AddSeconds(15)
@@ -1498,10 +1500,10 @@ public static class PluginFixture {
         SelectChoice 'ChatModelPicker' 'gpt-5-mini'
         Invoke 'Apply' -ByName
         Find 'gpt-5-mini' -ByName | Out-Null
-        Invoke 'Choose model' -ByName
+        Invoke 'ComposerModelButton'
         $effort = (Find 'Reasoning effort' -ByName).GetCurrentPattern([Windows.Automation.RangeValuePattern]::Pattern)
         $effort.SetValue($effort.Current.Maximum)
-        Invoke 'Choose model' -ByName
+        Invoke 'ComposerModelButton'
         Invoke-RestMethod -Method Post ($Fixture + '/seed-chat-history') | Out-Null
         SetValue 'Composer' 'Verify the selected reasoning effort'
         Invoke 'Send' -ByName
@@ -1559,7 +1561,7 @@ public static class PluginFixture {
     SetValue 'ProviderKey' 'fixture-local-placeholder'
     Invoke 'Save key' -ByName
     Start-Sleep -Milliseconds 500
-    SelectChoice 'ModelSelector' 'local-fixture-model'
+    SelectConfiguredModel 'local-fixture-model'
     Capture 'native-local-model.png'
     SelectNav 'Chats'
     SetValue 'Composer' 'Reply using the local endpoint, without tools'
@@ -1578,7 +1580,7 @@ public static class PluginFixture {
     if ($storedReply -ne 1) { throw 'Final streamed fragments were not persisted together' }
     SelectNav 'Settings'
     SelectSettingsCategory 'Models'
-    SelectChoice 'ModelSelector' 'basic-fixture-model'
+    SelectConfiguredModel 'basic-fixture-model'
     SelectNav 'Chats'
     SetValue 'Composer' 'Native manual model B without tool support'
     Invoke 'Send' -ByName
@@ -1587,10 +1589,7 @@ public static class PluginFixture {
     if (!$assertions.localModelBNoTools) { throw 'Model B received tools despite its disabled capability' }
     SelectNav 'Settings'
     SelectSettingsCategory 'Models'
-    SelectChoice 'ModelSelector' 'local-fixture-model'
-    SelectChoice 'Provider' 'OpenAI'
-    $selected = (Find 'ModelSelector').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
-    if ($selected.Count -ne 1 -or $selected[0].Current.Name -ne 'gpt-native-fixture-model') { throw 'Provider switching lost its model selection' }
+    SelectConfiguredModel 'gpt-native-fixture-model'
     foreach ($cloudProfile in @(@{Id='azure';Name='Azure OpenAI'},@{Id='xai';Name='xAI'},@{Id='groq';Name='Groq'},@{Id='mistral';Name='Mistral'},@{Id='openrouter';Name='OpenRouter'})) {
         SelectNav 'Settings'
         SelectSettingsCategory 'Models'
@@ -1598,7 +1597,7 @@ public static class PluginFixture {
         SetValue 'ProviderKey' ('fixture-' + $cloudProfile.Id + '-key')
         Invoke 'Save key' -ByName
         Start-Sleep -Milliseconds 300
-        SelectChoice 'ModelSelector' ($cloudProfile.Id + '-fixture')
+        SelectConfiguredModel ($cloudProfile.Id + '-fixture')
         SelectNav 'Chats'
         SelectChoice 'Mode' 'chat'
         SetValue 'Composer' ('Native cloud profile ' + $cloudProfile.Id)
@@ -1610,7 +1609,7 @@ public static class PluginFixture {
     SelectNav 'Settings'
     SelectSettingsCategory 'Models'
     SelectChoice 'Provider' 'OpenAI'
-    SelectNav 'Chats'
+    SelectConfiguredModel 'gpt-native-fixture-model'
     SelectChoice 'Mode' 'chat'
     SetValue 'Composer' 'NATIVE_PARENT_WAIT'
     Invoke 'Send' -ByName

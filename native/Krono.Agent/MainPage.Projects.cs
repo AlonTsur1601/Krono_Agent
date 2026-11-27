@@ -146,8 +146,9 @@ public sealed partial class MainPage
             SELECT c.id FROM chats c
             WHERE c.account_id=$p0 AND c.project_id=$p1 AND c.deleted_at IS NULL
               AND NOT EXISTS (SELECT 1 FROM side_chats s WHERE s.chat_id=c.id)
-            ORDER BY COALESCE((SELECT MAX(m.created_at) FROM messages m
-                WHERE m.chat_id=c.id AND m.deleted_at IS NULL), c.created_at) DESC, c.id
+              AND EXISTS (SELECT 1 FROM messages m WHERE m.chat_id=c.id AND m.deleted_at IS NULL)
+            ORDER BY (SELECT MAX(m.created_at) FROM messages m
+                WHERE m.chat_id=c.id AND m.deleted_at IS NULL) DESC, c.updated_at DESC, c.id
             LIMIT 1
             """, workspace.AccountId, project).FirstOrDefault()?["id"]?.ToString();
         if (recent is null) {
