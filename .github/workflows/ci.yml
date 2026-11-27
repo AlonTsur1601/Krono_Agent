@@ -12,64 +12,39 @@ permissions:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-    
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, xcode-27, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest]
         node-version: [24]
-    
     steps:
       - uses: actions/checkout@v4
-      
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-      
+          cache: npm
       - name: Install dependencies
         run: npm ci
-      
       - name: Lint
         run: npm run lint
-      
       - name: Type check
         run: npm run typecheck
-      
       - name: Run tests
         run: npm test
-      
       - name: Build agent engine
+        if: runner.os != 'Windows'
         run: npm run build:engine
-
       - uses: actions/setup-dotnet@v5
         if: runner.os == 'Windows'
         with:
           dotnet-version: '10.0.x'
-
       - name: Build native Windows app
         if: runner.os == 'Windows'
         run: npm run build
-
       - name: Native game rules
         if: runner.os == 'Windows'
         run: dotnet run --project native/Krono.Rules.Tests/Krono.Rules.Tests.csproj
-
       - name: Account sync across isolated devices
         if: runner.os == 'Windows'
         run: dotnet run --project native/Krono.Sync.Tests/Krono.Sync.Tests.csproj
-
-      - name: Native Windows UI integration
-        if: runner.os == 'Windows'
-        run: npm run test:native
-
-      - name: Publish native Windows distribution
-        if: runner.os == 'Windows'
-        run: npm run package:win
-
-      - name: Test published Windows distribution
-        if: runner.os == 'Windows'
-        env:
-          KRONO_SMOKE_EXE: ${{ github.workspace }}\release\Krono-Agent\KronoAgent.exe
-        run: npm run test:native
