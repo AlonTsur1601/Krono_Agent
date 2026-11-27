@@ -628,12 +628,12 @@ public static class PluginFixture {
     $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
     if ($windowPattern.Current.WindowVisualState -ne [Windows.Automation.WindowVisualState]::Maximized) { throw 'Krono did not open maximized' }
     Find 'EmailInput' | Out-Null
-    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'games-lifecycle', 'tray-lifecycle', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui', 'model-recovery-ui', 'markdown-ui', 'browser-feedback', 'plugins-layout', 'plugins-install-ui', 'appearance-layout', 'dropdown-empty-ui', 'desktop-notices', 'project-list-ui')) {
+    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'games-lifecycle', 'tray-lifecycle', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui', 'model-recovery-ui', 'markdown-ui', 'browser-feedback', 'plugins-layout', 'plugins-install-ui', 'appearance-layout', 'dropdown-empty-ui', 'desktop-notices', 'project-list-ui', 'project-draft-ui')) {
         SetValue 'EmailInput' 'native-fixture@example.com'
         SetValue 'PasswordInput' 'fixture-password'
         Invoke 'LoginButton'
         Find 'Sign out' -ByName | Out-Null
-        if ($env:KRONO_SMOKE_SCOPE -eq 'project-list-ui') {
+        if ($env:KRONO_SMOKE_SCOPE -in @('project-list-ui','project-draft-ui')) {
             SelectNav 'Chats'
             Invoke 'Projects' -ByName
             foreach ($name in @('Alpha project', 'Zulu project')) {
@@ -642,6 +642,46 @@ public static class PluginFixture {
                 SetValue 'ProjectName' $name
                 Invoke 'Save project' -ByName
                 Find ('New chat in ' + $name) -ByName | Out-Null
+            }
+            if ($env:KRONO_SMOKE_SCOPE -eq 'project-draft-ui') {
+                Invoke-RestMethod -Method Post ($Fixture + '/seed-project-order-chats') | Out-Null
+                function OpenOverviewProject([string]$Name) {
+                    $condition = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, $Name)
+                    $row = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) |
+                        Where-Object { $_.Current.AutomationId -like 'ProjectRow-*' } | Select-Object -First 1
+                    if (!$row) { throw "Project overview row not found: $Name" }
+                    $row.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+                }
+                OpenOverviewProject 'Zulu project'
+                Find 'What would you like to work on?' -ByName | Out-Null
+                if ((Find 'ChatProjectButton').Current.Name -ne 'Zulu project') { throw 'Empty project did not open as a draft' }
+                $name = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'New chat')
+                if ($script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, $name)) { throw 'Draft appeared in the sidebar without a message' }
+                SelectChoice 'Permissions' 'project'
+                UseFixtureModel
+                SelectConfiguredModel 'gpt-5-mini'
+                Invoke 'ComposerModelButton'
+                $effort = (Find 'Reasoning effort' -ByName).GetCurrentPattern([Windows.Automation.RangeValuePattern]::Pattern)
+                $expectedEffort = $effort.Current.Maximum
+                $effort.SetValue($expectedEffort)
+                Invoke 'ComposerModelButton'
+                Invoke '+ New chat' -ByName
+                SelectConfiguredModel 'gpt-native-fixture-model'
+                SelectChoice 'Permissions' 'ask'
+                Invoke 'New chat in Zulu project' -ByName
+                if ((Find 'ComposerModelButton').Current.Name -ne 'gpt-5-mini') { throw 'Project model was not retained' }
+                $permissions = (Find 'Permissions').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
+                if ($permissions[0].Current.Name -ne 'project') { throw 'Project permissions were not retained' }
+                Invoke 'ComposerModelButton'
+                $effort = (Find 'Reasoning effort' -ByName).GetCurrentPattern([Windows.Automation.RangeValuePattern]::Pattern)
+                if ($effort.Current.Value -ne $expectedEffort) { throw 'Project reasoning effort was not retained' }
+                Invoke 'ComposerModelButton'
+                Invoke 'Projects' -ByName
+                Find 'New project' -ByName | Out-Null
+                OpenOverviewProject 'Alpha project'
+                Find 'Most recent project message' -ByName | Out-Null
+                Write-Output 'NATIVE_SMOKE_PASS: last active project chat, unsent draft, and independent model, effort and permission defaults'
+                return
             }
             function ProjectBounds([string]$label) {
                 $condition = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, $label)
@@ -993,7 +1033,6 @@ public static class PluginFixture {
             Invoke-RestMethod -Method Post ($Fixture + '/pause-local-models') | Out-Null
             Invoke 'ComposerModelButton'
             Find 'No models available' -ByName | Out-Null
-            Capture 'native-no-model-popover.png'
             Invoke 'Model settings' -ByName
             Find 'Provider' | Out-Null
             SelectNav 'Chats'
@@ -1465,16 +1504,7 @@ public static class PluginFixture {
     Find 'OpenSideChatButton' | Out-Null
     if (!$assertions.globalOnly) { throw 'Native unassigned chat memory scope is incorrect' }
     Start-Sleep -Milliseconds 500
-    $chatList = Find 'ChatList'
-    $selectedChatRow = ($chatList.GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern)).Current.GetSelection() | Select-Object -First 1
-    if (!$selectedChatRow) {
-        $itemCondition = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)
-        $selectedChatRow = $chatList.FindFirst([Windows.Automation.TreeScope]::Descendants, $itemCondition)
-    }
-    $chatBounds = $selectedChatRow.Current.BoundingRectangle
-    [KronoWindowCapture]::SetCursorPos([int]($chatBounds.Left + $chatBounds.Width / 2), [int]($chatBounds.Top + $chatBounds.Height / 2)) | Out-Null
-    [KronoWindowCapture]::mouse_event(8, 0, 0, 0, [UIntPtr]::Zero)
-    [KronoWindowCapture]::mouse_event(16, 0, 0, 0, [UIntPtr]::Zero)
+    Invoke 'Chat actions' -ByName
     Invoke 'Delete chat' -ByName
     Find 'Delete this chat?' -ByName | Out-Null
     Invoke 'Cancel' -ByName
