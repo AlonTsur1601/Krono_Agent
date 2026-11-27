@@ -1268,3 +1268,8 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 
 - Drag project rows in Projects or Chats to change their shared order. Drag conversations within their current group and use Chat actions for explicit project moves.
 - Create a conversation directly from a project's plus button, using its last-used chat permissions or its configured default.
+
+## Chat and project controls
+
+- Reuse shared hover and flyout controls in the chat sidebar. Open a project's most recently active conversation from its project row.
+- Collapse completed actions and file changes into one expandable section and preserve UTF-8 labels in Windows acceptance tests.

@@ -82,10 +82,10 @@ public sealed partial class MainPage
     MenuFlyout ChatActions(RailEntry chat)
     {
         var menu = KronoDesign.CreateMenu();
-        var pin = new MenuFlyoutItem { Text = chat.PinLabel, Visibility = chat.PinVisibility };
-        var archive = new MenuFlyoutItem { Text = chat.ArchiveLabel };
-        var move = new MenuFlyoutItem { Text = "Move to project…" };
-        var delete = new MenuFlyoutItem { Text = "Delete chat" };
+        var pin = new MenuFlyoutItem { Text = chat.PinLabel, Visibility = chat.PinVisibility, Icon = new SymbolIcon(Symbol.Pin) };
+        var archive = new MenuFlyoutItem { Text = chat.ArchiveLabel, Icon = new SymbolIcon(Symbol.Folder) };
+        var move = new MenuFlyoutItem { Text = "Move to project…", Icon = new SymbolIcon(Symbol.MoveToFolder) };
+        var delete = new MenuFlyoutItem { Text = "Delete chat", Icon = new SymbolIcon(Symbol.Delete) };
         KronoDesign.MarkDestructive(delete);
         pin.Click += (_, _) => ToggleChatPin(chat);
         archive.Click += async (_, _) => await ToggleChatArchive(chat);
@@ -108,6 +108,13 @@ public sealed partial class MainPage
             ChatActions(chat).ShowAt(anchor);
     }
 
+    void LoadChatRailButton(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button button) return;
+        if (button.Width == 28) KronoInputMotion.StyleButton(button);
+        else KronoInputMotion.AttachFlatHover(button);
+    }
+
     void SelectVisibleChat()
     {
         loadingChatHistory = true;
@@ -120,13 +127,20 @@ public sealed partial class MainPage
     void ChatRailDisclosureClicked(object sender, RoutedEventArgs args)
     {
         if (sender is not Button { DataContext: RailEntry entry }) return;
+        AfterOrderGesture(() => {
+            if (entry.Archived) chatArchiveOpen = !chatArchiveOpen;
+            else if (!collapsedChatProjects.Add(entry.Id)) collapsedChatProjects.Remove(entry.Id);
+            ReloadChats();
+        });
+    }
+
+    void AfterOrderGesture(Action action)
+    {
         var gesture = orderGesture;
         var generation = sessionGeneration;
         DispatcherQueue.TryEnqueue(() => {
             if (gesture != orderGesture || generation != sessionGeneration) return;
-            if (entry.Archived) chatArchiveOpen = !chatArchiveOpen;
-            else if (!collapsedChatProjects.Add(entry.Id)) collapsedChatProjects.Remove(entry.Id);
-            ReloadChats();
+            try { action(); } catch (Exception error) { Error(error); }
         });
     }
 

@@ -540,9 +540,10 @@ public sealed partial class MainPage : Page
 
     Button HistoryAction(string name, FrameworkElement icon, Action action)
     {
-        var button = new Button { Style = (Style)Resources["ChatRailIconButton"], Content = icon, Width = 28, Height = 28 };
+        var button = new Button { Content = icon, Width = 28, Height = 28 };
         AutomationProperties.SetName(button, name);
         ToolTipService.SetToolTip(button, name);
+        KronoInputMotion.StyleButton(button);
         button.Click += (_, _) => action();
         return button;
     }
@@ -595,6 +596,7 @@ public sealed partial class MainPage : Page
             AutomationProperties.SetName(branch, "Side chat from this message"); header.Children.Add(branch);
         }
         box.Children.Add(header);
+        if (role != "user") AddCompletedWork(box, messageId);
         box.Children.Add(Markdown(text));
         if (role != "user") AddResponseActions(box, text, messageId);
         FrameworkElement bubble = role == "user" ? new Border { Child = box, Padding = new Thickness(18, 14, 18, 14), CornerRadius = new CornerRadius(16), Background = new SolidColorBrush(Windows.UI.Color.FromArgb(24, 143, 215, 199)), BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(60, 143, 215, 199)), BorderThickness = new Thickness(1) } : box;

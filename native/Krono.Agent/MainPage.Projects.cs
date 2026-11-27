@@ -54,12 +54,25 @@ public sealed partial class MainPage
             row.ActualThemeChanged += (_, _) => row.Background = KronoDesign.ThemeBrush("KronoSurface", row.ActualTheme);
             var icon = KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Folder);
             icon.VerticalAlignment = VerticalAlignment.Center;
-            row.Children.Add(icon);
             var title = new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-            AutomationProperties.SetAutomationId(title, "ProjectRow-" + id);
-            ToolTipService.SetToolTip(title, name);
             Grid.SetColumn(title, 1);
-            row.Children.Add(title);
+            var label = new Grid { ColumnSpacing = 10 };
+            label.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            label.ColumnDefinitions.Add(new ColumnDefinition());
+            label.Children.Add(icon);
+            label.Children.Add(title);
+            var open = Button("", () => AfterOrderGesture(() => OpenRecentProjectChat(id)));
+            open.Name = "ProjectOpenButton";
+            open.Content = label;
+            open.HorizontalAlignment = HorizontalAlignment.Stretch;
+            open.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            open.Padding = new Thickness(8, 4, 8, 4);
+            AutomationProperties.SetName(open, name);
+            AutomationProperties.SetAutomationId(open, "ProjectRow-" + id);
+            ToolTipService.SetToolTip(open, name);
+            KronoInputMotion.AttachFlatHover(open);
+            Grid.SetColumnSpan(open, 2);
+            row.Children.Add(open);
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
             var edit = Button("Edit", () => ShowProjects(id, editing: true));
             AutomationProperties.SetName(edit, "Edit project");
@@ -78,6 +91,26 @@ public sealed partial class MainPage
         page.Children.Add(rows);
         projectsOverview = KronoDesign.ScrollPage(page);
         KronoDesign.Present(Body, projectsOverview);
+    }
+
+    void OpenRecentProjectChat(string project)
+    {
+        if (runId is not null) return;
+        var recent = workspace.Query("""
+            SELECT c.id FROM chats c
+            WHERE c.account_id=$p0 AND c.project_id=$p1 AND c.deleted_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM side_chats s WHERE s.chat_id=c.id)
+            ORDER BY COALESCE((SELECT MAX(m.created_at) FROM messages m
+                WHERE m.chat_id=c.id AND m.deleted_at IS NULL), c.created_at) DESC, c.id
+            LIMIT 1
+            """, workspace.AccountId, project).FirstOrDefault()?["id"]?.ToString();
+        if (recent is null) {
+            NewProjectChat(project);
+            return;
+        }
+        chatId = recent;
+        collapsedChatProjects.Remove(project);
+        ShowChats();
     }
 
     void AddProjectEditor(StackPanel page, string? id)
