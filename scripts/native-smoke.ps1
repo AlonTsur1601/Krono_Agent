@@ -639,26 +639,84 @@ public static class PluginFixture {
                 Find 'Create project' -ByName | Out-Null
                 SetValue 'ProjectName' $name
                 Invoke 'Save project' -ByName
-                Find ('Reorder ' + $name) -ByName | Out-Null
+                Find ('New chat in ' + $name) -ByName | Out-Null
+            }
+            function ProjectBounds([string]$label) {
+                $condition = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, $label)
+                $deadline = (Get-Date).AddSeconds(5)
+                do {
+                    try {
+                        $elements = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)
+                        $visible = $elements | Where-Object { !$_.Current.IsOffscreen } |
+                            Sort-Object { $_.Current.BoundingRectangle.Left } -Descending | Select-Object -First 1
+                        if ($visible) { return $visible.Current.BoundingRectangle }
+                    } catch {
+                        if ($_.FullyQualifiedErrorId -notmatch 'ElementNotAvailableException') { throw }
+                    }
+                    Start-Sleep -Milliseconds 100
+                } while ((Get-Date) -lt $deadline)
+                throw "Project or chat row not visible: $label"
+            }
+            function DragProject($from, $to, [bool]$before) {
+                (New-Object -ComObject WScript.Shell).AppActivate($script:process.Id) | Out-Null
+                $x = [int]($from.Left + $from.Width / 2)
+                $y = [int]($from.Top + $from.Height / 2)
+                $targetX = [int]($to.Left + $to.Width / 2)
+                $targetY = [int]($to.Top + $to.Height * $(if ($before) { 0.2 } else { 0.8 }))
+                [KronoWindowCapture]::SetCursorPos($x, $y) | Out-Null
+                Start-Sleep -Milliseconds 80
+                [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+                try {
+                    foreach ($step in 1..12) {
+                        [KronoWindowCapture]::SetCursorPos([int]($x + ($targetX - $x) * $step / 12), [int]($y + ($targetY - $y) * $step / 12)) | Out-Null
+                        Start-Sleep -Milliseconds 35
+                    }
+                    Start-Sleep -Milliseconds 300
+                } finally { [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero) }
+                Start-Sleep -Milliseconds 350
             }
             function AssertProjectOrder([string]$first, [string]$second) {
-                foreach ($prefix in @('Reorder ', 'Collapse ')) {
-                    $upper = (Find ($prefix + $first) -ByName).Current.BoundingRectangle.Top
-                    $lower = (Find ($prefix + $second) -ByName).Current.BoundingRectangle.Top
+                foreach ($prefix in @('New chat in ', 'Collapse ')) {
+                    $upper = (ProjectBounds ($prefix + $first)).Top
+                    $lower = (ProjectBounds ($prefix + $second)).Top
                     if ($upper -ge $lower) { throw "Incorrect project order in $prefix" }
                 }
             }
             AssertProjectOrder 'Alpha project' 'Zulu project'
-            Invoke 'Reorder Zulu project' -ByName
-            Invoke 'Move up' -ByName
+            $zulu = ProjectBounds 'Zulu project'
+            $alpha = ProjectBounds 'Alpha project'
+            DragProject $zulu $alpha $true
             AssertProjectOrder 'Zulu project' 'Alpha project'
-            $bounds = (Find 'Collapse Zulu project' -ByName).Current.BoundingRectangle
-            [KronoWindowCapture]::SetCursorPos([int]($bounds.Left + $bounds.Width / 2), [int]($bounds.Top + $bounds.Height / 2)) | Out-Null
-            [KronoWindowCapture]::mouse_event(8, 0, 0, 0, [UIntPtr]::Zero)
-            [KronoWindowCapture]::mouse_event(16, 0, 0, 0, [UIntPtr]::Zero)
-            Invoke 'Move down' -ByName
+            DragProject (ProjectBounds 'Collapse Zulu project') (ProjectBounds 'Collapse Alpha project') $false
             AssertProjectOrder 'Alpha project' 'Zulu project'
             Capture 'native-project-list.png'
+            Invoke-RestMethod -Method Post ($Fixture + '/seed-project-order-chats') | Out-Null
+            Invoke 'Back to chat' -ByName
+            DragProject (ProjectBounds 'Alpha first') (ProjectBounds 'Alpha second') $true
+            if ((ProjectBounds 'Alpha first').Top -ge (ProjectBounds 'Alpha second').Top) { throw 'Chat drag did not change its order' }
+            DragProject (ProjectBounds 'Outside project') (ProjectBounds 'Alpha first') $true
+            DragProject (ProjectBounds 'Alpha first') (ProjectBounds 'Outside project') $false
+            if ((ProjectBounds 'Alpha first').Top -ge (ProjectBounds 'Outside project').Top) { throw 'Drag crossed the project boundary' }
+            Invoke 'New chat in Alpha project' -ByName
+            Find 'New chat' -ByName | Out-Null
+            if ((Find 'ChatProjectButton').Current.Name -ne 'Alpha project') { throw 'New chat did not open in the project' }
+            $permissions = (Find 'Permissions').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
+            if ($permissions.Count -ne 1 -or $permissions[0].Current.Name -ne 'project') { throw 'New project chat did not reuse permissions' }
+            Invoke 'Chat actions' -ByName
+            Invoke ('Move to project' + [char]0x2026) -ByName
+            Find 'ChatProjectSelector' | Out-Null
+            SelectChoice 'ChatProjectSelector' 'Zulu project'
+            Invoke 'Move' -ByName
+            $deadline = (Get-Date).AddSeconds(5)
+            do {
+                $selectedProject = (Find 'ChatProjectButton').Current.Name
+                if ($selectedProject -eq 'Zulu project') { break }
+                Start-Sleep -Milliseconds 100
+            } while ((Get-Date) -lt $deadline)
+            if ($selectedProject -ne 'Zulu project') {
+                throw 'Manual project move did not update the active chat'
+            }
+            Invoke 'Projects' -ByName
             Invoke 'Edit project' -ByName
             Find 'Edit project' -ByName | Out-Null
             Find 'Source folders' -ByName | Out-Null
@@ -667,8 +725,8 @@ public static class PluginFixture {
             Invoke ('Delete project' + [char]0x2026) -ByName
             Find 'Delete Alpha project?' -ByName | Out-Null
             Invoke 'Delete project' -ByName
-            Find 'Reorder Zulu project' -ByName | Out-Null
-            $deleted = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Reorder Alpha project')
+            Find 'New chat in Zulu project' -ByName | Out-Null
+            $deleted = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'New chat in Alpha project')
             $deadline = (Get-Date).AddSeconds(5)
             do {
                 $staleRow = $script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, $deleted)
@@ -676,7 +734,7 @@ public static class PluginFixture {
                 Start-Sleep -Milliseconds 100
             } while ((Get-Date) -lt $deadline)
             if ($staleRow) { throw 'Deleted project remained on the overview' }
-            Write-Output 'NATIVE_SMOKE_PASS: project list, two-way ordering, editing, and deletion'
+            Write-Output 'NATIVE_SMOKE_PASS: project and chat drag ordering, project boundaries, new chat permissions, manual move, and deletion'
             return
         }
         if ($env:KRONO_SMOKE_SCOPE -eq 'browser-feedback') {

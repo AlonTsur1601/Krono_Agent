@@ -1263,3 +1263,8 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 
 - List projects in full-width rows with edit and delete actions. Use the same saved order in Projects and the chat sidebar.
 - Group project editing controls and apply a shared red foreground to deletion actions.
+
+## Project and conversation drag ordering
+
+- Drag project rows in Projects or Chats to change their shared order. Drag conversations within their current group and use Chat actions for explicit project moves.
+- Create a conversation directly from a project's plus button, using its last-used chat permissions or its configured default.

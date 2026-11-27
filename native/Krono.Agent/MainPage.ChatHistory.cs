@@ -17,18 +17,18 @@ public sealed partial class MainPage
     enum RailKind { Heading, Disclosure, More, Chat }
 
     sealed record RailEntry(RailKind Kind, string Name, string Id = "", bool Indented = false,
-        bool Pinned = false, bool Archived = false, bool Expanded = false, bool Project = false, string ProjectName = "", bool Working = false)
+        bool Pinned = false, bool Archived = false, bool Expanded = false, bool Project = false, string ProjectName = "", bool Working = false, string? ProjectId = null)
     {
         public Thickness Indent => new(Indented ? 16 : 0, 0, 0, 0);
         public string ActionLabel => Kind == RailKind.Disclosure
             ? (Expanded ? "Collapse " : "Expand ") + Name
             : Name + " in " + ProjectName;
+        public string NewChatLabel => "New chat in " + Name;
+        public Visibility ProjectActionVisibility => Project ? Visibility.Visible : Visibility.Collapsed;
         public Visibility PinVisibility => Archived ? Visibility.Collapsed : Visibility.Visible;
         public Visibility WorkingVisibility => Working ? Visibility.Visible : Visibility.Collapsed;
         public string PinLabel => Pinned ? "Unpin chat" : "Pin chat";
-        public FrameworkElement PinIcon => KronoDesign.OutlineIcon(Pinned ? KronoDesign.OutlineGlyph.Unpin : KronoDesign.OutlineGlyph.Pin);
         public string ArchiveLabel => Archived ? "Restore chat" : "Archive chat";
-        public FrameworkElement ArchiveIcon => KronoDesign.OutlineIcon(Archived ? KronoDesign.OutlineGlyph.Restore : KronoDesign.OutlineGlyph.Archive);
         public FrameworkElement? Icon => Project ? KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Folder) : null;
     }
 
@@ -71,41 +71,41 @@ public sealed partial class MainPage
             row.HorizontalContentAlignment = HorizontalAlignment.Stretch;
             row.IsTabStop = entry.Kind == RailKind.Chat || entry.Project;
             row.IsHitTestVisible = entry.Kind != RailKind.Heading;
+            // Disclosure buttons paint their own hover. Conversation rows use the list's single hover surface.
+            if (entry.Kind == RailKind.Chat) row.Resources.Remove("ListViewItemBackgroundPointerOver");
+            else row.Resources["ListViewItemBackgroundPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
             AutomationProperties.SetName(row, entry.Name);
-            if (entry.Project) {
-                row.ContextFlyout = ProjectOrderMenu(() => (chatList.ItemFromContainer(row) as RailEntry)?.Id);
-                return;
-            }
-            if (entry.Kind != RailKind.Chat) {
-                row.ContextFlyout = null;
-                return;
-            }
-            var menu = KronoDesign.CreateMenu();
-            var pin = new MenuFlyoutItem();
-            var archive = new MenuFlyoutItem();
-            var delete = new MenuFlyoutItem { Text = "Delete chat" };
-            KronoDesign.MarkDestructive(delete);
-            menu.Items.Add(pin);
-            menu.Items.Add(archive);
-            menu.Items.Add(delete);
-            menu.Opening += (_, _) => {
-                if (chatList.ItemFromContainer(row) is not RailEntry chat) return;
-                pin.Text = chat.PinLabel;
-                pin.Visibility = chat.PinVisibility;
-                archive.Text = chat.ArchiveLabel;
-            };
-            pin.Click += (_, _) => {
-                if (chatList.ItemFromContainer(row) is RailEntry chat) ToggleChatPin(chat);
-            };
-            archive.Click += async (_, _) => {
-                if (chatList.ItemFromContainer(row) is RailEntry chat) await ToggleChatArchive(chat);
-            };
-            delete.Click += async (_, _) => {
-                if (chatList.ItemFromContainer(row) is not RailEntry chat) return;
-                try { await DeleteChat(chat.Id); } catch (Exception error) { Error(error); }
-            };
-            row.ContextFlyout = menu;
+            row.ContextFlyout = entry.Kind == RailKind.Chat ? ChatActions(entry) : null;
         };
+    }
+
+    MenuFlyout ChatActions(RailEntry chat)
+    {
+        var menu = KronoDesign.CreateMenu();
+        var pin = new MenuFlyoutItem { Text = chat.PinLabel, Visibility = chat.PinVisibility };
+        var archive = new MenuFlyoutItem { Text = chat.ArchiveLabel };
+        var move = new MenuFlyoutItem { Text = "Move to project…" };
+        var delete = new MenuFlyoutItem { Text = "Delete chat" };
+        KronoDesign.MarkDestructive(delete);
+        pin.Click += (_, _) => ToggleChatPin(chat);
+        archive.Click += async (_, _) => await ToggleChatArchive(chat);
+        move.Click += async (_, _) => {
+            try { await ChooseChatProject(chat.Id); } catch (Exception error) { Error(error); }
+        };
+        delete.Click += async (_, _) => {
+            try { await DeleteChat(chat.Id); } catch (Exception error) { Error(error); }
+        };
+        menu.Items.Add(pin);
+        menu.Items.Add(archive);
+        menu.Items.Add(move);
+        menu.Items.Add(delete);
+        return menu;
+    }
+
+    void ChatActionsClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is Button { DataContext: RailEntry chat } anchor)
+            ChatActions(chat).ShowAt(anchor);
     }
 
     void SelectVisibleChat()
@@ -117,21 +117,17 @@ public sealed partial class MainPage
         } finally { loadingChatHistory = false; }
     }
 
-    static void SetChatRowActions(object sender, Visibility visibility)
-    {
-        if (sender is Grid grid && grid.Children.LastOrDefault() is StackPanel actions)
-            actions.Visibility = visibility;
-    }
-
-    void ChatRowPointerEntered(object sender, PointerRoutedEventArgs args) => SetChatRowActions(sender, Visibility.Visible);
-    void ChatRowPointerExited(object sender, PointerRoutedEventArgs args) => SetChatRowActions(sender, Visibility.Collapsed);
-
     void ChatRailDisclosureClicked(object sender, RoutedEventArgs args)
     {
         if (sender is not Button { DataContext: RailEntry entry }) return;
-        if (entry.Archived) chatArchiveOpen = !chatArchiveOpen;
-        else if (!collapsedChatProjects.Add(entry.Id)) collapsedChatProjects.Remove(entry.Id);
-        ReloadChats();
+        var gesture = orderGesture;
+        var generation = sessionGeneration;
+        DispatcherQueue.TryEnqueue(() => {
+            if (gesture != orderGesture || generation != sessionGeneration) return;
+            if (entry.Archived) chatArchiveOpen = !chatArchiveOpen;
+            else if (!collapsedChatProjects.Add(entry.Id)) collapsedChatProjects.Remove(entry.Id);
+            ReloadChats();
+        });
     }
 
     void ChatRailMoreClicked(object sender, RoutedEventArgs args)
@@ -141,22 +137,12 @@ public sealed partial class MainPage
         ReloadChats();
     }
 
-    void ChatPinClicked(object sender, RoutedEventArgs args)
-    {
-        if (sender is Button { DataContext: RailEntry chat }) ToggleChatPin(chat);
-    }
-
     void ToggleChatPin(RailEntry chat)
     {
         if (runId is not null) return;
         workspace.Execute("UPDATE chats SET pinned=1-pinned, updated_at=$p0 WHERE id=$p1 AND deleted_at IS NULL AND archived=0",
             Workspace.Now, chat.Id);
         ReloadChats();
-    }
-
-    async void ChatArchiveClicked(object sender, RoutedEventArgs args)
-    {
-        if (sender is Button { DataContext: RailEntry chat }) await ToggleChatArchive(chat);
     }
 
     async Task ToggleChatArchive(RailEntry chat)
@@ -182,19 +168,21 @@ public sealed partial class MainPage
     {
         var search = chatSearchInput?.Text.Trim() ?? "";
         var searching = search.Length > 0;
+        var order = OrderPositions("native.chatOrder");
         var rows = workspace.Query("""
             SELECT c.id, c.name, p.id AS project_id, p.name AS project_name, c.pinned, c.archived
             FROM chats c
             LEFT JOIN projects p ON p.id = c.project_id AND p.deleted_at IS NULL
             WHERE c.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM side_chats side WHERE side.chat_id = c.id)
             ORDER BY c.updated_at DESC, c.id
-            """).Where(row => row["name"]!.ToString().Contains(search, StringComparison.OrdinalIgnoreCase)).ToArray();
+            """).Where(row => row["name"]!.ToString().Contains(search, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(row => order.GetValueOrDefault(row["id"]!.ToString(), -1)).ToArray();
         var entries = new List<RailEntry>();
         bool Pinned(JsonObject row) => row["pinned"]?.GetValue<long>() == 1;
         bool Archived(JsonObject row) => row["archived"]?.GetValue<long>() == 1;
         RailEntry Chat(JsonObject row, bool indent = false)
             => new(RailKind.Chat, row["name"]!.ToString(), row["id"]!.ToString(), indent, Pinned(row), Archived(row),
-                Working: row["id"]?.ToString() == (scheduledRun?.Chat ?? (runId is not null ? activityChatId : null)));
+                Working: row["id"]?.ToString() == (scheduledRun?.Chat ?? (runId is not null ? activityChatId : null)), ProjectId: row["project_id"]?.ToString());
 
         var pinned = rows.Where(row => !Archived(row) && Pinned(row)).ToArray();
         if (pinned.Length > 0) {
