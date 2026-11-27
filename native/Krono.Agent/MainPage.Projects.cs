@@ -7,6 +7,9 @@ namespace Krono_Agent;
 public sealed partial class MainPage
 {
     FrameworkElement? projectsOverview;
+    StackPanel? projectRows;
+    readonly Dictionary<string, (string Name, Grid Row)> projectRowById = [];
+    readonly TextBlock emptyProjects = new() { Text = "No projects created." };
 
     List<(string Id, string Name)> OrderedProjects()
     {
@@ -31,6 +34,11 @@ public sealed partial class MainPage
             return;
         }
 
+        if (projectsOverview is not null) {
+            RefreshProjectRows();
+            if (!ReferenceEquals(Body.Content, projectsOverview)) KronoDesign.Present(Body, projectsOverview);
+            return;
+        }
         var header = new Grid { ColumnSpacing = 12 };
         header.ColumnDefinitions.Add(new ColumnDefinition());
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -41,60 +49,94 @@ public sealed partial class MainPage
         header.Children.Add(create);
         page.Children.Add(header);
 
-        var projects = OrderedProjects();
-        var rows = new StackPanel { Spacing = 6 };
-        AutomationProperties.SetAutomationId(rows, "ProjectRows");
-        if (projects.Count == 0) rows.Children.Add(new TextBlock { Text = "No projects created." });
-        foreach (var (id, name) in projects) {
-            var row = new Grid { ColumnSpacing = 8, Padding = new Thickness(14, 9, 14, 9), MinHeight = 58, CornerRadius = new CornerRadius(10) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.ColumnDefinitions.Add(new ColumnDefinition());
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            bool hovered = false;
-            void PaintRow() => row.Background = KronoDesign.ThemeBrush(hovered ? "KronoInputFace" : "KronoSurface", row.ActualTheme);
-            PaintRow();
-            row.PointerEntered += (_, _) => { hovered = true; PaintRow(); };
-            row.PointerExited += (_, _) => { hovered = false; PaintRow(); };
-            row.ActualThemeChanged += (_, _) => PaintRow();
-            var icon = KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Folder);
-            icon.VerticalAlignment = VerticalAlignment.Center;
-            var title = new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(title, 1);
-            var label = new Grid { ColumnSpacing = 10 };
-            label.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            label.ColumnDefinitions.Add(new ColumnDefinition());
-            label.Children.Add(icon);
-            label.Children.Add(title);
-            var open = Button("", () => AfterOrderGesture(() => OpenRecentProjectChat(id)));
-            open.Name = "ProjectOpenButton";
-            open.Content = label;
-            open.HorizontalAlignment = HorizontalAlignment.Stretch;
-            open.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-            open.Padding = new Thickness(8, 4, 8, 4);
-            AutomationProperties.SetName(open, name);
-            AutomationProperties.SetAutomationId(open, "ProjectRow-" + id);
-            ToolTipService.SetToolTip(open, name);
-            open.Template = (ControlTemplate)Application.Current.Resources["KronoFlatIconTemplate"];
-            Grid.SetColumnSpan(open, 2);
-            row.Children.Add(open);
-            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
-            var edit = Button("Edit", () => ShowProjects(id, editing: true));
-            AutomationProperties.SetName(edit, "Edit project");
-            var delete = Button("Delete", () => DeleteProject(id));
-            AutomationProperties.SetName(delete, "Delete project…");
-            KronoDesign.MarkDestructive(delete);
-            EnableOrderDrag(row, () => new RailEntry(RailKind.Disclosure, name, id, Project: true));
-            var addChat = HistoryAction("New chat in " + name, new SymbolIcon(Symbol.Add), () => NewProjectChat(id));
-            actions.Children.Add(addChat);
-            actions.Children.Add(edit);
-            actions.Children.Add(delete);
-            Grid.SetColumn(actions, 2);
-            row.Children.Add(actions);
-            rows.Children.Add(row);
-        }
-        page.Children.Add(rows);
+        projectRows = new StackPanel { Spacing = 6 };
+        AutomationProperties.SetAutomationId(projectRows, "ProjectRows");
+        page.Children.Add(projectRows);
+        RefreshProjectRows();
         projectsOverview = KronoDesign.ScrollPage(page);
         KronoDesign.Present(Body, projectsOverview);
+    }
+
+    void RefreshProjectRows()
+    {
+        if (projectRows is not { } rows) return;
+        var projects = OrderedProjects();
+        var ids = projects.Select(project => project.Id).ToHashSet();
+        foreach (var id in projectRowById.Keys.Where(id => !ids.Contains(id)).ToArray()) {
+            var row = projectRowById[id].Row;
+            orderRows.Remove(row);
+            rows.Children.Remove(row);
+            projectRowById.Remove(id);
+        }
+        if (projects.Count == 0) {
+            if (!rows.Children.Contains(emptyProjects)) rows.Children.Add(emptyProjects);
+            return;
+        }
+        rows.Children.Remove(emptyProjects);
+        for (var index = 0; index < projects.Count; index++) {
+            var (id, name) = projects[index];
+            if (!projectRowById.TryGetValue(id, out var existing) || existing.Name != name) {
+                if (existing.Row is not null) {
+                    orderRows.Remove(existing.Row);
+                    rows.Children.Remove(existing.Row);
+                }
+                existing = (name, BuildProjectRow(id, name));
+                projectRowById[id] = existing;
+            }
+            var previous = rows.Children.IndexOf(existing.Row);
+            if (previous == index) continue;
+            if (previous >= 0) rows.Children.RemoveAt(previous);
+            rows.Children.Insert(index, existing.Row);
+        }
+    }
+
+    Grid BuildProjectRow(string id, string name)
+    {
+        var row = new Grid { ColumnSpacing = 8, Padding = new Thickness(14, 9, 14, 9), MinHeight = 58, CornerRadius = new CornerRadius(10) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        bool hovered = false;
+        void PaintRow() => row.Background = KronoDesign.ThemeBrush(hovered ? "KronoInputFace" : "KronoSurface", row.ActualTheme);
+        PaintRow();
+        row.PointerEntered += (_, _) => { hovered = true; PaintRow(); };
+        row.PointerExited += (_, _) => { hovered = false; PaintRow(); };
+        row.ActualThemeChanged += (_, _) => PaintRow();
+        var icon = KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Folder);
+        icon.VerticalAlignment = VerticalAlignment.Center;
+        var title = new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(title, 1);
+        var label = new Grid { ColumnSpacing = 10 };
+        label.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        label.ColumnDefinitions.Add(new ColumnDefinition());
+        label.Children.Add(icon);
+        label.Children.Add(title);
+        var open = Button("", () => AfterOrderGesture(() => OpenRecentProjectChat(id)));
+        open.Name = "ProjectOpenButton";
+        open.Content = label;
+        open.HorizontalAlignment = HorizontalAlignment.Stretch;
+        open.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        open.Padding = new Thickness(8, 4, 8, 4);
+        AutomationProperties.SetName(open, name);
+        AutomationProperties.SetAutomationId(open, "ProjectRow-" + id);
+        ToolTipService.SetToolTip(open, name);
+        open.Template = (ControlTemplate)Application.Current.Resources["KronoFlatIconTemplate"];
+        Grid.SetColumnSpan(open, 2);
+        row.Children.Add(open);
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+        var edit = Button("Edit", () => ShowProjects(id, editing: true));
+        AutomationProperties.SetName(edit, "Edit project");
+        var delete = Button("Delete", () => DeleteProject(id));
+        AutomationProperties.SetName(delete, "Delete project…");
+        KronoDesign.MarkDestructive(delete);
+        EnableOrderDrag(row, () => new RailEntry(RailKind.Disclosure, name, id, Project: true));
+        var addChat = HistoryAction("New chat in " + name, new SymbolIcon(Symbol.Add), () => NewProjectChat(id));
+        actions.Children.Add(addChat);
+        actions.Children.Add(edit);
+        actions.Children.Add(delete);
+        Grid.SetColumn(actions, 2);
+        row.Children.Add(actions);
+        return row;
     }
 
     void OpenRecentProjectChat(string project)
@@ -221,7 +263,7 @@ public sealed partial class MainPage
         }
         if (draftProject == id) draftProject = null;
         ReloadChats();
-        ShowProjects();
+        RefreshProjectRows();
         ShowNotice($"Deleted {title}.");
     }
 

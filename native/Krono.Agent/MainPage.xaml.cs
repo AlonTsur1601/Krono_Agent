@@ -22,7 +22,7 @@ public sealed partial class MainPage : Page
     JsonNode? approvalDetails;
     ContentDialog? approvalDialog;
     string? activityChatId;
-    string provider = "openai", model = "", mode = "chat", permissions = "ask";
+    string provider = "openai", model = "", mode = "agent", permissions = "ask";
     readonly ListView chatList = new() { Width = 220, SelectionMode = ListViewSelectionMode.Single };
     readonly StackPanel messages = new() { Spacing = 20, MaxWidth = 850, HorizontalAlignment = HorizontalAlignment.Left, FlowDirection = FlowDirection.LeftToRight };
     readonly Grid welcomeChat = new() { ColumnSpacing = 12, MaxWidth = 520, Margin = new Thickness(20, 0, 20, 0),
@@ -83,7 +83,7 @@ public sealed partial class MainPage : Page
             catch (Exception error) { Error(error); }
             finally { StartupProgress.IsActive = false; StartupProgress.Visibility = Visibility.Collapsed; if (Nav.Visibility != Visibility.Visible) SignIn.Visibility = Visibility.Visible; }
         };
-        Unloaded += (_, _) => { HideError(); confirmationWait?.Cancel(); sessionGeneration++; sessionTimer.Stop(); StopSync(); StopSchedules(); sideChat?.Dispose(); worker?.Dispose(); browser?.Dispose(); terminal?.Dispose(); games?.Dispose(); workspace.Dispose(); };
+        Unloaded += (_, _) => { HideError(); confirmationWait?.Cancel(); sessionGeneration++; sessionTimer.Stop(); modelDiscoveryTimer.Stop(); StopSync(); StopSchedules(); sideChat?.Dispose(); worker?.Dispose(); browser?.Dispose(); terminal?.Dispose(); games?.Dispose(); workspace.Dispose(); };
     }
     async void Login(object sender, RoutedEventArgs e) => await Authenticate(false);
     async void SignInWithGoogle(object sender, RoutedEventArgs e)
@@ -246,7 +246,9 @@ public sealed partial class MainPage : Page
         ConfigureWorkspaceWorker(worker);
         SignIn.Visibility = Visibility.Collapsed; Nav.Visibility = Visibility.Visible;
         provider = workspace.Setting("native.provider"); if (provider.Length == 0) provider = "openai";
-        model = workspace.Setting("native.model." + provider); if (model.Length == 0 && !CompatibleEndpoint) { model = workspace.Setting("native.model"); workspace.SetSetting("native.model." + provider, model); workspace.SetSetting("native.model", ""); } KronoDesign.ApplyTypography(workspace, this); ApplyTheme(workspace.Setting("native.theme"));
+        model = workspace.Setting("native.model." + provider); if (model.Length == 0 && !CompatibleEndpoint) { model = workspace.Setting("native.model"); workspace.SetSetting("native.model." + provider, model); workspace.SetSetting("native.model", ""); }
+        if (IsLocalModelProvider(provider)) model = "";
+        KronoDesign.ApplyTypography(workspace, this); ApplyTheme(workspace.Setting("native.theme"));
         foreach (var id in ProviderCatalog.Ids.Where(ProviderCatalog.Compatible)) {
             if (workspace.Setting("native.tools." + id) != "true") continue;
             var previousModel = workspace.Setting("native.model." + id); var key = "native.tools." + id + "." + previousModel;
@@ -257,6 +259,9 @@ public sealed partial class MainPage : Page
         workspace.FlushSideTransfers(); ShowChats();
         if (workspace.IsOfflineSession) progress.Text = "Offline · local workspace restored; account validation will retry.";
         sessionTimer.Start();
+        modelDiscoveryTimer.Tick -= RetryChatModel;
+        modelDiscoveryTimer.Tick += RetryChatModel;
+        modelDiscoveryTimer.Start();
         accountSyncTimer.Start(); _ = SyncAccount(false);
         scheduleTimer.Start();
     }
@@ -293,13 +298,17 @@ public sealed partial class MainPage : Page
                 contextOpen = true;
                 sectionChangedThisDispatch = true;
                 DispatcherQueue.TryEnqueue(() => sectionChangedThisDispatch = false);
-                ShowContext(null);
+                if (section is not ("chats" or "settings" or "schedule")) ShowContext(null);
             }
             if (item.Tag?.ToString() != "chats") SetSideChatVisible(false);
             switch (item.Tag?.ToString()) {
                 case "chats": ShowChats(); break;
                 case "projects": ShowProjects(); break;
-                case "settings": ShowSettings(); break;
+                case "settings":
+                    var category = nextSettingsCategory;
+                    nextSettingsCategory = null;
+                    ShowSettings(category);
+                    break;
                 case "browser": browser ??= new BrowserWorkspace(workspace, this); DetachWorkspace(browser); browser.SetBrowserHost(split: false); KronoDesign.Present(Body, browser); break;
                 case "terminal": terminal ??= new TerminalWorkspace(worker!); DetachWorkspace(terminal); KronoDesign.Present(Body, terminal); break;
                 case "games": games ??= new GamesWorkspace(workspace); KronoDesign.Present(Body, games); break;
@@ -312,6 +321,7 @@ public sealed partial class MainPage : Page
     async Task Leave(bool allDevices)
     {
         sessionGeneration++;
+        modelDiscoveryTimer.Stop();
         StopSync();
         StopSchedules();
         ClearApprovalDetails();
@@ -319,7 +329,14 @@ public sealed partial class MainPage : Page
         sessionTimer.Stop(); worker?.Dispose(); worker = null; browser?.Dispose(); browser = null; terminal?.Dispose(); terminal = null; games?.Dispose(); games = null;
         try { await workspace.Logout(allDevices); }
         finally {
-            chatId = runId = loadedContext = approvalId = draftProject = null; Body.Content = null; chatList.ItemsSource = null; chatList.IsEnabled = true; RefreshComposerAction();
+            chatId = runId = loadedContext = approvalId = draftProject = null; Body.Content = null;
+            loadingChatHistory = true;
+            try { chatRailEntries.Clear(); }
+            finally { loadingChatHistory = false; }
+            foreach (var row in projectRowById.Values) orderRows.Remove(row.Row);
+            projectRows?.Children.Clear();
+            projectsOverview = null; projectRows = null; projectRowById.Clear();
+            chatList.IsEnabled = true; RefreshComposerAction();
             collapsedChatProjects.Clear();
             expandedChatProjects.Clear();
             chatArchiveOpen = false;
@@ -329,10 +346,11 @@ public sealed partial class MainPage : Page
             splitWorkspace = null; SideBody.Content = null; SetSideChatVisible(false);
             runActions.Clear(); runChanges.Clear(); fileChanges = null; fileText = null;
             ClearAttachments();
-            mode = "chat"; permissions = "ask"; if (modeSelector is not null) modeSelector.SelectedItem = mode; if (permissionSelector is not null) permissionSelector.SelectedItem = permissions;
+            mode = "agent"; permissions = "ask"; if (modeSelector is not null) modeSelector.SelectedItem = mode; if (permissionSelector is not null) permissionSelector.SelectedItem = permissions;
             activityChatId = null; RunActivity.IsOpen = false; Approval.IsOpen = false;
             HideError();
             discoveredModels.Clear();
+            absentLocalModel = null;
             Nav.Visibility = Visibility.Collapsed; SignIn.Visibility = Visibility.Visible;
         }
     }
@@ -406,6 +424,8 @@ public sealed partial class MainPage : Page
                 draftProject = chatId is null ? draftProject : workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).FirstOrDefault()?["project_id"]?.ToString();
                 CloseSideChat();
                 chatId = null;
+                mode = "agent";
+                if (modeSelector is not null) modeSelector.SelectedItem = mode;
                 chatList.SelectedItem = null;
                 if (!ReferenceEquals(Body.Content, chatView)) ShowChats();
                 else LoadChat();
@@ -702,7 +722,19 @@ public sealed partial class MainPage : Page
         if (key.Length == 0 && ProviderCatalog.RequiresKey(provider, endpoint?.AbsoluteUri ?? "")) throw new InvalidOperationException("Save this provider's API key in Settings first.");
         return key;
     }
-    void ShowSettings()
+    string? nextSettingsCategory;
+
+    void OpenModelSettings()
+    {
+        var item = Nav.FooterMenuItems.OfType<NavigationViewItem>().First(entry => entry.Tag is "settings");
+        if (ReferenceEquals(Nav.SelectedItem, item)) ShowSettings("Models");
+        else {
+            nextSettingsCategory = "Models";
+            Nav.SelectedItem = item;
+        }
+    }
+
+    void ShowSettings(string? category = null)
     {
         var pages = new Dictionary<string, StackPanel>();
         StackPanel AddCategory(string name)
@@ -763,6 +795,7 @@ public sealed partial class MainPage : Page
             workspace.SetSetting("native.provider", provider);
             secret.Password = "";
             model = workspace.Setting("native.model." + provider);
+            if (IsLocalModelProvider(provider)) model = "";
             ListModels(ModelChoices(provider, [], model, false));
             RefreshChatModelLabel();
             ShowKeyField();
@@ -952,7 +985,8 @@ public sealed partial class MainPage : Page
             }
             KronoDesign.Present(page, views[selected]);
         };
-        categories.SelectedIndex = 0;
+        if (category is null) categories.SelectedIndex = 0;
+        else categories.SelectedItem = category;
         KronoDesign.Present(Body, page);
     }
 }

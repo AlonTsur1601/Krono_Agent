@@ -1279,3 +1279,11 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Track the dragged row vertically, show an insertion marker, and clamp drops to the active group.
 - Default project conversations to recent activity. Preserve the displayed order when switching to Manual and insert new conversations at the top.
 - Share project and conversation row backgrounds, animate hover lift, and use the hand cursor on site controls.
+
+## Sidebar and model picker follow-up
+
+- [x] Tint the dragged project or conversation using the theme's hover color.
+- [x] Shrink the sidebar while its content slides out.
+- [x] Style the reasoning popover and link its empty state directly to Models.
+- [x] Restore available local models automatically and default new chats to Agent.
+- [x] Apply project and conversation list changes to the existing views.

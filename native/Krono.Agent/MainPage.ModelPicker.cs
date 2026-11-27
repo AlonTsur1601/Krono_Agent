@@ -9,6 +9,9 @@ namespace Krono_Agent;
 public sealed partial class MainPage
 {
     readonly Dictionary<string, JsonArray> discoveredModels = new(StringComparer.Ordinal);
+    readonly DispatcherTimer modelDiscoveryTimer = new() { Interval = TimeSpan.FromSeconds(5) };
+    bool discoveringChatModel;
+    (string Provider, string Model)? absentLocalModel;
     readonly TextBlock currentModelLabel = new() { VerticalAlignment = VerticalAlignment.Center, MaxWidth = 150, TextTrimming = TextTrimming.CharacterEllipsis };
 
     HashSet<string> HiddenModels(string providerId)
@@ -20,6 +23,41 @@ public sealed partial class MainPage
     string ChatReasoningKey => $"native.reasoning.{provider}.{model}";
     string ChatFastModeKey => $"native.fastMode.{provider}.{model}";
     static bool IsReasoningEffort(string? value) => value is "none" or "low" or "medium" or "high" or "xhigh" or "max";
+
+    bool IsLocalModelProvider(string id) => ProviderCatalog.AutomaticLocal(id) || Uri.TryCreate(
+        workspace.Setting("native.endpoint." + id) is { Length: > 0 } custom ? custom : ProviderCatalog.Endpoint(id),
+        UriKind.Absolute, out var endpoint) && ProviderCatalog.Local(endpoint);
+
+    async void RetryChatModel(object? sender, object args)
+    {
+        if (choosingModel || discoveringChatModel || runId is not null || !ReferenceEquals(Body.Content, chatView)) return;
+        if (model.Length == 0) await SelectInitialModel();
+        else if (IsLocalModelProvider(provider)) await RefreshLocalChatModels();
+    }
+
+    async Task<JsonArray> RefreshLocalChatModels()
+    {
+        var id = provider;
+        var previousModel = model;
+        var initialChat = chatId;
+        var generation = sessionGeneration;
+        if (discoveringChatModel) return discoveredModels.GetValueOrDefault(id) ?? [];
+        discoveringChatModel = true;
+        try {
+            JsonArray available;
+            try { available = await DiscoverModels(id, refresh: true); }
+            catch (Exception error) when (error is InvalidOperationException or IOException or OperationCanceledException) { available = []; }
+            if (generation == sessionGeneration && id == provider && model == previousModel && chatId == initialChat &&
+                runId is null && ReferenceEquals(Body.Content, chatView) &&
+                !ModelChoices(id, available, "", false).Contains(model, StringComparer.Ordinal)) {
+                absentLocalModel = (id, model);
+                model = "";
+                ChooseDefaultModel(available);
+                RefreshChatModelLabel();
+            }
+            return available;
+        } finally { discoveringChatModel = false; }
+    }
 
     void RefreshChatModelLabel()
     {
@@ -54,24 +92,38 @@ public sealed partial class MainPage
     {
         var initialProvider = provider;
         var generation = sessionGeneration;
-        var useLocalIfAvailable = workspace.Setting("native.provider").Length == 0;
-        if (model.Length > 0 || chatId is not null || !ReferenceEquals(Body.Content, chatView)) return;
-        var candidate = useLocalIfAvailable ? "local" : initialProvider;
+        var initialChat = chatId;
+        bool Current() => generation == sessionGeneration && provider == initialProvider && model.Length == 0 &&
+            chatId == initialChat && ReferenceEquals(Body.Content, chatView);
+        if (discoveringChatModel || worker is null || !Current()) return;
+        discoveringChatModel = true;
         try {
-            var available = await DiscoverModels(candidate);
-            if (generation != sessionGeneration || provider != initialProvider || model.Length > 0 ||
-                available.Count == 0 || chatId is not null || !ReferenceEquals(Body.Content, chatView) || useLocalIfAvailable && workspace.Setting("native.provider").Length != 0) return;
-            provider = candidate;
-            ChooseDefaultModel(available);
-        } catch (Exception error) when (error is InvalidOperationException or IOException or OperationCanceledException) { }
+            var candidates = workspace.Setting("native.provider").Length == 0 && initialProvider != "local"
+                ? new[] { initialProvider, "local" } : [initialProvider];
+            foreach (var candidate in candidates) {
+                JsonArray available;
+                try { available = await DiscoverModels(candidate, refresh: IsLocalModelProvider(candidate)); }
+                catch (Exception error) when (error is InvalidOperationException or IOException or OperationCanceledException) { continue; }
+                if (!Current()) return;
+                if (available.Count == 0) continue;
+                provider = candidate;
+                ChooseDefaultModel(available);
+                return;
+            }
+        } finally { discoveringChatModel = false; }
     }
 
     void ChooseDefaultModel(JsonArray available)
     {
         if (model.Length != 0) return;
-        var first = ModelChoices(provider, available, "", false).FirstOrDefault();
+        var choices = ModelChoices(provider, available, "", false);
+        var remembered = absentLocalModel is { } absent && absent.Provider == provider
+            ? absent.Model : workspace.Setting("native.model." + provider);
+        var first = choices.Contains(remembered, StringComparer.Ordinal) ? remembered : choices.FirstOrDefault();
         if (first is null) return;
         model = first;
+        absentLocalModel = null;
+        if (emptyReasoningFlyout) reasoningFlyout?.Hide();
         RefreshChatModelLabel();
     }
 
@@ -79,12 +131,14 @@ public sealed partial class MainPage
     {
         if (selected.Length == 0) return;
         model = selected;
+        absentLocalModel = null;
         workspace.SetSetting("native.provider", provider);
         workspace.SetSetting("native.model." + provider, model);
         RefreshChatModelLabel();
     }
 
     Flyout? reasoningFlyout;
+    bool emptyReasoningFlyout;
     bool choosingModel;
     async Task ChooseChatModel()
     {
@@ -92,15 +146,27 @@ public sealed partial class MainPage
         if (reasoningFlyout is not null) { reasoningFlyout.Hide(); return; }
         choosingModel = true;
         try {
-            var id = provider;
             var generation = sessionGeneration;
+            if (model.Length == 0) await SelectInitialModel();
+            var id = provider;
             var available = discoveredModels.GetValueOrDefault(id) ?? [];
-            if (available.Count == 0 || ProviderCatalog.AutomaticLocal(id)) {
+            if (model.Length > 0 && IsLocalModelProvider(id)) available = await RefreshLocalChatModels();
+            else if (model.Length > 0 && available.Count == 0) {
                 try { available = await DiscoverModels(id); }
-                catch (Exception error) { Error(error); }
+                catch (Exception error) when (error is InvalidOperationException or IOException or OperationCanceledException) { }
             }
-            if (generation != sessionGeneration || id != provider || !modelChoice.IsLoaded) return;
-            ChooseDefaultModel(available);
+            if (generation != sessionGeneration || id != provider || !ReferenceEquals(Body.Content, chatView) || !modelChoice.IsLoaded) return;
+            var panel = new StackPanel { Width = 270, Spacing = 10 };
+            if (model.Length == 0) {
+                panel.Children.Add(new TextBlock { Text = "No models available", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+                panel.Children.Add(new TextBlock { Text = "Add a model in Settings to start a conversation.", TextWrapping = TextWrapping.Wrap });
+                panel.Children.Add(Button("Model settings", () => {
+                    reasoningFlyout?.Hide();
+                    OpenModelSettings();
+                }));
+                ShowReasoningFlyout(panel, empty: true);
+                return;
+            }
             var capabilities = available.FirstOrDefault(item => item?["id"]?.ToString() == model)?["capabilities"];
             var supportsEffort = capabilities?["supportsReasoningEffort"]?.GetValue<bool>() == true;
             var levels = capabilities?["reasoningEfforts"]?.AsArray().Select(entry => entry?.ToString())
@@ -111,14 +177,13 @@ public sealed partial class MainPage
             }).ToArray();
             var saved = workspace.Setting(ChatReasoningKey);
             var initial = Array.FindIndex(efforts, name => name.Equals(saved, StringComparison.OrdinalIgnoreCase));
-            var panel = new StackPanel { Width = 286, Spacing = 8 };
             var advanced = Button("Advanced…", async () => {
                 reasoningFlyout?.Hide();
                 await ChooseAdvancedModel(id, generation, available);
             });
             if (supportsEffort) panel.Children.Add(KronoDesign.DiscreteSlider("Reasoning effort", labels, Math.Max(0, initial),
                 index => workspace.SetSetting(ChatReasoningKey, efforts[index])));
-            else panel.Children.Add(new TextBlock { Text = model.Length == 0 ? "Choose a model in Advanced." : "This model manages its reasoning effort.", TextWrapping = TextWrapping.Wrap });
+            else panel.Children.Add(new TextBlock { Text = "This model manages its reasoning effort.", TextWrapping = TextWrapping.Wrap });
             if (capabilities?["supportsFastMode"]?.GetValue<bool>() == true) {
                 var fast = KronoDesign.Toggle("Fast mode", workspace.Setting(ChatFastModeKey) == "true");
                 ToolTipService.SetToolTip(fast, "Uses the provider’s higher-priced priority processing tier.");
@@ -126,16 +191,27 @@ public sealed partial class MainPage
                 panel.Children.Add(fast);
             }
             panel.Children.Add(advanced);
-            AutomationProperties.SetAutomationId(panel, "ReasoningPanel");
-            var flyout = new Flyout {
-                Content = panel,
-                Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft
-            };
-            flyout.Closed += (_, _) => { if (ReferenceEquals(reasoningFlyout, flyout)) reasoningFlyout = null; };
-            reasoningFlyout = flyout;
-            KronoDesign.RefreshTypography(panel);
-            flyout.ShowAt(modelChoice);
+            ShowReasoningFlyout(panel);
         } finally { choosingModel = false; }
+    }
+
+    void ShowReasoningFlyout(StackPanel panel, bool empty = false)
+    {
+        AutomationProperties.SetAutomationId(panel, "ReasoningPanel");
+        var flyout = new Flyout {
+            Content = panel,
+            FlyoutPresenterStyle = (Style)Application.Current.Resources["KronoPopoverPresenter"],
+            Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft
+        };
+        flyout.Closed += (_, _) => {
+            if (!ReferenceEquals(reasoningFlyout, flyout)) return;
+            reasoningFlyout = null;
+            emptyReasoningFlyout = false;
+        };
+        reasoningFlyout = flyout;
+        emptyReasoningFlyout = empty;
+        KronoDesign.RefreshTypography(panel);
+        flyout.ShowAt(modelChoice);
     }
 
     async Task ChooseAdvancedModel(string id, int generation, JsonArray available)

@@ -176,7 +176,7 @@ public sealed partial class MainPage
         var current = rows[from];
         var delta = Math.Clamp(pointer.Y - dragStart.Y, rows[0].Top - current.Top,
             Math.Max(0, rows[^1].Top + rows[^1].Height - current.Top - current.Height));
-        var slotY = Math.Clamp(pointer.Y, rows[0].Top, rows[^1].Top + rows[^1].Height);
+        var slotY = current.Top + current.Height / 2 + delta;
         var destination = from;
         if (delta < 0) {
             while (destination > 0 && slotY <= rows[destination - 1].Top + rows[destination - 1].Height / 2) destination--;
@@ -210,7 +210,13 @@ public sealed partial class MainPage
         orderGhost.Background = KronoDesign.ThemeBrush("KronoSurface", ActualTheme);
         orderGhost.Width = row.ActualWidth;
         orderGhost.Height = row.ActualHeight;
-        orderGhost.Child = new Image { Source = image, Stretch = Stretch.Fill };
+        var preview = new Grid();
+        preview.Children.Add(new Image { Source = image, Stretch = Stretch.Fill });
+        preview.Children.Add(new Border {
+            Background = KronoDesign.ThemeBrush("KronoOutlineHover", row.ActualTheme),
+            CornerRadius = orderGhost.CornerRadius, Opacity = .32
+        });
+        orderGhost.Child = preview;
         Canvas.SetLeft(orderGhost, position.X);
         Canvas.SetTop(orderGhost, orderOriginTop + offset);
         OrderOverlay.Children.Add(orderGhost);
@@ -260,9 +266,8 @@ public sealed partial class MainPage
         if (!ids.Contains(target.Id) || !ids.Remove(source.Id)) return;
         ids.Insert(ids.IndexOf(target.Id) + (before ? 0 : 1), source.Id);
         workspace.SetSetting(key, string.Join(" ", ids));
-        var overview = source.Project && ReferenceEquals(Body.Content, projectsOverview);
         ReloadChats();
-        if (overview) ShowProjects();
+        if (source.Project) RefreshProjectRows();
     }
 
     async Task ChooseChatProject(string? target)
@@ -310,7 +315,7 @@ public sealed partial class MainPage
                 ?? workspace.ProjectPreferences(project)["permissions"]?.ToString() ?? "ask";
         }
         var newChat = workspace.CreateChat(project);
-        workspace.SaveChatOptions(newChat, new(provider, model, mode, last, workspace.Setting(ChatReasoningKey),
+        workspace.SaveChatOptions(newChat, new(provider, model, "agent", last, workspace.Setting(ChatReasoningKey),
             workspace.Setting("native.chatContext"), workspace.Setting(ChatFastModeKey) == "true"));
         CloseSideChat();
         draftProject = project;

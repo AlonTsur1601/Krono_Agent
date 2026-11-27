@@ -70,7 +70,9 @@ public sealed partial class MainPage
         if (games is not null && !ReferenceEquals(Body.Content, games)) { games.DiscardCachedView(); games = null; }
         KronoDesign.ApplyTypography(workspace, this); ApplyTheme(workspace.Setting("native.theme"));
         if (chatId is not null && workspace.Query("SELECT id FROM chats WHERE id=$p0 AND deleted_at IS NULL", chatId).Count == 0) chatId = null;
-        if (ReferenceEquals(Body.Content, chatView)) { ReloadChats(); LoadChat(); }
+        if (ReferenceEquals(Body.Content, chatView) || ReferenceEquals(Body.Content, projectsOverview)) ReloadChats();
+        if (ReferenceEquals(Body.Content, chatView)) LoadChat();
+        if (projectsOverview is not null) RefreshProjectRows();
     }
     async Task ReviewSyncConflict()
     {

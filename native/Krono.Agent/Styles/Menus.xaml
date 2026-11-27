@@ -9,4 +9,13 @@
         <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
         <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
     </Style>
+    <Style x:Key="KronoPopoverPresenter" TargetType="FlyoutPresenter">
+        <Setter Property="Background" Value="{ThemeResource KronoSurface}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource KronoBorder}" />
+        <Setter Property="BorderThickness" Value="1,1,1,3" />
+        <Setter Property="CornerRadius" Value="14" />
+        <Setter Property="Padding" Value="16" />
+        <Setter Property="FontFamily" Value="{ThemeResource KronoTextFont}" />
+        <Setter Property="FontSize" Value="{ThemeResource KronoTextSize}" />
+    </Style>
 </ResourceDictionary>

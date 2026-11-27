@@ -35,6 +35,7 @@ function complete(response, text) {
 }
 let agentBrowserRan = false, profilesSeparate = false, agentCookiePresent = false
 let trayResponse = null
+let recoveryModelAvailable = true
 const server = http.createServer((request, response) => {
   const rest = request.url.match(/^\/rest\/v1\/([a-z_]+)\?/)
   if (rest) {
@@ -184,6 +185,17 @@ const server = http.createServer((request, response) => {
   else if (request.url === '/expire-side') { fixtureDb(db => db.prepare('UPDATE side_chats SET expires_at=?').run(Date.now() - 1)); response.end('ok') }
   else if (request.url === '/release-parent') { for (const held of heldParents) complete(held, 'Native parent continued.'); heldParents.clear(); response.end('ok') }
   else if (request.url === '/local/v1/models') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ data: ['local-fixture-model', 'basic-fixture-model', 'native-keyboard-model'].map(id => ({ id })) })) }
+  else if (request.url === '/seed-model-recovery' && request.method === 'POST') {
+    fixtureDb(db => db.prepare('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)')
+      .run('native.endpoint.ollama', 'http://127.0.0.1:' + server.address().port + '/recovery/v1'))
+    response.end('ok')
+  }
+  else if (request.url === '/pause-local-models' && request.method === 'POST') { recoveryModelAvailable = false; response.end('ok') }
+  else if (request.url === '/restore-local-models' && request.method === 'POST') { recoveryModelAvailable = true; response.end('ok') }
+  else if (request.url === '/recovery/v1/models') {
+    response.setHeader('Content-Type', 'application/json')
+    response.end(JSON.stringify({ data: recoveryModelAvailable ? [{ id: 'fixture-first' }, { id: 'fixture-preferred' }] : [] }))
+  }
   else if (request.url === '/local/v1/chat/completions') {
     let body = ''; request.on('data', chunk => body += chunk); request.on('end', () => {
       const input = JSON.parse(body)

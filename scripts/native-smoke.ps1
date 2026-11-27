@@ -626,7 +626,7 @@ public static class PluginFixture {
     $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
     if ($windowPattern.Current.WindowVisualState -ne [Windows.Automation.WindowVisualState]::Maximized) { throw 'Krono did not open maximized' }
     Find 'EmailInput' | Out-Null
-    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'games-lifecycle', 'tray-lifecycle', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui', 'markdown-ui', 'browser-feedback', 'plugins-layout', 'plugins-install-ui', 'appearance-layout', 'dropdown-empty-ui', 'desktop-notices', 'project-list-ui')) {
+    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'games-lifecycle', 'tray-lifecycle', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui', 'model-recovery-ui', 'markdown-ui', 'browser-feedback', 'plugins-layout', 'plugins-install-ui', 'appearance-layout', 'dropdown-empty-ui', 'desktop-notices', 'project-list-ui')) {
         SetValue 'EmailInput' 'native-fixture@example.com'
         SetValue 'PasswordInput' 'fixture-password'
         Invoke 'LoginButton'
@@ -745,6 +745,15 @@ public static class PluginFixture {
             Find 'Source folders' -ByName | Out-Null
             Capture 'native-project-editor.png'
             Invoke 'Cancel' -ByName
+            function ZuluRowRuntimeId {
+                $zuluName = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Zulu project')
+                $row = $script:window.FindAll([Windows.Automation.TreeScope]::Descendants, $zuluName) |
+                    Where-Object { $_.Current.AutomationId -like 'ProjectRow-*' } | Select-Object -First 1
+                if (!$row) { throw 'Zulu project row not found on the overview' }
+                return ($row.GetRuntimeId() -join ',')
+            }
+            Find 'New project' -ByName | Out-Null
+            $zuluRowId = ZuluRowRuntimeId
             Invoke ('Delete project' + [char]0x2026) -ByName
             Find 'Delete Alpha project?' -ByName | Out-Null
             Invoke 'Delete project' -ByName
@@ -757,6 +766,8 @@ public static class PluginFixture {
                 Start-Sleep -Milliseconds 100
             } while ((Get-Date) -lt $deadline)
             if ($staleRow) { throw 'Deleted project remained on the overview' }
+            $remainingRowId = ZuluRowRuntimeId
+            if ($remainingRowId -ne $zuluRowId) { throw 'Deleting a project rebuilt the unaffected project row' }
             Write-Output 'NATIVE_SMOKE_PASS: project and chat drag ordering, project boundaries, new chat permissions, manual move, and deletion'
             return
         }
@@ -967,6 +978,27 @@ public static class PluginFixture {
             Invoke 'Send' -ByName
             Find 'Automatically discovered local model replied.' -ByName | Out-Null
             Write-Output 'NATIVE_SMOKE_PASS: first detected local model, manual selection, and routed completion'
+            return
+        }
+        if ($env:KRONO_SMOKE_SCOPE -eq 'model-recovery-ui') {
+            Invoke-RestMethod -Method Post ($Fixture + '/seed-model-recovery') | Out-Null
+            SelectNav 'Settings'
+            SelectSettingsCategory 'Models'
+            SelectChoice 'Provider' 'Ollama'
+            SelectChoice 'ModelSelector' 'fixture-preferred'
+            SelectNav 'Chats'
+            $mode = (Find 'Mode').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
+            if ($mode.Count -ne 1 -or $mode[0].Current.Name -ne 'agent') { throw 'New chats did not default to Agent mode' }
+            Invoke-RestMethod -Method Post ($Fixture + '/pause-local-models') | Out-Null
+            Invoke 'Choose model' -ByName
+            Find 'No models available' -ByName | Out-Null
+            Capture 'native-no-model-popover.png'
+            Invoke 'Model settings' -ByName
+            Find 'ModelSelector' | Out-Null
+            SelectNav 'Chats'
+            Invoke-RestMethod -Method Post ($Fixture + '/restore-local-models') | Out-Null
+            Find 'fixture-preferred' -ByName | Out-Null
+            Write-Output 'NATIVE_SMOKE_PASS: Agent default, empty model settings link, and automatic restoration of the preferred local model'
             return
         }
         if ($env:KRONO_SMOKE_SCOPE -in @('plugins-ui', 'plugins-layout', 'plugins-install-ui')) {
@@ -1287,6 +1319,8 @@ public static class PluginFixture {
             return
         }
         if ($env:KRONO_SMOKE_SCOPE -eq 'menus-ui') {
+            UseFixtureModel
+            SelectNav 'Chats'
             Invoke 'Choose model' -ByName
             Find 'Advanced…' -ByName | Out-Null
             Capture 'native-model-dialog.png'

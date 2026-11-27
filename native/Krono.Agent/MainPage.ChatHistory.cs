@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using System.Collections.ObjectModel;
 
 namespace Krono_Agent;
 
@@ -13,6 +14,7 @@ public sealed partial class MainPage
     readonly HashSet<string> expandedChatProjects = new(StringComparer.Ordinal);
     KronoTextBox? chatSearchInput;
     bool loadingChatHistory, chatArchiveOpen;
+    readonly ObservableCollection<RailEntry> chatRailEntries = [];
 
     enum RailKind { Heading, Disclosure, More, Chat }
 
@@ -52,6 +54,7 @@ public sealed partial class MainPage
         chatList.ActualThemeChanged += (_, _) => PaintAccent();
         KronoInputMotion.RegisterPaletteRefresh(chatList, PaintAccent);
         chatList.ItemTemplateSelector = new ChatRailTemplates(Resources);
+        chatList.ItemsSource = chatRailEntries;
         chatList.SelectionChanged += (_, _) => {
             if (loadingChatHistory || runId is not null) return;
             if (chatList.SelectedItem is not RailEntry { Kind: RailKind.Chat } chat) {
@@ -238,13 +241,27 @@ public sealed partial class MainPage
             if (chatArchiveOpen) entries.AddRange(archived.Select(row => Chat(row)));
         }
 
-        var scroll = KronoInputMotion.Descendants(chatList).OfType<ScrollViewer>().FirstOrDefault();
-        var offset = scroll?.VerticalOffset ?? 0;
         loadingChatHistory = true;
-        try { chatList.ItemsSource = entries; }
+        try {
+            // Identify a row independently of its label, position, or running status.
+            static (RailKind, string, bool) Key(RailEntry entry) =>
+                (entry.Kind, entry.Id.Length > 0 ? entry.Id : entry.Name, entry.Archived && entry.Kind == RailKind.Disclosure);
+            var keep = entries.Select(Key).ToHashSet();
+            for (var i = chatRailEntries.Count - 1; i >= 0; i--)
+                if (!keep.Contains(Key(chatRailEntries[i]))) chatRailEntries.RemoveAt(i);
+            for (var i = 0; i < entries.Count; i++) {
+                var entry = entries[i];
+                var key = Key(entry);
+                var existing = i;
+                while (existing < chatRailEntries.Count && Key(chatRailEntries[existing]) != key) existing++;
+                if (existing == chatRailEntries.Count) chatRailEntries.Insert(i, entry);
+                else {
+                    if (existing != i) chatRailEntries.Move(existing, i);
+                    if (chatRailEntries[i] != entry) chatRailEntries[i] = entry;
+                }
+            }
+        }
         finally { loadingChatHistory = false; }
         SelectVisibleChat();
-        if (scroll is not null && offset > 0)
-            DispatcherQueue.TryEnqueue(() => scroll.ChangeView(null, offset, null, true));
     }
 }

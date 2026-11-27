@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Media.Animation;
 using Windows.UI.ViewManagement;
 
 namespace Krono_Agent;
@@ -15,6 +16,8 @@ public sealed partial class MainPage
     bool contextOpen = true;
     bool contextVisible;
     int contextTransition;
+    Storyboard? contextWidthMotion;
+    bool clearContextWhenHidden;
 
     void ShowContext(FrameworkElement? content)
     {
@@ -38,8 +41,9 @@ public sealed partial class MainPage
         visual.StartAnimation("Translation", motion);
     }
 
-    async void RefreshContextVisibility(bool? hasContent = null)
+    void RefreshContextVisibility(bool? hasContent = null)
     {
+        if (hasContent is not null) clearContextWhenHidden = hasContent == false;
         var show = contextOpen && (hasContent ?? ContextBody.Content is not null);
         if (show == contextVisible) {
             if (hasContent == false && ContextRail.Visibility == Visibility.Collapsed) ContextBody.Content = null;
@@ -48,6 +52,9 @@ public sealed partial class MainPage
         contextVisible = show;
         var transition = ++contextTransition;
         var wasVisible = ContextRail.Visibility == Visibility.Visible;
+        var startWidth = wasVisible ? ContextRail.Width : 0;
+        contextWidthMotion?.Stop();
+        ContextRail.Width = startWidth;
         var visual = ElementCompositionPreview.GetElementVisual(ContextScroll);
         ElementCompositionPreview.SetIsTranslationEnabled(ContextScroll, true);
         var railVisual = ElementCompositionPreview.GetElementVisual(ContextRail);
@@ -55,28 +62,49 @@ public sealed partial class MainPage
 
         ContextRail.IsHitTestVisible = show;
         if (show) {
-            ContextRail.Width = 252;
             ContextRail.Visibility = Visibility.Visible;
             WorkspaceSurface.CornerRadius = new CornerRadius(0);
         }
-        if (hasContent != false && new UISettings().AnimationsEnabled && (show || wasVisible)) {
+        if (new UISettings().AnimationsEnabled && (show || wasVisible)) {
+            const int duration = 175;
             var motion = visual.Compositor.CreateVector3KeyFrameAnimation();
             if (show && !wasVisible) motion.InsertKeyFrame(0, new(-24, 0, 0));
             else motion.InsertExpressionKeyFrame(0, "this.StartingValue");
             motion.InsertKeyFrame(1, new(show ? 0 : -24, 0, 0),
                 visual.Compositor.CreateCubicBezierEasingFunction(new(.18f, .8f), new(.3f, 1)));
-            motion.Duration = TimeSpan.FromMilliseconds(175);
+            motion.Duration = TimeSpan.FromMilliseconds(duration);
             visual.StartAnimation("Translation", motion);
-            await Task.Delay(motion.Duration);
+            var width = new DoubleAnimation {
+                From = startWidth, To = show ? 252 : 0,
+                BeginTime = TimeSpan.FromMilliseconds(show ? 0 : 32),
+                Duration = new Duration(TimeSpan.FromMilliseconds(show ? duration : duration - 32)),
+                EnableDependentAnimation = true,
+                EasingFunction = new CubicEase { EasingMode = show ? EasingMode.EaseOut : EasingMode.EaseIn }
+            };
+            var storyboard = new Storyboard();
+            Storyboard.SetTarget(width, ContextRail);
+            Storyboard.SetTargetProperty(width, "Width");
+            storyboard.Children.Add(width);
+            contextWidthMotion = storyboard;
+            storyboard.Completed += (_, _) => Finish();
+            storyboard.Begin();
+            return;
         }
-        if (transition != contextTransition) return;
-        visual.StopAnimation("Translation");
-        visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
-        if (!show) {
-            ContextRail.Width = 0;
-            ContextRail.Visibility = Visibility.Collapsed;
-            WorkspaceSurface.CornerRadius = new CornerRadius(14, 0, 0, 0);
-            if (hasContent == false) ContextBody.Content = null;
+        Finish();
+
+        void Finish()
+        {
+            if (transition != contextTransition) return;
+            contextWidthMotion?.Stop();
+            contextWidthMotion = null;
+            ContextRail.Width = show ? 252 : 0;
+            visual.StopAnimation("Translation");
+            visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
+            if (!show) {
+                ContextRail.Visibility = Visibility.Collapsed;
+                WorkspaceSurface.CornerRadius = new CornerRadius(14, 0, 0, 0);
+                if (clearContextWhenHidden) ContextBody.Content = null;
+            }
         }
     }
 
