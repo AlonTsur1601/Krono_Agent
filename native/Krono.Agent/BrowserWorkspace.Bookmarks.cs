@@ -110,6 +110,7 @@ public sealed partial class BrowserWorkspace
         var edit = new MenuFlyoutItem { Text = "Edit bookmark" };
         edit.Click += async (_, _) => await EditBookmark(BookmarkKey(new Uri(visit.Url)), visit);
         var delete = new MenuFlyoutItem { Text = "Delete bookmark" };
+        KronoDesign.MarkDestructive(delete);
         delete.Click += (_, _) => RemoveBookmark(visit);
         menu.Add(edit);
         menu.Add(delete);

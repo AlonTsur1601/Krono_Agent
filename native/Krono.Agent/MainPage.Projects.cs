@@ -6,55 +6,111 @@ namespace Krono_Agent;
 
 public sealed partial class MainPage
 {
+    FrameworkElement? projectsOverview;
+
+    List<(string Id, string Name)> OrderedProjects()
+    {
+        var positions = workspace.Setting("native.projectOrder").Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Distinct(StringComparer.Ordinal).Select((id, index) => (id, index)).ToDictionary(item => item.id, item => item.index);
+        return workspace.Query("SELECT id,name FROM projects WHERE account_id=$p0 AND deleted_at IS NULL ORDER BY name COLLATE NOCASE,id", workspace.AccountId)
+            .Select(row => (Id: row["id"]!.ToString(), Name: row["name"]!.ToString()))
+            .OrderBy(project => positions.GetValueOrDefault(project.Id, int.MaxValue)).ToList();
+    }
+
+    void MoveProject(string id, int direction)
+    {
+        var projects = OrderedProjects();
+        var index = projects.FindIndex(project => project.Id == id);
+        var target = index + direction;
+        if (index < 0 || target < 0 || target >= projects.Count) return;
+        (projects[index], projects[target]) = (projects[target], projects[index]);
+        workspace.SetSetting("native.projectOrder", string.Join(" ", projects.Select(project => project.Id)));
+        ReloadChats();
+        if (ReferenceEquals(Body.Content, projectsOverview)) ShowProjects();
+    }
+
+    MenuFlyout ProjectOrderMenu(Func<string?> projectId)
+    {
+        var menu = KronoDesign.CreateMenu();
+        var up = new MenuFlyoutItem { Text = "Move up" };
+        var down = new MenuFlyoutItem { Text = "Move down" };
+        menu.Items.Add(up);
+        menu.Items.Add(down);
+        menu.Opening += (_, _) => {
+            var projects = OrderedProjects();
+            var index = projects.FindIndex(project => project.Id == projectId());
+            up.IsEnabled = index > 0;
+            down.IsEnabled = index >= 0 && index < projects.Count - 1;
+        };
+        up.Click += (_, _) => { if (projectId() is { } id) MoveProject(id, -1); };
+        down.Click += (_, _) => { if (projectId() is { } id) MoveProject(id, 1); };
+        return menu;
+    }
+
     void ShowProjects(string? selectedProject = null, bool editing = false)
     {
         if (backToChats is not null) backToChats.Visibility = Visibility.Visible;
         SetSideChatVisible(false);
-        var projects = workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name,id");
-        var page = new StackPanel { Spacing = 14, MaxWidth = 780, HorizontalAlignment = HorizontalAlignment.Stretch };
-        page.Children.Add(Heading("Projects"));
-        if (projects.Count == 0 && !editing) {
-            page.Children.Add(new TextBlock { Text = "No projects created.", TextWrapping = TextWrapping.Wrap });
-            page.Children.Add(Button("New project", () => ShowProjects(editing: true)));
-        } else if (editing) {
-            AddProjectEditor(page, selectedProject);
-        } else {
-            var picker = new KronoComboBox {
-                Header = "Project", ItemsSource = projects.Select(row => row["name"]!.ToString()).ToArray()
-            };
-            AutomationProperties.SetAutomationId(picker, "ProjectPicker");
-            var summary = new StackPanel { Spacing = 7 };
-            void ShowSelection()
-            {
-                if (picker.SelectedIndex < 0) return;
-                var id = projects[picker.SelectedIndex]["id"]!.ToString();
-                summary.Children.Clear();
-                var folders = workspace.Query("SELECT path FROM project_directories WHERE project_id=$p0 ORDER BY path", id);
-                if (folders.Count == 0) summary.Children.Add(new TextBlock { Text = "No project folders." });
-                foreach (var folder in folders)
-                    summary.Children.Add(new TextBlock { Text = folder["path"]!.ToString(), TextWrapping = TextWrapping.Wrap });
-            }
-            picker.SelectionChanged += (_, _) => ShowSelection();
-            picker.SelectedIndex = Math.Max(0, projects.FindIndex(row => row["id"]!.ToString() == selectedProject));
-            page.Children.Add(picker);
-            page.Children.Add(summary);
-            page.Children.Add(Button("Edit project", () => {
-                if (picker.SelectedIndex >= 0) ShowProjects(projects[picker.SelectedIndex]["id"]!.ToString(), editing: true);
-            }));
-            page.Children.Add(Button("New project", () => ShowProjects(editing: true)));
-        }
-        FrameworkElement content = page;
+        var page = new StackPanel { Spacing = 14 };
         if (editing) {
-            var layout = new Grid { FlowDirection = FlowDirection.LeftToRight };
-            layout.ColumnDefinitions.Add(new ColumnDefinition { MaxWidth = page.MaxWidth });
+            page.Children.Add(Heading(selectedProject is null ? "Create project" : "Edit project"));
+            AddProjectEditor(page, selectedProject);
+            var layout = new Grid();
+            layout.ColumnDefinitions.Add(new ColumnDefinition { MaxWidth = 780 });
             layout.Children.Add(page);
-            content = new ScrollViewer {
-                Content = layout,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-            };
+            KronoDesign.Present(Body, KronoDesign.ScrollPage(layout));
+            return;
         }
-        KronoDesign.Present(Body, KronoDesign.ScrollPage(content));
+
+        var header = new Grid { ColumnSpacing = 12 };
+        header.ColumnDefinitions.Add(new ColumnDefinition());
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.Children.Add(Heading("Projects"));
+        var create = Button("New project", () => ShowProjects(editing: true));
+        create.Style = (Style)Application.Current.Resources["KronoPrimaryButton"];
+        Grid.SetColumn(create, 1);
+        header.Children.Add(create);
+        page.Children.Add(header);
+
+        var projects = OrderedProjects();
+        var rows = new StackPanel { Spacing = 6 };
+        AutomationProperties.SetAutomationId(rows, "ProjectRows");
+        if (projects.Count == 0) rows.Children.Add(new TextBlock { Text = "No projects created." });
+        foreach (var (id, name) in projects) {
+            var row = new Grid { ColumnSpacing = 8, Padding = new Thickness(14, 9, 14, 9), MinHeight = 58, CornerRadius = new CornerRadius(10) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.Background = KronoDesign.ThemeBrush("KronoSurface", ActualTheme);
+            row.ActualThemeChanged += (_, _) => row.Background = KronoDesign.ThemeBrush("KronoSurface", row.ActualTheme);
+            var icon = KronoDesign.OutlineIcon(KronoDesign.OutlineGlyph.Folder);
+            icon.VerticalAlignment = VerticalAlignment.Center;
+            row.Children.Add(icon);
+            var title = new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            AutomationProperties.SetAutomationId(title, "ProjectRow-" + id);
+            ToolTipService.SetToolTip(title, name);
+            Grid.SetColumn(title, 1);
+            row.Children.Add(title);
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+            var edit = Button("Edit", () => ShowProjects(id, editing: true));
+            AutomationProperties.SetName(edit, "Edit project");
+            var delete = Button("Delete", () => DeleteProject(id));
+            AutomationProperties.SetName(delete, "Delete project…");
+            KronoDesign.MarkDestructive(delete);
+            var order = new Button { Content = "⋯" };
+            AutomationProperties.SetName(order, "Reorder " + name);
+            ToolTipService.SetToolTip(order, "Change project order");
+            order.Flyout = ProjectOrderMenu(() => id);
+            actions.Children.Add(order);
+            actions.Children.Add(edit);
+            actions.Children.Add(delete);
+            Grid.SetColumn(actions, 2);
+            row.Children.Add(actions);
+            rows.Children.Add(row);
+        }
+        page.Children.Add(rows);
+        projectsOverview = KronoDesign.ScrollPage(page);
+        KronoDesign.Present(Body, projectsOverview);
     }
 
     void AddProjectEditor(StackPanel page, string? id)
@@ -69,6 +125,7 @@ public sealed partial class MainPage
         var folders = id is null ? new List<string>() : workspace.Query(
             "SELECT path FROM project_directories WHERE project_id=$p0 ORDER BY path", id)
             .Select(row => row["path"]!.ToString()).ToList();
+        page.Children.Add(new TextBlock { Text = "Source folders", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         var rows = new StackPanel { Spacing = 6 };
         void RefreshFolders()
         {
@@ -79,6 +136,7 @@ public sealed partial class MainPage
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 row.Children.Add(new TextBlock { Text = path, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
                 var remove = Button("Remove folder", () => { folders.Remove(path); RefreshFolders(); });
+                KronoDesign.MarkDestructive(remove);
                 row.Children.Add(remove);
                 Grid.SetColumn(remove, 1);
                 rows.Children.Add(row);
@@ -124,13 +182,16 @@ public sealed partial class MainPage
                     workspace.SetSetting("project." + project, config.ToJsonString());
                     workspace.Execute("COMMIT");
                 } catch { workspace.Execute("ROLLBACK"); throw; }
-                ShowProjects(project);
+                ReloadChats();
+                ShowProjects();
             } catch (Exception error) { Error(error); }
         }
-        page.Children.Add(Button("Save project", async () => await Save()));
-        page.Children.Add(Button("Cancel", () => ShowProjects(id)));
-        if (id is not null)
-            page.Children.Add(Button("Delete project…", () => DeleteProject(id)));
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8 };
+        actions.Children.Add(Button("Cancel", () => ShowProjects()));
+        var save = Button("Save project", Save);
+        save.Style = (Style)Application.Current.Resources["KronoPrimaryButton"];
+        actions.Children.Add(save);
+        page.Children.Add(actions);
     }
 
     async Task DeleteProject(string id)
@@ -141,7 +202,7 @@ public sealed partial class MainPage
             .FirstOrDefault()?["name"]?.ToString();
         if (title is null || !await Confirm($"Delete {title}?",
                 "Conversations will move out of this project, scheduled tasks linked to it will pause, and files on disk will be kept.",
-                "Delete project") || generation != sessionGeneration) return;
+                "Delete project", destructive: true) || generation != sessionGeneration) return;
 
         var now = Workspace.Now;
         workspace.Execute("BEGIN");

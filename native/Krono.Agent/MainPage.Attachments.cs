@@ -105,7 +105,9 @@ public sealed partial class MainPage
         if (pastedImage is not null) {
             var image = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
             image.Children.Add(new TextBlock { Text = "Clipboard image · sent with this message", VerticalAlignment = VerticalAlignment.Center });
-            image.Children.Add(Button("Remove image", () => { pastedImage = null; RenderAttachments(); }));
+            var removeImage = Button("Remove image", () => { pastedImage = null; RenderAttachments(); });
+            KronoDesign.MarkDestructive(removeImage);
+            image.Children.Add(removeImage);
             attachmentTray.Children.Add(image);
         }
         if (attachments.Count == 0) return;
@@ -113,7 +115,7 @@ public sealed partial class MainPage
         foreach (var file in attachments) {
             var chip = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
             chip.Children.Add(new TextBlock { Text = $"{file.Name} · {(file.Bytes / 1024.0):0.#} KB", TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 310, VerticalAlignment = VerticalAlignment.Center });
-            var remove = Button("Remove", () => { attachments.Remove(file); RenderAttachments(); }); AutomationProperties.SetName(remove, "Remove " + file.Name); chip.Children.Add(remove); attachmentTray.Children.Add(chip);
+            var remove = Button("Remove", () => { attachments.Remove(file); RenderAttachments(); }); KronoDesign.MarkDestructive(remove); AutomationProperties.SetName(remove, "Remove " + file.Name); chip.Children.Add(remove); attachmentTray.Children.Add(chip);
         }
     }
 }

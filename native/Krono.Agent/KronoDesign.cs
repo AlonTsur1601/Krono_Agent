@@ -359,10 +359,20 @@ public static class KronoDesign
         visual.StartAnimation("Translation", motion);
     }
 
+    internal static void MarkDestructive(Control control)
+    {
+        void Refresh() => control.Foreground = ThemeBrush("KronoDangerForeground", control.ActualTheme);
+        Refresh();
+        control.Loaded += (_, _) => Refresh();
+        control.ActualThemeChanged += (_, _) => Refresh();
+        KronoInputMotion.RegisterPaletteRefresh(control, Refresh);
+    }
+
     internal static Grid ScrollPage(FrameworkElement content, string background = "KronoBackground")
     {
         var root = new Grid();
-        var scroll = content as ScrollViewer ?? new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var scroll = content as ScrollViewer ?? new ScrollViewer { Content = content,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         root.Children.Add(scroll);
         var top = new Border { Height = 14, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
         var bottom = new Border { Height = 14, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false };

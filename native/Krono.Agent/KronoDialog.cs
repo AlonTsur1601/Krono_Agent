@@ -10,6 +10,7 @@ namespace Krono_Agent;
 
 internal sealed class KronoDialog : ContentDialog
 {
+    internal bool DestructivePrimary { get; init; }
     public KronoDialog()
     {
         if (MainWindow.Instance?.Content is FrameworkElement root)
@@ -47,6 +48,8 @@ internal sealed class KronoDialog : ContentDialog
     protected override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
+        if (DestructivePrimary && GetTemplateChild("PrimaryButton") is Button primary)
+            KronoDesign.MarkDestructive(primary);
         if (GetTemplateChild("Container") is not FrameworkElement container) return;
         var defaults = VisualStateManager.GetVisualStateGroups(container)
             .FirstOrDefault(group => group.Name == "DefaultButtonStates");

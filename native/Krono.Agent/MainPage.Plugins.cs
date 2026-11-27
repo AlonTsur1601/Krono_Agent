@@ -127,13 +127,12 @@ public sealed partial class MainPage
             var remove = Button("", async () => {
                 var generation = sessionGeneration;
                 if (changingPlugin is not null || pluginOperation is not null) return;
-                if (!await Confirm("Remove " + plugin.Name + "?", "Krono will stop using this plugin and clear its saved connection on this computer.", "Remove plugin") || generation != sessionGeneration) return;
+                if (!await Confirm("Remove " + plugin.Name + "?", "Krono will stop using this plugin and clear its saved connection on this computer.", "Remove plugin", destructive: true) || generation != sessionGeneration) return;
                 await ChangePlugin(plugin, false);
             });
             remove.Style = actionStyle;
             remove.Content = new SymbolIcon(Symbol.Delete);
-            remove.Foreground = KronoDesign.ThemeBrush("KronoDangerForeground", card.ActualTheme);
-            card.ActualThemeChanged += (_, _) => remove.Foreground = KronoDesign.ThemeBrush("KronoDangerForeground", card.ActualTheme);
+            KronoDesign.MarkDestructive(remove);
             AutomationProperties.SetName(remove, "Remove " + plugin.Name);
             ToolTipService.SetToolTip(remove, "Remove " + plugin.Name);
             AutomationProperties.SetAutomationId(remove, "PluginRemove-" + plugin.Id);

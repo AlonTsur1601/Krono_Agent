@@ -336,9 +336,10 @@ public sealed partial class MainPage : Page
             Nav.Visibility = Visibility.Collapsed; SignIn.Visibility = Visibility.Visible;
         }
     }
-    public async Task<bool> Confirm(string title, string message, string action = "Allow")
+    public async Task<bool> Confirm(string title, string message, string action = "Allow", bool destructive = false)
     {
-        var dialog = new KronoDialog { XamlRoot = XamlRoot, Title = title, Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap }, PrimaryButtonText = action, CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
+        var dialog = new KronoDialog { XamlRoot = XamlRoot, Title = title, Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap }, PrimaryButtonText = action, CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close, DestructivePrimary = destructive };
+        if (destructive) dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["KronoButton"];
         KronoDesign.ApplyControlAccents(dialog);
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
@@ -550,7 +551,7 @@ public sealed partial class MainPage : Page
     {
         var account = workspace.AccountId;
         if (runId is not null || scheduledRun?.Chat == id) return;
-        if (!await Confirm("Delete this chat?", "This conversation will be removed from your history.", "Delete chat")) return;
+        if (!await Confirm("Delete this chat?", "This conversation will be removed from your history.", "Delete chat", destructive: true)) return;
         if (workspace.AccountId != account || runId is not null || scheduledRun?.Chat == id) return;
         workspace.Execute("UPDATE chats SET deleted_at=$p0 WHERE id=$p1", Workspace.Now, id);
         if (chatId == id) chatId = null;
@@ -946,7 +947,7 @@ public sealed partial class MainPage : Page
         sidebar.Children.Add(categories);
         ShowContext(sidebar);
         var page = new ContentControl { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
-        var modelScroll = new ScrollViewer { Content = modelPanel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var modelScroll = new ScrollViewer { Content = modelPanel, HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         modelScroll.SizeChanged += (_, args) => modelPanel.Width = Math.Min(modelPanel.MaxWidth, args.NewSize.Width);
         var views = pages.ToDictionary(entry => entry.Key,
             entry => KronoDesign.ScrollPage(entry.Key == "Models" ? modelScroll : entry.Value));
