@@ -442,28 +442,7 @@ public sealed partial class MainPage : Page
                 MarkFullAccess(permissionBox, value);
             };
             ToolTipService.SetToolTip(permissionSelector, "Ask: approve changes/commands. Project: bounded file tools; no shell or desktop execution. Full: supplied tools run with your Windows account.");
-            chatProjectButton = Button("Project…", async () => {
-                if (runId is not null) return;
-                var target = chatId;
-                var generation = sessionGeneration;
-                var currentProject = target is null ? draftProject :
-                    workspace.Query("SELECT project_id FROM chats WHERE id=$p0", target).FirstOrDefault()?["project_id"]?.ToString();
-                var projects = workspace.Query("SELECT id,name FROM projects WHERE deleted_at IS NULL ORDER BY name");
-                var selector = new KronoComboBox {
-                    MinWidth = 260,
-                    ItemsSource = new[] { "No project" }.Concat(projects.Select(p => p["name"]!.ToString())).ToArray(),
-                    SelectedIndex = projects.FindIndex(p => p["id"]?.ToString() == currentProject) + 1,
-                };
-                AutomationProperties.SetAutomationId(selector, "ChatProjectSelector");
-                var dialog = new KronoDialog { XamlRoot = XamlRoot, Title = target is null ? "Choose project for new chat" : "Move chat to project", Content = selector, PrimaryButtonText = target is null ? "Choose" : "Move", CloseButtonText = "Cancel" };
-                if (await dialog.ShowAsync() != ContentDialogResult.Primary ||
-                    generation != sessionGeneration || target != chatId || runId is not null) return;
-                var project = selector.SelectedIndex > 0 ? projects[selector.SelectedIndex - 1]["id"]!.ToString() : null;
-                if (project == currentProject) return;
-                if (target is null) draftProject = project;
-                else workspace.Execute("UPDATE chats SET project_id=$p0,updated_at=$p1 WHERE id=$p2 AND deleted_at IS NULL", project, Workspace.Now, target);
-                LoadChat();
-            });
+            chatProjectButton = Button("Project…", () => ChooseChatProject(chatId));
             AutomationProperties.SetAutomationId(chatProjectButton, "ChatProjectButton");
             toolbar.Children.Add(chatProjectButton);
             var transcriptArea = new Grid();
@@ -641,12 +620,13 @@ public sealed partial class MainPage : Page
             var context = workspace.Setting("native.chatContext");
             var fastMode = workspace.Setting(ChatFastModeKey) == "true";
             workspace.SaveChatOptions(chatId, new(provider, model, mode, permissions, reasoning, context, fastMode));
+            var project = workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).First()["project_id"]?.ToString();
+            if (project is not null) workspace.SetSetting("native.lastProjectPermission." + project, permissions);
             var messageId = workspace.AddMessage(chatId, "user", text);
             composer.Text = ""; ClearAttachments();
             if (workspace.Query("SELECT id FROM messages WHERE chat_id=$p0", chatId).Count == 1) workspace.Execute("UPDATE chats SET name=$p0 WHERE id=$p1", title[..Math.Min(42, title.Length)], chatId);
             LoadChat(); ReloadChats(); streaming = new TextBlock { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontFamily = (FontFamily)Application.Current.Resources["KronoTextFont"], FontSize = (double)Application.Current.Resources["KronoTextSize"], LineHeight = 24 }; messages.Children.Add(streaming);
             responseBuffer.Clear(); streamDirty = false; streamTimer.Start(); BeginRunSummary();
-            var project = workspace.Query("SELECT project_id FROM chats WHERE id=$p0", chatId).First()["project_id"]?.ToString();
             var dirs = project is null ? [] : workspace.Query("SELECT path FROM project_directories WHERE project_id=$p0", project).Select(p => p["path"]!.ToString()).ToArray();
             var memories = workspace.Query("SELECT content FROM memories WHERE deleted_at IS NULL AND (project_id IS NULL OR project_id=$p0)", project).Select(p => p["content"]!.ToString()).ToArray();
             runId = Guid.NewGuid().ToString(); RefreshComposerAction(); chatList.IsEnabled = false; progress.Text = "Preparing response…";

@@ -10,41 +10,10 @@ public sealed partial class MainPage
 
     List<(string Id, string Name)> OrderedProjects()
     {
-        var positions = workspace.Setting("native.projectOrder").Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Distinct(StringComparer.Ordinal).Select((id, index) => (id, index)).ToDictionary(item => item.id, item => item.index);
+        var positions = OrderPositions("native.projectOrder");
         return workspace.Query("SELECT id,name FROM projects WHERE account_id=$p0 AND deleted_at IS NULL ORDER BY name COLLATE NOCASE,id", workspace.AccountId)
             .Select(row => (Id: row["id"]!.ToString(), Name: row["name"]!.ToString()))
             .OrderBy(project => positions.GetValueOrDefault(project.Id, int.MaxValue)).ToList();
-    }
-
-    void MoveProject(string id, int direction)
-    {
-        var projects = OrderedProjects();
-        var index = projects.FindIndex(project => project.Id == id);
-        var target = index + direction;
-        if (index < 0 || target < 0 || target >= projects.Count) return;
-        (projects[index], projects[target]) = (projects[target], projects[index]);
-        workspace.SetSetting("native.projectOrder", string.Join(" ", projects.Select(project => project.Id)));
-        ReloadChats();
-        if (ReferenceEquals(Body.Content, projectsOverview)) ShowProjects();
-    }
-
-    MenuFlyout ProjectOrderMenu(Func<string?> projectId)
-    {
-        var menu = KronoDesign.CreateMenu();
-        var up = new MenuFlyoutItem { Text = "Move up" };
-        var down = new MenuFlyoutItem { Text = "Move down" };
-        menu.Items.Add(up);
-        menu.Items.Add(down);
-        menu.Opening += (_, _) => {
-            var projects = OrderedProjects();
-            var index = projects.FindIndex(project => project.Id == projectId());
-            up.IsEnabled = index > 0;
-            down.IsEnabled = index >= 0 && index < projects.Count - 1;
-        };
-        up.Click += (_, _) => { if (projectId() is { } id) MoveProject(id, -1); };
-        down.Click += (_, _) => { if (projectId() is { } id) MoveProject(id, 1); };
-        return menu;
     }
 
     void ShowProjects(string? selectedProject = null, bool editing = false)
@@ -97,11 +66,9 @@ public sealed partial class MainPage
             var delete = Button("Delete", () => DeleteProject(id));
             AutomationProperties.SetName(delete, "Delete project…");
             KronoDesign.MarkDestructive(delete);
-            var order = new Button { Content = "⋯" };
-            AutomationProperties.SetName(order, "Reorder " + name);
-            ToolTipService.SetToolTip(order, "Change project order");
-            order.Flyout = ProjectOrderMenu(() => id);
-            actions.Children.Add(order);
+            EnableOrderDrag(row, () => new RailEntry(RailKind.Disclosure, name, id, Project: true));
+            var addChat = HistoryAction("New chat in " + name, new SymbolIcon(Symbol.Add), () => NewProjectChat(id));
+            actions.Children.Add(addChat);
             actions.Children.Add(edit);
             actions.Children.Add(delete);
             Grid.SetColumn(actions, 2);

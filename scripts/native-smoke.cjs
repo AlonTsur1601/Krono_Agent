@@ -104,6 +104,18 @@ const server = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'application/json')
     response.end(JSON.stringify({ project }))
   }
+  else if (request.url === '/seed-project-order-chats' && request.method === 'POST') {
+    fixtureDb(db => {
+      const project = db.prepare("SELECT id,account_id FROM projects WHERE name='Alpha project'").get()
+      const insert = db.prepare('INSERT INTO chats(id,account_id,project_id,name,created_at,updated_at) VALUES(?,?,?,?,?,?)')
+      const now = Date.now()
+      insert.run('order-first', project.account_id, project.id, 'Alpha first', now, now)
+      insert.run('order-second', project.account_id, project.id, 'Alpha second', now, now + 1)
+      insert.run('order-outside', project.account_id, null, 'Outside project', now, now)
+      db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('native.lastProjectPermission.' + project.id, 'project')
+    })
+    response.end('ok')
+  }
   else if (request.url === '/seed-provider-settings' && request.method === 'POST') {
     const origin = 'http://127.0.0.1:' + server.address().port
     fixtureDb(db => {

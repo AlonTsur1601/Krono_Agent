@@ -6,9 +6,9 @@
                 <VisualStateGroup x:Name="CommonStates">
                     <VisualStateGroup.Transitions><VisualTransition GeneratedDuration="0:0:0.12"/></VisualStateGroup.Transitions>
                     <VisualState x:Name="Normal"/>
-                    <VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="Tint.Opacity" Value=".58"/></VisualState.Setters></VisualState>
+                    <VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="Tint.Opacity" Value="1"/></VisualState.Setters></VisualState>
                     <VisualState x:Name="Pressed"><VisualState.Setters>
-                        <Setter Target="Tint.Opacity" Value=".78"/>
+                        <Setter Target="Tint.Opacity" Value="1"/>
                         <Setter Target="Tint.Background" Value="{ThemeResource ButtonBackgroundPressed}"/>
                     </VisualState.Setters></VisualState>
                     <VisualState x:Name="Disabled"><VisualState.Setters><Setter Target="Face.Opacity" Value=".45"/></VisualState.Setters></VisualState>
@@ -30,16 +30,24 @@
         <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
     </DataTemplate>
     <DataTemplate x:Key="ChatRailDisclosure">
-        <Button Template="{StaticResource ChatRailAction}" Click="ChatRailDisclosureClicked"
-                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="34" Padding="13,0,6,0"
-                AutomationProperties.Name="{Binding ActionLabel}">
-            <Grid ColumnSpacing="8">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
-                <ContentPresenter Content="{Binding Icon}" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="14" FontWeight="SemiBold"
-                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            </Grid>
-        </Button>
+        <Grid ColumnSpacing="3" Loaded="RailOrderRowLoaded" Background="Transparent">
+            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Button x:Name="RailDisclosureButton" Template="{StaticResource ChatRailAction}" Click="ChatRailDisclosureClicked"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="34" Padding="13,0,6,0"
+                    AutomationProperties.Name="{Binding ActionLabel}">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <ContentPresenter Content="{Binding Icon}" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="14" FontWeight="SemiBold"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </Grid>
+            </Button>
+            <Button Grid.Column="1" Style="{StaticResource ChatRailIconButton}" Width="28" Height="28"
+                    Visibility="{Binding ProjectActionVisibility}" Click="NewRailProjectChat"
+                    AutomationProperties.Name="{Binding NewChatLabel}" ToolTipService.ToolTip="{Binding NewChatLabel}">
+                <SymbolIcon Symbol="Add"/>
+            </Button>
+        </Grid>
     </DataTemplate>
     <DataTemplate x:Key="ChatRailMore">
         <Button Template="{StaticResource ChatRailAction}" Click="ChatRailMoreClicked" Content="{Binding Name}"
@@ -47,19 +55,13 @@
                 AutomationProperties.Name="{Binding ActionLabel}"/>
     </DataTemplate>
     <DataTemplate x:Key="ChatRailConversation">
-        <Grid Background="Transparent" MinHeight="34" ColumnSpacing="8" Margin="{Binding Indent}"
-              PointerEntered="ChatRowPointerEntered" PointerExited="ChatRowPointerExited">
+        <Grid Background="Transparent" MinHeight="34" ColumnSpacing="8" Margin="{Binding Indent}" Loaded="RailOrderRowLoaded">
             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
             <ProgressRing Grid.Column="1" Width="13" Height="13" Foreground="{ThemeResource KronoAccentForeground}" Visibility="{Binding WorkingVisibility}" IsActive="{Binding Working}" AutomationProperties.Name="Agent working"/>
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" Visibility="Collapsed">
-                <Button Style="{StaticResource ChatRailIconButton}" Width="24" Height="24" Click="ChatPinClicked"
-                        Content="{Binding PinIcon}" Visibility="{Binding PinVisibility}" AutomationProperties.Name="{Binding PinLabel}"
-                        ToolTipService.ToolTip="{Binding PinLabel}"/>
-                <Button Style="{StaticResource ChatRailIconButton}" Width="24" Height="24" Click="ChatArchiveClicked"
-                        Content="{Binding ArchiveIcon}" AutomationProperties.Name="{Binding ArchiveLabel}"
-                        ToolTipService.ToolTip="{Binding ArchiveLabel}"/>
-            </StackPanel>
+            <Button Grid.Column="2" Style="{StaticResource ChatRailIconButton}" Width="28" Height="28"
+                    Content="⋯" Click="ChatActionsClicked" AutomationProperties.Name="Chat actions"
+                    ToolTipService.ToolTip="Chat actions"/>
         </Grid>
     </DataTemplate>
 </Page.Resources>
