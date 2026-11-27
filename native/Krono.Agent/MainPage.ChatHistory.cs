@@ -69,18 +69,22 @@ public sealed partial class MainPage
             row.Margin = new Thickness(0, entry.Kind is RailKind.Heading or RailKind.Disclosure ? 6 : 1, 0, 1);
             row.Padding = entry.Kind == RailKind.Disclosure ? new Thickness(0) : new Thickness(13, 0, 6, 0);
             row.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-            row.IsTabStop = entry.Kind == RailKind.Chat;
+            row.IsTabStop = entry.Kind == RailKind.Chat || entry.Project;
             row.IsHitTestVisible = entry.Kind != RailKind.Heading;
             AutomationProperties.SetName(row, entry.Name);
+            if (entry.Project) {
+                row.ContextFlyout = ProjectOrderMenu(() => (chatList.ItemFromContainer(row) as RailEntry)?.Id);
+                return;
+            }
             if (entry.Kind != RailKind.Chat) {
                 row.ContextFlyout = null;
                 return;
             }
-            if (row.ContextFlyout is not null) return;
             var menu = KronoDesign.CreateMenu();
             var pin = new MenuFlyoutItem();
             var archive = new MenuFlyoutItem();
             var delete = new MenuFlyoutItem { Text = "Delete chat" };
+            KronoDesign.MarkDestructive(delete);
             menu.Items.Add(pin);
             menu.Items.Add(archive);
             menu.Items.Add(delete);
@@ -198,16 +202,17 @@ public sealed partial class MainPage
             entries.AddRange(pinned.Select(row => Chat(row)));
         }
         var unpinned = rows.Where(row => !Archived(row) && !Pinned(row)).ToArray();
-        foreach (var project in unpinned.Where(row => row["project_id"] is not null)
-            .GroupBy(row => (Id: row["project_id"]!.ToString(), Name: row["project_name"]!.ToString()))
-            .OrderBy(group => group.Key.Name, StringComparer.OrdinalIgnoreCase)) {
-            var expanded = !collapsedChatProjects.Contains(project.Key.Id);
-            entries.Add(new(RailKind.Disclosure, project.Key.Name, project.Key.Id, Expanded: expanded, Project: true));
+        var grouped = unpinned.Where(row => row["project_id"] is not null).ToLookup(row => row["project_id"]!.ToString());
+        foreach (var (id, name) in OrderedProjects()) {
+            var project = grouped[id];
+            if (searching && !project.Any()) continue;
+            var expanded = !collapsedChatProjects.Contains(id);
+            entries.Add(new(RailKind.Disclosure, name, id, Expanded: expanded, Project: true));
             if (!expanded) continue;
-            var showAll = searching || expandedChatProjects.Contains(project.Key.Id);
+            var showAll = searching || expandedChatProjects.Contains(id);
             entries.AddRange((showAll ? project : project.Take(ProjectChatLimit)).Select(row => Chat(row, true)));
             if (!searching && project.Count() > ProjectChatLimit)
-                entries.Add(new(RailKind.More, showAll ? "Show less" : "Show more", project.Key.Id, ProjectName: project.Key.Name));
+                entries.Add(new(RailKind.More, showAll ? "Show less" : "Show more", id, ProjectName: name));
         }
         var recent = unpinned.Where(row => row["project_id"] is null).ToArray();
         if (recent.Length > 0) {

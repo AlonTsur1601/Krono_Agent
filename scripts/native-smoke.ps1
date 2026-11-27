@@ -1,4 +1,4 @@
-﻿param([string]$Executable, [string]$Fixture, [string]$ReportDirectory)
+param([string]$Executable, [string]$Fixture, [string]$ReportDirectory)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -626,11 +626,53 @@ public static class PluginFixture {
     $windowPattern = $script:window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
     if ($windowPattern.Current.WindowVisualState -ne [Windows.Automation.WindowVisualState]::Maximized) { throw 'Krono did not open maximized' }
     Find 'EmailInput' | Out-Null
-    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'games-lifecycle', 'tray-lifecycle', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui', 'markdown-ui', 'browser-feedback', 'plugins-layout', 'plugins-install-ui', 'appearance-layout', 'dropdown-empty-ui', 'desktop-notices')) {
+    if ($env:KRONO_SMOKE_SCOPE -in @('workspace-ui', 'runtime-workspaces', 'games-lifecycle', 'tray-lifecycle', 'arcade-ui', 'attachment-ui', 'menus-ui', 'settings-ui', 'visual-ui', 'navigation-ui', 'dropdown-ui', 'plugins-ui', 'local-model-ui', 'markdown-ui', 'browser-feedback', 'plugins-layout', 'plugins-install-ui', 'appearance-layout', 'dropdown-empty-ui', 'desktop-notices', 'project-list-ui')) {
         SetValue 'EmailInput' 'native-fixture@example.com'
         SetValue 'PasswordInput' 'fixture-password'
         Invoke 'LoginButton'
         Find 'Sign out' -ByName | Out-Null
+        if ($env:KRONO_SMOKE_SCOPE -eq 'project-list-ui') {
+            SelectNav 'Chats'
+            Invoke 'Projects' -ByName
+            foreach ($name in @('Alpha project', 'Zulu project')) {
+                Invoke 'New project' -ByName
+                Find 'Create project' -ByName | Out-Null
+                SetValue 'ProjectName' $name
+                Invoke 'Save project' -ByName
+                Find ('Reorder ' + $name) -ByName | Out-Null
+            }
+            function AssertProjectOrder([string]$first, [string]$second) {
+                foreach ($prefix in @('Reorder ', 'Collapse ')) {
+                    $upper = (Find ($prefix + $first) -ByName).Current.BoundingRectangle.Top
+                    $lower = (Find ($prefix + $second) -ByName).Current.BoundingRectangle.Top
+                    if ($upper -ge $lower) { throw "Incorrect project order in $prefix" }
+                }
+            }
+            AssertProjectOrder 'Alpha project' 'Zulu project'
+            Invoke 'Reorder Zulu project' -ByName
+            Invoke 'Move up' -ByName
+            AssertProjectOrder 'Zulu project' 'Alpha project'
+            $bounds = (Find 'Collapse Zulu project' -ByName).Current.BoundingRectangle
+            [KronoWindowCapture]::SetCursorPos([int]($bounds.Left + $bounds.Width / 2), [int]($bounds.Top + $bounds.Height / 2)) | Out-Null
+            [KronoWindowCapture]::mouse_event(8, 0, 0, 0, [UIntPtr]::Zero)
+            [KronoWindowCapture]::mouse_event(16, 0, 0, 0, [UIntPtr]::Zero)
+            Invoke 'Move down' -ByName
+            AssertProjectOrder 'Alpha project' 'Zulu project'
+            Capture 'native-project-list.png'
+            Invoke 'Edit project' -ByName
+            Find 'Edit project' -ByName | Out-Null
+            Find 'Source folders' -ByName | Out-Null
+            Capture 'native-project-editor.png'
+            Invoke 'Cancel' -ByName
+            Invoke ('Delete project' + [char]0x2026) -ByName
+            Find 'Delete Alpha project?' -ByName | Out-Null
+            Invoke 'Delete project' -ByName
+            Find 'Reorder Zulu project' -ByName | Out-Null
+            $deleted = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Reorder Alpha project')
+            if ($script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, $deleted)) { throw 'Deleted project remained on the overview' }
+            Write-Output 'NATIVE_SMOKE_PASS: project list, two-way ordering, editing, and deletion'
+            return
+        }
         if ($env:KRONO_SMOKE_SCOPE -eq 'browser-feedback') {
             SelectNav 'Browser'
             SetValue 'BrowserAddress' ($Fixture + '/probe')

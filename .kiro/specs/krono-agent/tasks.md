@@ -1258,3 +1258,8 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 ## macOS CI
 
 - Run agent-engine checks on Apple Silicon macOS 27 using GitHub Actions' `xcode-27` runner.
+
+## Project management layout
+
+- List projects in full-width rows with edit and delete actions. Use the same saved order in Projects and the chat sidebar.
+- Group project editing controls and apply a shared red foreground to deletion actions.
