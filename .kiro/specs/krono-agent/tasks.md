@@ -1254,3 +1254,7 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Keep API key entry out of the default flow for loopback providers and retain optional authentication for protected local servers.
 - Keep clear and reveal actions in the right-hand column with a separate text viewport.
 - Use the standard text input scope for the sign-in email field so Windows can offer its system input picker.
+
+## macOS CI
+
+- Run agent-engine checks on Apple Silicon macOS 27 using GitHub Actions' `xcode-27` runner.
