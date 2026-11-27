@@ -496,6 +496,25 @@ internal static class KronoInputMotion
         };
     }
 
+    internal static void StylePasswordReveal(PasswordBox field, ToggleButton button, FontIcon icon)
+    {
+        button.Width = 34;
+        button.Margin = new Thickness(0, 0, 5, 0);
+        void Refresh()
+        {
+            var revealed = button.IsChecked == true;
+            field.PasswordRevealMode = revealed ? PasswordRevealMode.Visible : PasswordRevealMode.Hidden;
+            icon.Glyph = revealed ? "\uED1A" : "\uE890";
+            var label = revealed ? "Hide password" : "Show password";
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, label);
+            ToolTipService.SetToolTip(button, label);
+        }
+        button.Checked += (_, _) => Refresh();
+        button.Unchecked += (_, _) => Refresh();
+        StyleButton(button);
+        Refresh();
+    }
+
     internal static void StyleButton(ButtonBase button)
     {
         if (StyledButtons.TryGetValue(button, out _)) return;

@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using System.Text.Json.Nodes;
@@ -766,9 +767,20 @@ public sealed partial class MainPage : Page
         AddSyncSettings(panel);
         panel = AddCategory("Models");
         var modelPanel = panel;
-        var secret = new PasswordBox { Header = "API key", HorizontalAlignment = HorizontalAlignment.Stretch };
-        KronoInputMotion.Attach(secret, "KronoPasswordInput");
+        var secret = new PasswordBox { HorizontalAlignment = HorizontalAlignment.Stretch, PasswordRevealMode = PasswordRevealMode.Hidden,
+            Padding = new Thickness(12, 8, 46, 8) };
+        var eyeIcon = new FontIcon { Glyph = "\uE890", FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 14 };
+        var eye = new ToggleButton { Content = eyeIcon, HorizontalAlignment = HorizontalAlignment.Right };
+        var secretRow = new Grid { FlowDirection = FlowDirection.LeftToRight };
+        secretRow.Children.Add(secret);
+        secretRow.Children.Add(eye);
+        var keyField = new StackPanel { Spacing = 6 };
+        keyField.Children.Add(new TextBlock { Text = "API key" });
+        keyField.Children.Add(secretRow);
+        KronoInputMotion.Attach(secret, "KronoPasswordInput", eye);
+        KronoInputMotion.StylePasswordReveal(secret, eye, eyeIcon);
         AutomationProperties.SetAutomationId(secret, "ProviderKey");
+        AutomationProperties.SetName(secret, "API key");
         var models = new StackPanel { Spacing = 4, Visibility = Visibility.Collapsed };
         AutomationProperties.SetAutomationId(models, "ModelCatalog");
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap };
@@ -776,8 +788,13 @@ public sealed partial class MainPage : Page
         string? catalogProvider = null;
         var modelRequest = 0;
         var saveKey = Button("Save key", SaveKey);
+        var testConnection = new Button { Content = "Test connection" };
+        testConnection.Click += async (_, _) => await TestConnection();
+        var keyActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        keyActions.Children.Add(saveKey);
+        keyActions.Children.Add(testConnection);
         var optionalKey = Button("Configure optional server token", () => {
-            secret.Visibility = saveKey.Visibility = Visibility.Visible;
+            keyField.Visibility = saveKey.Visibility = Visibility.Visible;
             secret.Focus(FocusState.Programmatic);
         });
         var refreshModels = Button("Refresh models", () => LoadProviderModels(refresh: true));
@@ -785,7 +802,8 @@ public sealed partial class MainPage : Page
         {
             var endpoint = catalogProvider is null ? "" : ModelEndpoint(catalogProvider);
             var required = catalogProvider is not null && ProviderCatalog.RequiresKey(catalogProvider, endpoint);
-            secret.Visibility = saveKey.Visibility = required ? Visibility.Visible : Visibility.Collapsed;
+            keyField.Visibility = saveKey.Visibility = required ? Visibility.Visible : Visibility.Collapsed;
+            keyActions.Visibility = catalogProvider is not null ? Visibility.Visible : Visibility.Collapsed;
             optionalKey.Visibility = catalogProvider is not null && !ProviderCatalog.AutomaticLocal(catalogProvider) && !required
                 ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -796,6 +814,7 @@ public sealed partial class MainPage : Page
             catalogProvider = providerIds[Array.IndexOf(providerNames, value)];
             workspace.SetSetting("native.catalogProvider", catalogProvider);
             workspace.SetSetting("native.catalogEnabled." + catalogProvider, "true");
+            eye.IsChecked = false;
             secret.Password = "";
             models.Visibility = refreshModels.Visibility = Visibility.Visible;
             ShowKeyField();
@@ -804,12 +823,35 @@ public sealed partial class MainPage : Page
         catalogPicker.PlaceholderText = "Choose a provider";
         panel.Children.Add(catalogPicker);
         panel.Children.Add(optionalKey);
-        panel.Children.Add(secret);
-        panel.Children.Add(saveKey);
+        panel.Children.Add(keyField);
+        panel.Children.Add(keyActions);
         panel.Children.Add(models);
         panel.Children.Add(refreshModels);
         refreshModels.Visibility = Visibility.Collapsed;
         ShowKeyField();
+        async Task TestConnection()
+        {
+            if (catalogProvider is not { } id || worker is not { } activeWorker) return;
+            var endpoint = ModelEndpoint(id);
+            var apiKey = secret.Password.Trim();
+            if (apiKey.Length == 0) apiKey = workspace.Key(id);
+            if (apiKey.Length == 0 && ProviderCatalog.RequiresKey(id, endpoint)) {
+                ShowNotice("Enter an API key to test the connection.", success: false);
+                return;
+            }
+            var generation = sessionGeneration;
+            testConnection.IsEnabled = false;
+            try {
+                var result = await activeWorker.Request(Guid.NewGuid().ToString(), "test", new { providerId = id, endpoint, apiKey, toolsEnabled = false });
+                if (generation != sessionGeneration || catalogProvider != id || !testConnection.IsLoaded) return;
+                var success = result?["success"]?.GetValue<bool>() == true;
+                ShowNotice(success ? ProviderCatalog.Name(id) + " connection successful."
+                    : "Could not connect to " + ProviderCatalog.Name(id) + ". Check the server or API key.", success);
+            } catch (Exception) {
+                if (generation == sessionGeneration && catalogProvider == id && testConnection.IsLoaded)
+                    ShowNotice("Could not connect to " + ProviderCatalog.Name(id) + ".", success: false);
+            } finally { testConnection.IsEnabled = true; }
+        }
         void SaveKey()
         {
             if (catalogProvider is not { } id) return;
@@ -984,7 +1026,8 @@ public sealed partial class MainPage : Page
             if (categories.SelectedItem is not string selected) return;
             if (selected == "Models" && !modelsLoaded) {
                 modelsLoaded = true;
-                _ = LoadProviderModels();
+                var preferred = ProviderCatalog.Name(workspace.Setting("native.catalogProvider") is { Length: > 0 } saved ? saved : "openai");
+                catalogPicker.SelectedItem = providerNames.Contains(preferred) ? preferred : "OpenAI";
             }
             if (selected == "Plugins" && !pluginsLoaded) {
                 pluginsLoaded = true;

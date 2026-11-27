@@ -1028,6 +1028,18 @@ public static class PluginFixture {
             Invoke-RestMethod -Method Post ($Fixture + '/seed-model-recovery') | Out-Null
             SelectNav 'Settings'
             SelectSettingsCategory 'Models'
+            $defaultProvider = (Find 'Provider').GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
+            if ($defaultProvider.Count -ne 1 -or $defaultProvider[0].Current.Name -ne 'OpenAI') { throw 'Models did not open with the OpenAI provider selected' }
+            Invoke 'Test connection' -ByName
+            Find 'Enter an API key to test the connection.' -ByName | Out-Null
+            $keyBounds = (Find 'ProviderKey').Current.BoundingRectangle
+            $eye = Find 'Show password' -ByName
+            if ($eye.Current.BoundingRectangle.Left -lt $keyBounds.Right - 60) { throw 'The reveal button was not on the right of the key field' }
+            $eye.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
+            Find 'Hide password' -ByName | Out-Null
+            SetValue 'ProviderKey' 'fixture-provider-key'
+            Invoke 'Test connection' -ByName
+            Find 'OpenAI connection successful.' -ByName | Out-Null
             SelectChoice 'Provider' 'Ollama'
             $check = (Find 'fixture-first' -ByName).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
             $check.Toggle()
@@ -2153,11 +2165,13 @@ public static class PluginFixture {
     Find 'Composer' | Out-Null
     $before = (Invoke-RestMethod ($Fixture + '/assertions')).completions
     if (!(Find 'Chats' -ByName).GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected) { throw 'Re-login left the navigation on Sign out' }
+    SelectChoice 'Mode' 'chat'
     SetValue 'Composer' 'Native after manual login'
     Invoke 'Send' -ByName
     $deadline = (Get-Date).AddSeconds(10)
     do { Start-Sleep -Milliseconds 100; $after = (Invoke-RestMethod ($Fixture + '/assertions')).completions } while ($after -le $before -and (Get-Date) -lt $deadline)
     if ($after -le $before) { throw 'Chat no longer worked after manual logout and login' }
+    Find 'Send' -ByName | Out-Null
     SelectNav 'Settings'
     SelectSettingsCategory 'Account'
     Toggle 'AccountSyncEnabled'

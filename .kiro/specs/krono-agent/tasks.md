@@ -1294,3 +1294,9 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Show the active model on the composer button and manage picker visibility with provider-specific checkboxes.
 - Remember the model, reasoning effort, and permissions independently for each project and for unassigned chats.
 - Keep Google sign-in pending through invalid callback requests. Apply account sessions after PKCE and identity verification.
+
+## Provider connection and input follow-up
+
+- Merge duplicate listings from an automatically detected local server and its direct provider.
+- Load the default provider catalog, keep password actions on the right, preserve pasted text, and test provider connections without saving keys.
+- Separate Google callback parsing from the PKCE exchange and keep full Windows distribution checks in the release workflow.

@@ -59,6 +59,22 @@ public sealed partial class MainPage
     string ModelEndpoint(string id) => workspace.Setting("native.endpoint." + id) is { Length: > 0 } custom
         ? custom : ProviderCatalog.Endpoint(id);
 
+    (string Source, string Model) ModelIdentity(string id, string name)
+    {
+        if (id == "local") {
+            foreach (var (suffix, port) in new[] { ("Ollama", 11434), ("LM Studio", 1234), ("Jan", 1337) }) {
+                var label = " · " + suffix;
+                if (name.EndsWith(label, StringComparison.Ordinal))
+                    return ($"loopback:{port}", name[..^label.Length]);
+            }
+        }
+        if (Uri.TryCreate(ModelEndpoint(id), UriKind.Absolute, out var endpoint) && ProviderCatalog.Local(endpoint) &&
+            endpoint.Scheme == "http" && endpoint.AbsolutePath.TrimEnd('/') == "/v1")
+            return ($"loopback:{endpoint.Port}", name);
+        return (id, name);
+    }
+
+
     IEnumerable<string> ChatProviders() => new[] { provider, workspace.Setting("native.catalogProvider"), "local" }
         .Concat(ProviderCatalog.Ids.Where(id => workspace.Key(id).Length > 0 || workspace.Setting("native.catalogEnabled." + id) == "true"))
         .Where(id => id.Length > 0).Distinct(StringComparer.Ordinal);
@@ -119,8 +135,12 @@ public sealed partial class MainPage
 
     string[] ModelChoices(string id, JsonArray available, string selected, bool honorHidden = true)
     {
-        var hidden = honorHidden ? HiddenModels(id) : [];
-        var names = available.Select(entry => entry?["id"]?.ToString() ?? "").Where(name => !hidden.Contains(name) || name == selected);
+        var hidden = honorHidden ? HiddenModels(id).Select(name => ModelIdentity(id, name)).ToHashSet() : [];
+        if (honorHidden && (IsLocalModelProvider(id) || id == "local"))
+            foreach (var alias in new[] { "local", "ollama", "lmstudio" }.Where(alias => alias != id))
+                hidden.UnionWith(HiddenModels(alias).Select(name => ModelIdentity(alias, name)));
+        var names = available.Select(entry => entry?["id"]?.ToString() ?? "")
+            .Where(name => !honorHidden || name == selected || !hidden.Contains(ModelIdentity(id, name)));
         return names.Append(selected).Where(name => name.Length > 0).Distinct(StringComparer.Ordinal).ToArray();
     }
 
@@ -261,7 +281,11 @@ public sealed partial class MainPage
             } catch (Exception error) when (error is InvalidOperationException or IOException or OperationCanceledException) { return []; }
         }));
         if (generation != sessionGeneration || origin != loadedContext || !ReferenceEquals(Body.Content, chatView)) return;
-        var entries = optionsByProvider.SelectMany(group => group).ToArray();
+        var entries = optionsByProvider.SelectMany(group => group)
+            .GroupBy(entry => ModelIdentity(entry.Provider, entry.Name))
+            .Select(group => group.FirstOrDefault(entry => entry.Provider == id && entry.Name == model) is { Provider: not null } active
+                ? active : group.OrderBy(entry => entry.Provider == "local").First())
+            .ToArray();
         var labels = entries.Select(entry => entries.Count(other => other.Name == entry.Name) > 1
             ? entry.Name + " · " + ProviderCatalog.Name(entry.Provider) : entry.Name).ToArray();
         var options = new StackPanel { Width = 330, Spacing = 12 };
@@ -270,7 +294,8 @@ public sealed partial class MainPage
         AutomationProperties.SetAutomationId(picker, "ChatModelPicker");
         options.Children.Add(picker);
         var contextOptions = new[] { "Full conversation", "Recent messages" };
-        var scope = Choices("Conversation context", contextOptions, workspace.Setting("native.chatContext") == contextOptions[1] ? contextOptions[1] : contextOptions[0], _ => { });
+        var contextChoice = workspace.Setting("native.chatContext") == contextOptions[1] ? contextOptions[1] : contextOptions[0];
+        var scope = Choices("Conversation context", contextOptions, contextChoice, value => contextChoice = value);
         options.Children.Add(scope);
         var settings = new KronoDialog { XamlRoot = XamlRoot, Title = "Advanced model options", Content = options,
             PrimaryButtonText = "Apply", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary,
@@ -279,7 +304,7 @@ public sealed partial class MainPage
         if (await settings.ShowAsync() != ContentDialogResult.Primary || generation != sessionGeneration || origin != loadedContext || picker.SelectedIndex < 0) return;
         var selected = entries[picker.SelectedIndex];
         provider = selected.Provider;
+        workspace.SetSetting("native.chatContext", contextChoice);
         SelectChatModel(selected.Name);
-        workspace.SetSetting("native.chatContext", scope.SelectedItem?.ToString() ?? contextOptions[0]);
     }
 }

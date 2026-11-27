@@ -126,14 +126,23 @@ public static partial class NativeMarkdown
             };
             Rich.LostFocus += (_, _) => QueueFormat();
             Rich.Paste += async (_, args) => {
-                args.Handled = true;
-                if (pasteImage?.Invoke() == true) return;
                 try {
                     var clipboard = Clipboard.GetContent();
-                    if (!clipboard.Contains(StandardDataFormats.Text)) return;
-                    var text = Normalize(await clipboard.GetTextAsync());
-                    if (Rich.FocusState != FocusState.Unfocused)
-                        Rich.Document.Selection.SetText(TextSetOptions.Unhide | TextSetOptions.Unlink, text);
+                    if (!clipboard.Contains(StandardDataFormats.Text)) {
+                        args.Handled = pasteImage?.Invoke() == true;
+                        return;
+                    }
+                    var before = source.Text;
+                    var range = Rich.Document.Selection;
+                    var start = range.StartPosition;
+                    var end = range.EndPosition;
+                    args.Handled = true;
+                    var text = Normalize(await clipboard.GetTextAsync()).Replace('\n', '\r');
+                    if (Rich.IsEnabled && !Rich.IsReadOnly && Rich.Visibility == Visibility.Visible && source.Text == before) {
+                        Rich.Document.GetRange(start, end).SetText(TextSetOptions.Unhide | TextSetOptions.Unlink, text);
+                        range.SetRange(start + text.Length, start + text.Length);
+                        SyncSource();
+                    }
                 } catch (System.Runtime.InteropServices.COMException) { }
             };
         }

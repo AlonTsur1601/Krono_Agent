@@ -23,6 +23,7 @@ public sealed partial class MainPage
     {
         try {
             var clipboard = Clipboard.GetContent();
+            if (clipboard.Contains(StandardDataFormats.Text)) return false;
             var hasBitmap = clipboard.Contains(StandardDataFormats.Bitmap);
             var fallback = hasBitmap ? null : ClipboardBitmap.Read();
             if (!hasBitmap && fallback is null) return false;

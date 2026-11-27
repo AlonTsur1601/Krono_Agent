@@ -86,6 +86,23 @@ public sealed partial class Workspace
         CancellationToken deadline, CancellationToken cancellation)
     {
         while (true) {
+            var (code, context) = await ReadGoogleCallback(listener, callbackPath, deadline, cancellation);
+            JsonNode? session;
+            try {
+                session = await Auth("token?grant_type=pkce", new { auth_code = code, code_verifier = verifier });
+            } catch (InvalidOperationException) { session = null; }
+            if (session?["user"] is { } user && ReadGoogleEmail(user) is not null &&
+                (account is null || user["id"]?.ToString() == account))
+                return (session, context);
+            using var rejected = context.Response;
+            await Reply(rejected, false);
+        }
+    }
+
+    static async Task<(string Code, HttpListenerContext Context)> ReadGoogleCallback(
+        HttpListener listener, string callbackPath, CancellationToken deadline, CancellationToken cancellation)
+    {
+        while (true) {
             deadline.ThrowIfCancellationRequested();
             HttpListenerContext context;
             try { context = await listener.GetContextAsync().WaitAsync(deadline); }
@@ -96,15 +113,8 @@ public sealed partial class Workspace
             var request = context.Request;
             var codes = request.QueryString.GetValues("code");
             if (request.HttpMethod == "GET" && request.Url?.AbsolutePath == callbackPath &&
-                codes is [string code] && code.Length is > 0 and <= 2048) {
-                JsonNode? session;
-                try {
-                    session = await Auth("token?grant_type=pkce", new { auth_code = code, code_verifier = verifier });
-                } catch (InvalidOperationException) { session = null; }
-                if (session?["user"] is { } user && ReadGoogleEmail(user) is not null &&
-                    (account is null || user["id"]?.ToString() == account))
-                    return (session, context);
-            }
+                codes is [string code] && code.Length is > 0 and <= 2048)
+                return (code, context);
             using var rejected = context.Response;
             await Reply(rejected, false);
         }

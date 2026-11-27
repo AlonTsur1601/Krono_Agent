@@ -47,7 +47,7 @@ export class OpenAIProvider implements ProviderAdapter {
     try {
       const response = await this.client.models.list()
       return response.data
-        .filter((m) => m.id.startsWith('gpt-'))
+        .filter((m) => /^(gpt-|chatgpt-|o[1-9](?:-|$))/.test(m.id))
         .map((m) => ({
           id: m.id,
           providerId: this.id,
