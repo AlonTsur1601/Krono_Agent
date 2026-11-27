@@ -1,4 +1,4 @@
-param([string]$Executable, [string]$Fixture, [string]$ReportDirectory)
+﻿param([string]$Executable, [string]$Fixture, [string]$ReportDirectory)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -691,7 +691,11 @@ public static class PluginFixture {
             AssertProjectOrder 'Alpha project' 'Zulu project'
             Capture 'native-project-list.png'
             Invoke-RestMethod -Method Post ($Fixture + '/seed-project-order-chats') | Out-Null
-            Invoke 'Back to chat' -ByName
+            $projectToOpen = ProjectBounds 'Alpha project'
+            [KronoWindowCapture]::SetCursorPos([int]($projectToOpen.Left + $projectToOpen.Width / 2), [int]($projectToOpen.Top + $projectToOpen.Height / 2)) | Out-Null
+            [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+            [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+            Find 'Most recent project message' -ByName | Out-Null
             DragProject (ProjectBounds 'Alpha first') (ProjectBounds 'Alpha second') $true
             if ((ProjectBounds 'Alpha first').Top -ge (ProjectBounds 'Alpha second').Top) { throw 'Chat drag did not change its order' }
             DragProject (ProjectBounds 'Outside project') (ProjectBounds 'Alpha first') $true
@@ -1489,6 +1493,11 @@ public static class PluginFixture {
     $deadline = (Get-Date).AddSeconds(15)
     do { Start-Sleep -Milliseconds 100; $assertions = Invoke-RestMethod ($Fixture + '/assertions') } while (!$assertions.commandRan -and (Get-Date) -lt $deadline)
     if (!$assertions.commandRan) { throw 'Approved agent command did not write its marker and return 42 to the model' }
+    $work = (Find 'Work details' -ByName).GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern)
+    if ($work.Current.ExpandCollapseState -ne [Windows.Automation.ExpandCollapseState]::Collapsed) { throw 'Agent work did not collapse on completion' }
+    $work.Expand()
+    if ($work.Current.ExpandCollapseState -ne [Windows.Automation.ExpandCollapseState]::Expanded) { throw 'Completed work could not be reopened' }
+    $work.Collapse()
     Invoke-RestMethod ($Fixture + '/seed-provider-settings') -Method Post | Out-Null
     SelectNav 'Settings'
     SelectSettingsCategory 'Models'

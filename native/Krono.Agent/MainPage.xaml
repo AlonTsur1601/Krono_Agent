@@ -1,38 +1,12 @@
 <Page x:Class="Krono_Agent.MainPage" Language="en-US" FlowDirection="LeftToRight" FontFamily="{ThemeResource KronoTextFont}" FontSize="{ThemeResource KronoTextSize}" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:Krono_Agent" xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives">
 <Page.Resources>
-    <ControlTemplate x:Key="ChatRailAction" TargetType="Button">
-        <Grid Background="Transparent">
-            <VisualStateManager.VisualStateGroups>
-                <VisualStateGroup x:Name="CommonStates">
-                    <VisualStateGroup.Transitions><VisualTransition GeneratedDuration="0:0:0.12"/></VisualStateGroup.Transitions>
-                    <VisualState x:Name="Normal"/>
-                    <VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="Tint.Opacity" Value="1"/></VisualState.Setters></VisualState>
-                    <VisualState x:Name="Pressed"><VisualState.Setters>
-                        <Setter Target="Tint.Opacity" Value="1"/>
-                        <Setter Target="Tint.Background" Value="{ThemeResource ButtonBackgroundPressed}"/>
-                    </VisualState.Setters></VisualState>
-                    <VisualState x:Name="Disabled"><VisualState.Setters><Setter Target="Face.Opacity" Value=".45"/></VisualState.Setters></VisualState>
-                </VisualStateGroup>
-            </VisualStateManager.VisualStateGroups>
-            <Border x:Name="Tint" CornerRadius="7" Background="{ThemeResource ButtonBackgroundPointerOver}" Opacity="0" IsHitTestVisible="False"/>
-            <ContentPresenter x:Name="Face" Content="{TemplateBinding Content}" Padding="{TemplateBinding Padding}"
-                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                              VerticalContentAlignment="Center" Foreground="{TemplateBinding Foreground}"/>
-        </Grid>
-    </ControlTemplate>
-    <Style x:Key="ChatRailIconButton" TargetType="Button" BasedOn="{StaticResource KronoButton}">
-        <Setter Property="Template" Value="{StaticResource ChatRailAction}"/>
-        <Setter Property="MinWidth" Value="0"/>
-        <Setter Property="MinHeight" Value="0"/>
-        <Setter Property="Padding" Value="0"/>
-    </Style>
     <DataTemplate x:Key="ChatRailHeading">
         <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
     </DataTemplate>
     <DataTemplate x:Key="ChatRailDisclosure">
         <Grid ColumnSpacing="3" Loaded="RailOrderRowLoaded" Background="Transparent">
             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-            <Button x:Name="RailDisclosureButton" Template="{StaticResource ChatRailAction}" Click="ChatRailDisclosureClicked"
+            <Button x:Name="RailDisclosureButton" Loaded="LoadChatRailButton" Click="ChatRailDisclosureClicked"
                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="34" Padding="13,0,6,0"
                     AutomationProperties.Name="{Binding ActionLabel}">
                 <Grid ColumnSpacing="8">
@@ -42,7 +16,7 @@
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 </Grid>
             </Button>
-            <Button Grid.Column="1" Style="{StaticResource ChatRailIconButton}" Width="28" Height="28"
+            <Button Grid.Column="1" Loaded="LoadChatRailButton" Width="28" Height="28"
                     Visibility="{Binding ProjectActionVisibility}" Click="NewRailProjectChat"
                     AutomationProperties.Name="{Binding NewChatLabel}" ToolTipService.ToolTip="{Binding NewChatLabel}">
                 <SymbolIcon Symbol="Add"/>
@@ -50,7 +24,7 @@
         </Grid>
     </DataTemplate>
     <DataTemplate x:Key="ChatRailMore">
-        <Button Template="{StaticResource ChatRailAction}" Click="ChatRailMoreClicked" Content="{Binding Name}"
+        <Button Loaded="LoadChatRailButton" Click="ChatRailMoreClicked" Content="{Binding Name}"
                 HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinHeight="32" Padding="16,0,0,0"
                 AutomationProperties.Name="{Binding ActionLabel}"/>
     </DataTemplate>
@@ -59,7 +33,7 @@
             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
             <ProgressRing Grid.Column="1" Width="13" Height="13" Foreground="{ThemeResource KronoAccentForeground}" Visibility="{Binding WorkingVisibility}" IsActive="{Binding Working}" AutomationProperties.Name="Agent working"/>
-            <Button Grid.Column="2" Style="{StaticResource ChatRailIconButton}" Width="28" Height="28"
+            <Button Grid.Column="2" Loaded="LoadChatRailButton" Width="28" Height="28"
                     Content="⋯" Click="ChatActionsClicked" AutomationProperties.Name="Chat actions"
                     ToolTipService.ToolTip="Chat actions"/>
         </Grid>

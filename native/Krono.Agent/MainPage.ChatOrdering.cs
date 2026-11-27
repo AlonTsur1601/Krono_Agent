@@ -44,7 +44,7 @@ public sealed partial class MainPage
                 entry() is not { } source || !source.Project && source.Kind != RailKind.Chat) return;
             for (var child = args.OriginalSource as DependencyObject; child is not null && child != element;
                 child = VisualTreeHelper.GetParent(child))
-                if (child is Button { Name: not "RailDisclosureButton" }) return;
+                if (child is Button { Name: not ("RailDisclosureButton" or "ProjectOpenButton") }) return;
             ClearOrderDrag();
             dragOrigin = element;
             draggedEntry = source;

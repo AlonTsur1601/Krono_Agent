@@ -223,12 +223,13 @@ public sealed partial class MainPage
         fileText.Text = change.Path + "\n\n" + (start == before.Length && start == after.Length ? "No text difference available." : string.Join('\n', context.Concat(removed).Concat(added)));
     }
 
-    void AddResponseActions(StackPanel box, string text, string messageId)
+    void AddCompletedWork(StackPanel box, string messageId)
     {
         if (workspace.Setting("native.runSummary." + messageId) is { Length: > 0 } saved &&
             JsonSerializer.Deserialize<RunSummary>(saved) is { } summary) {
-            if (summary.Actions.Length > 0) box.Children.Add(KronoDesign.Section("Actions · " + summary.Actions.Length,
-                new TextBlock { Text = string.Join("\n", summary.Actions.Select(name => "• " + name)), TextWrapping = TextWrapping.Wrap }));
+            var work = new StackPanel { Spacing = 8 };
+            if (summary.Actions.Length > 0)
+                work.Children.Add(new TextBlock { Text = string.Join("\n", summary.Actions.Select(name => "• " + name)), TextWrapping = TextWrapping.Wrap });
             if (summary.Changes.Length > 0) {
                 var details = new StackPanel { Spacing = 5 };
                 details.Children.Add(new TextBlock { Text = string.Join("\n", summary.Changes.Select(change => Path.GetFileName(change.Path))), TextWrapping = TextWrapping.Wrap });
@@ -241,9 +242,19 @@ public sealed partial class MainPage
                     RefreshRunFiles();
                     ShowChange(summary.Changes[0]);
                 }));
-                box.Children.Add(KronoDesign.Section($"Changed files · {summary.Changes.Length}", details));
+                work.Children.Add(KronoDesign.Section($"Changed files · {summary.Changes.Length}", details));
+            }
+            if (work.Children.Count > 0) {
+                var completed = KronoDesign.Section("Work details", work);
+                completed.IsExpanded = false;
+                AutomationProperties.SetAutomationId(completed, "CompletedWork-" + messageId);
+                box.Children.Add(completed);
             }
         }
+    }
+
+    void AddResponseActions(StackPanel box, string text, string messageId)
+    {
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         actions.Children.Add(HistoryAction("Copy response", new SymbolIcon(Symbol.Copy), () => {
             var clipboard = new DataPackage();
