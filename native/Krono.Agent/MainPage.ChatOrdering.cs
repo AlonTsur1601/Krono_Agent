@@ -289,7 +289,7 @@ public sealed partial class MainPage
             runId is not null || (target is null ? chatId is not null : scheduledRun?.Chat == target)) return;
         var project = selector.SelectedIndex > 0 ? projects[selector.SelectedIndex - 1].Id : null;
         if (project == currentProject || project is not null && !OrderedProjects().Any(item => item.Id == project)) return;
-        if (target is null) { draftProject = project; loadedContext = null; }
+        if (target is null) { draftProject = project; loadedContext = null; if (project is not null) RememberActiveProject(project); }
         else workspace.Execute("UPDATE chats SET project_id=$p0,updated_at=$p1 WHERE id=$p2 AND account_id=$p3 AND deleted_at IS NULL",
             project, Workspace.Now, target, workspace.AccountId);
         ReloadChats();
@@ -305,6 +305,7 @@ public sealed partial class MainPage
     void NewProjectChat(string project)
     {
         if (runId is not null || !OrderedProjects().Any(item => item.Id == project)) return;
+        RememberActiveProject(project);
         collapsedChatProjects.Remove(project);
         OpenDraft(project);
     }

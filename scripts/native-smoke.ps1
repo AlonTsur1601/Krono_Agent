@@ -672,6 +672,13 @@ public static class PluginFixture {
                 $effort.SetValue($expectedEffort)
                 Invoke 'ComposerModelButton'
                 Invoke '+ New chat' -ByName
+                if ((Find 'ChatProjectButton').Current.Name -ne 'Zulu project') { throw 'New chat did not default to the last active project' }
+                SelectNav 'Settings'
+                SelectSettingsCategory 'Appearance'
+                SelectChoice 'Newchatproject' 'No project'
+                SelectNav 'Chats'
+                Invoke '+ New chat' -ByName
+                if ((Find 'ChatProjectButton').Current.Name -eq 'Zulu project') { throw 'No project mode retained the project' }
                 SelectConfiguredModel 'gpt-native-fixture-model'
                 SelectChoice 'Permissions' 'ask'
                 Invoke 'New chat in Zulu project' -ByName
@@ -682,6 +689,20 @@ public static class PluginFixture {
                 $effort = (Find 'Reasoning effort' -ByName).GetCurrentPattern([Windows.Automation.RangeValuePattern]::Pattern)
                 if ($effort.Current.Value -ne $expectedEffort) { throw 'Project reasoning effort was not retained' }
                 Invoke 'ComposerModelButton'
+                SelectNav 'Settings'
+                SelectSettingsCategory 'Appearance'
+                SelectChoice 'Newchatproject' 'Choose a project'
+                SelectChoice 'FixedNewChatProject' 'Alpha project'
+                SelectNav 'Chats'
+                Invoke '+ New chat' -ByName
+                if ((Find 'ChatProjectButton').Current.Name -ne 'Alpha project') { throw 'New chat did not use the configured project' }
+                SelectNav 'Settings'
+                SelectSettingsCategory 'Appearance'
+                SelectChoice 'Newchatproject' 'Current project'
+                SelectNav 'Chats'
+                Invoke 'New chat in Zulu project' -ByName
+                Invoke '+ New chat' -ByName
+                if ((Find 'ChatProjectButton').Current.Name -ne 'Zulu project') { throw 'New chat did not use the current project' }
                 Invoke 'Projects' -ByName
                 Find 'New project' -ByName | Out-Null
                 OpenOverviewProject 'Alpha project'
@@ -1037,7 +1058,16 @@ public static class PluginFixture {
             if ($eye.Current.BoundingRectangle.Left -lt $keyBounds.Right - 60) { throw 'The reveal button was not on the right of the key field' }
             $eye.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
             Find 'Hide password' -ByName | Out-Null
-            SetValue 'ProviderKey' 'fixture-provider-key'
+            SetValue 'ProviderKeyRevealed' 'fixture-provider-key'
+            (Find 'Hide password' -ByName).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
+            $key = Find 'ProviderKey'
+            $key.SetFocus()
+            $heading = (Find 'Models' -ByName).Current.BoundingRectangle
+            [KronoWindowCapture]::SetCursorPos([int]($heading.Left + $heading.Width / 2), [int]($heading.Top + $heading.Height / 2)) | Out-Null
+            [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+            [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+            Start-Sleep -Milliseconds 150
+            if ($key.Current.HasKeyboardFocus) { throw 'The API key field retained focus after clicking outside' }
             Invoke 'Test connection' -ByName
             Find 'OpenAI connection successful.' -ByName | Out-Null
             SelectChoice 'Provider' 'Ollama'
@@ -1056,6 +1086,14 @@ public static class PluginFixture {
             SelectNav 'Chats'
             Invoke-RestMethod -Method Post ($Fixture + '/restore-local-models') | Out-Null
             Find 'fixture-preferred' -ByName | Out-Null
+            Invoke 'Search chats' -ByName
+            $search = [Windows.Automation.AutomationElement]::FocusedElement
+            $blankClear = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Clear text')
+            if ($script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, $blankClear)) { throw 'An empty field shows a clear button' }
+            $searchValue = $search.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
+            $searchValue.SetValue('fixture search')
+            Invoke 'Clear text' -ByName
+            if ($searchValue.Current.Value -ne '') { throw 'The clear button did not clear the search field' }
             Write-Output 'NATIVE_SMOKE_PASS: Agent default, empty model settings link, and automatic restoration of the preferred local model'
             return
         }

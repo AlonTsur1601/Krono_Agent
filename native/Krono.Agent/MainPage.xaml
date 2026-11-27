@@ -107,9 +107,9 @@
 <local:KronoTextBox x:Name="EmailInput" Header="Email"/>
 <StackPanel Spacing="4">
 <TextBlock Text="Password"/>
-<Grid FlowDirection="LeftToRight">
-<PasswordBox x:Name="PasswordInput" AutomationProperties.Name="Password" PasswordRevealMode="Hidden" Padding="12,8,46,8" Loaded="StyleAuthPassword"/>
-<ToggleButton x:Name="PasswordVisibility" AutomationProperties.Name="Show password" ToolTipService.ToolTip="Show password" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,5,0" Width="34" Height="28" Padding="0" Background="Transparent" BorderThickness="0" Checked="PasswordVisibilityChanged" Unchecked="PasswordVisibilityChanged">
+<Grid x:Name="AuthPasswordField" FlowDirection="LeftToRight">
+<PasswordBox x:Name="PasswordInput" AutomationProperties.Name="Password" PasswordRevealMode="Hidden" Padding="12,8,46,8"/>
+<ToggleButton x:Name="PasswordVisibility" HorizontalAlignment="Right" VerticalAlignment="Center">
 <FontIcon x:Name="PasswordEye" Glyph="&#xE890;" FontFamily="Segoe Fluent Icons" FontSize="16"/>
 </ToggleButton>
 </Grid>

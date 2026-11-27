@@ -14,6 +14,7 @@ namespace Krono_Agent;
 public sealed partial class MainPage : Page
 {
     readonly Workspace workspace = new();
+    readonly TextBox revealedAuthPassword;
     CancellationTokenSource? confirmationWait;
     bool authenticating;
     AgentWorker? worker;
@@ -48,6 +49,9 @@ public sealed partial class MainPage : Page
     public MainPage()
     {
         InitializeComponent();
+        KronoInputMotion.Attach(PasswordInput, "KronoPasswordInput");
+        revealedAuthPassword = KronoInputMotion.StylePasswordReveal(AuthPasswordField, PasswordInput, PasswordVisibility, PasswordEye);
+        AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(ReleaseInputFocusOnOutsidePress), true);
         BrowserNavigation.Icon = BrowserWorkspace.BrowserTabIcon();
         UpdateButton.Icon = KronoDesign.NavigationIcon(Symbol.Download);
         UpdateButton.Icon.Foreground = KronoDesign.ThemeBrush("KronoAccentForeground", ActualTheme);
@@ -126,7 +130,8 @@ public sealed partial class MainPage : Page
     async void CreateAccount(object sender, RoutedEventArgs e) => await Authenticate(true);
     async void SubmitPassword(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key != Windows.System.VirtualKey.Enter || e.KeyStatus.WasKeyDown || PasswordInput.FocusState == FocusState.Unfocused) return;
+        if (e.Key != Windows.System.VirtualKey.Enter || e.KeyStatus.WasKeyDown ||
+            PasswordInput.FocusState == FocusState.Unfocused && revealedAuthPassword.FocusState == FocusState.Unfocused) return;
         e.Handled = true;
         await Authenticate(CreateAccountButton.Visibility == Visibility.Visible);
     }
@@ -139,20 +144,15 @@ public sealed partial class MainPage : Page
         HideError();
         EmailInput.Focus(FocusState.Programmatic);
     }
-    void StyleAuthPassword(object sender, RoutedEventArgs args)
+    void ReleaseInputFocusOnOutsidePress(object sender, PointerRoutedEventArgs args)
     {
-        if (sender is not PasswordBox password) return;
-        KronoInputMotion.Attach(password, "KronoPasswordInput", PasswordVisibility);
-        KronoInputMotion.StyleButton(PasswordVisibility);
-    }
-    void PasswordVisibilityChanged(object sender, RoutedEventArgs args)
-    {
-        var visible = PasswordVisibility.IsChecked == true;
-        PasswordInput.PasswordRevealMode = visible ? PasswordRevealMode.Visible : PasswordRevealMode.Hidden;
-        PasswordEye.Glyph = visible ? "\uED1A" : "\uE890";
-        var label = visible ? "Hide password" : "Show password";
-        AutomationProperties.SetName(PasswordVisibility, label);
-        ToolTipService.SetToolTip(PasswordVisibility, label);
+        if (XamlRoot is not { } root || !args.GetCurrentPoint(this).Properties.IsLeftButtonPressed ||
+            FocusManager.GetFocusedElement(root) is not Control focused || focused is not (TextBox or PasswordBox or RichEditBox)) return;
+        for (var source = args.OriginalSource as DependencyObject; source is not null; source = VisualTreeHelper.GetParent(source))
+            if (ReferenceEquals(source, focused) || source is ButtonBase) return;
+        DispatcherQueue.TryEnqueue(() => {
+            if (ReferenceEquals(FocusManager.GetFocusedElement(root), focused)) Focus(FocusState.Programmatic);
+        });
     }
     async Task Authenticate(bool register)
     {
@@ -257,7 +257,7 @@ public sealed partial class MainPage : Page
             workspace.SetSetting("native.tools." + id, "");
         }
         PluginCatalog.RestoreInstallations(workspace);
-        workspace.FlushSideTransfers(); ShowChats();
+        workspace.FlushSideTransfers(); draftProject = ResolveNewChatProject(); ShowChats();
         if (workspace.IsOfflineSession) progress.Text = "Offline · local workspace restored; account validation will retry.";
         sessionTimer.Start();
         modelDiscoveryTimer.Tick -= RetryChatModel;
@@ -422,7 +422,7 @@ public sealed partial class MainPage : Page
             history.Children.Add(header);
             header.Children.Add(Button("+ New chat", () => {
                 if (runId is not null) return;
-                OpenDraft(null);
+                OpenDraft(ResolveNewChatProject());
             }));
             InitializeChatRail();
             Grid.SetRow(chatList, 1);
@@ -570,6 +570,7 @@ public sealed partial class MainPage : Page
     void LoadChat()
     {
         var project = ComposerProject;
+        if (chatId is not null && project is not null) RememberActiveProject(project);
         if (chatProjectButton is not null)
             chatProjectButton.Content = (project is null ? null : workspace.Query(
                 "SELECT name FROM projects WHERE id=$p0 AND deleted_at IS NULL", project).FirstOrDefault()?["name"]?.ToString()) ?? "Project…";
@@ -777,10 +778,10 @@ public sealed partial class MainPage : Page
         var keyField = new StackPanel { Spacing = 6 };
         keyField.Children.Add(new TextBlock { Text = "API key" });
         keyField.Children.Add(secretRow);
-        KronoInputMotion.Attach(secret, "KronoPasswordInput", eye);
-        KronoInputMotion.StylePasswordReveal(secret, eye, eyeIcon);
+        KronoInputMotion.Attach(secret, "KronoPasswordInput");
         AutomationProperties.SetAutomationId(secret, "ProviderKey");
         AutomationProperties.SetName(secret, "API key");
+        var revealedKey = KronoInputMotion.StylePasswordReveal(secretRow, secret, eye, eyeIcon);
         var models = new StackPanel { Spacing = 4, Visibility = Visibility.Collapsed };
         AutomationProperties.SetAutomationId(models, "ModelCatalog");
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap };
@@ -795,7 +796,8 @@ public sealed partial class MainPage : Page
         keyActions.Children.Add(testConnection);
         var optionalKey = Button("Configure optional server token", () => {
             keyField.Visibility = saveKey.Visibility = Visibility.Visible;
-            secret.Focus(FocusState.Programmatic);
+            if (eye.IsChecked == true) revealedKey.Focus(FocusState.Programmatic);
+            else secret.Focus(FocusState.Programmatic);
         });
         var refreshModels = Button("Refresh models", () => LoadProviderModels(refresh: true));
         void ShowKeyField()
@@ -866,7 +868,7 @@ public sealed partial class MainPage : Page
                 _ = LoadProviderModels(refresh: true);
             } catch (Exception error) { Error(error); }
         }
-        secret.PreviewKeyDown += (_, args) => {
+        secretRow.PreviewKeyDown += (_, args) => {
             if (args.Key != Windows.System.VirtualKey.Enter || args.KeyStatus.WasKeyDown) return;
             args.Handled = true;
             SaveKey();
@@ -999,6 +1001,7 @@ public sealed partial class MainPage : Page
             ManualProjectChats ? "Manual" : "Recent activity",
             choice => SetProjectChatOrder(choice == "Manual" ? "manual" : "activity"));
         panel.Children.Add(projectOrder);
+        AddNewChatProjectSettings(panel);
         AddCategory("Plugins");
         AddUpdateSettings(AddCategory("Updates"));
         var names = pages.Keys.ToList();

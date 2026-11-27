@@ -76,6 +76,7 @@ public sealed class KronoTextBox : TextBox
 {
     internal bool SurfaceFeedbackEnabled { get; init; } = true;
     internal bool PressMotionEnabled { get; init; } = true;
+    internal bool ClearActionEnabled { get; init; } = true;
     public KronoTextBox()
     {
         KronoInputMotion.Attach(this, "KronoTextInput");
@@ -366,13 +367,30 @@ internal static class KronoInputMotion
         bool IsLargeEditor() => field is (TextBox { AcceptsReturn: true } or RichEditBox)
             && (!PressMotionEnabled() || field.ActualHeight >= 100);
         bool NativeTextEditor() => field is TextBox or RichEditBox;
+        ButtonBase? clearAction = null;
+        void UpdateClearAction()
+        {
+            if (clearAction is not null && field is TextBox text)
+                clearAction.Visibility = text is not KronoTextBox { ClearActionEnabled: false } &&
+                    !text.AcceptsReturn && !text.IsReadOnly && text.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        if (field is TextBox clearable) {
+            clearable.TextChanged += (_, _) => UpdateClearAction();
+            clearable.RegisterPropertyChangedCallback(TextBox.IsReadOnlyProperty, (_, _) => UpdateClearAction());
+            clearable.RegisterPropertyChangedCallback(TextBox.AcceptsReturnProperty, (_, _) => UpdateClearAction());
+        }
         pressFeedback.Tick += (_, _) => { pressFeedback.Stop(); Refresh(); };
         void StyleParts() {
             field.ApplyTemplate();
             AlignTextContent(field);
             if (field is KronoTextBox { SurfaceFeedbackEnabled: false }) return;
             foreach (var child in Descendants(field).ToArray())
-                if (child is ButtonBase button) StyleButton(button);
+                if (child is ButtonBase button) {
+                    if (button.Name == "DeleteButton" && field is TextBox) {
+                        clearAction = button;
+                        StyleFieldAction(button);
+                    } else StyleButton(button);
+                }
                 else if (child is Border border) {
                             border.BackgroundTransition = new BrushTransition { Duration = TimeSpan.FromMilliseconds(180) };
                 }
@@ -397,6 +415,18 @@ internal static class KronoInputMotion
             foreach (var element in Descendants(field).OfType<FrameworkElement>())
                 foreach (var group in VisualStateManager.GetVisualStateGroups(element))
                 {
+                    if (clearAction is not null) {
+                        foreach (var state in group.States) {
+                            foreach (var setter in state.Setters.OfType<Setter>().Where(setter =>
+                                setter.Target?.Path?.Path == "DeleteButton.Visibility").ToArray())
+                                state.Setters.Remove(setter);
+                            if (state.Storyboard is { } clearStoryboard)
+                                foreach (var animation in clearStoryboard.Children.Where(animation =>
+                                    Storyboard.GetTargetName(animation) == "DeleteButton" &&
+                                    Storyboard.GetTargetProperty(animation) == "Visibility").ToArray())
+                                    clearStoryboard.Children.Remove(animation);
+                        }
+                    }
                     if (rim is not null) {
                         foreach (var state in group.States) {
                             foreach (var setter in state.Setters.OfType<Setter>().Where(setter =>
@@ -414,6 +444,7 @@ internal static class KronoInputMotion
                     if ((group.Name is "CommonStates" or "FocusStates") && group.Transitions.Count == 0)
                         group.Transitions.Add(new VisualTransition { GeneratedDuration = new Duration(TimeSpan.FromMilliseconds(180)) });
                 }
+            UpdateClearAction();
             Refresh();
         }
         field.Loaded += (_, _) => StyleParts();
@@ -496,23 +527,71 @@ internal static class KronoInputMotion
         };
     }
 
-    internal static void StylePasswordReveal(PasswordBox field, ToggleButton button, FontIcon icon)
+    internal static TextBox StylePasswordReveal(Grid host, PasswordBox field, ToggleButton button, FontIcon icon)
     {
-        button.Width = 34;
-        button.Margin = new Thickness(0, 0, 5, 0);
+        var editor = new KronoTextBox {
+            Padding = field.Padding, Visibility = Visibility.Collapsed, IsSpellCheckEnabled = false,
+            IsTextPredictionEnabled = false, ClearActionEnabled = false
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(editor,
+            Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(field));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(editor,
+            Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(field) + "Revealed");
+        host.Children.Insert(host.Children.IndexOf(button), editor);
+        bool updating = false;
+        field.PasswordChanged += (_, _) => {
+            if (updating || editor.Visibility != Visibility.Visible) return;
+            editor.Text = field.Password;
+        };
+        editor.TextChanged += (_, _) => {
+            if (editor.Visibility != Visibility.Visible || field.Password == editor.Text) return;
+            updating = true;
+            try { field.Password = editor.Text; }
+            finally { updating = false; }
+        };
         void Refresh()
         {
             var revealed = button.IsChecked == true;
-            field.PasswordRevealMode = revealed ? PasswordRevealMode.Visible : PasswordRevealMode.Hidden;
+            if (revealed) editor.Text = field.Password;
+            field.Visibility = revealed ? Visibility.Collapsed : Visibility.Visible;
+            editor.Visibility = revealed ? Visibility.Visible : Visibility.Collapsed;
+            if (!revealed) editor.Text = "";
             icon.Glyph = revealed ? "\uED1A" : "\uE890";
             var label = revealed ? "Hide password" : "Show password";
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, label);
-            ToolTipService.SetToolTip(button, label);
+            SetFieldActionHint(button, label);
         }
-        button.Checked += (_, _) => Refresh();
-        button.Unchecked += (_, _) => Refresh();
-        StyleButton(button);
+        button.Checked += (_, _) => { Refresh(); editor.Focus(FocusState.Programmatic); editor.Select(editor.Text.Length, 0); };
+        button.Unchecked += (_, _) => { Refresh(); field.Focus(FocusState.Programmatic); };
+        StyleFieldAction(button);
         Refresh();
+        return editor;
+    }
+
+    static void StyleFieldAction(ButtonBase button)
+    {
+        button.Width = 34;
+        button.Height = 28;
+        button.Margin = new Thickness(0, 0, 5, 0);
+        button.HorizontalContentAlignment = HorizontalAlignment.Center;
+        button.VerticalContentAlignment = VerticalAlignment.Center;
+        StyleButton(button);
+    }
+
+    static void SetFieldActionHint(ButtonBase button, string label)
+    {
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, label);
+        if (ToolTipService.GetToolTip(button) is ToolTip existing) {
+            existing.Content = label;
+            return;
+        }
+        var hint = new ToolTip { Content = label, CornerRadius = new CornerRadius(8), Padding = new Thickness(9, 5, 9, 5) };
+        hint.Opened += (_, _) => {
+            hint.Background = KronoDesign.ThemeBrush("KronoSurface", button.ActualTheme);
+            hint.BorderBrush = KronoDesign.ThemeBrush("KronoBorder", button.ActualTheme);
+            hint.BorderThickness = new Thickness(1);
+            hint.FontFamily = KronoDesign.TextFont;
+        };
+        ToolTipService.SetToolTip(button, hint);
     }
 
     internal static void StyleButton(ButtonBase button)
@@ -532,6 +611,9 @@ internal static class KronoInputMotion
         if (button.Name is "DeleteButton" or "PasswordVisibility" or "RevealButton" or "CloseButton") {
             if (button.Name is "DeleteButton" or "CloseButton")
                 button.Content = new FontIcon { Glyph = "\uE894", FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 14 };
+            if (button.Name == "DeleteButton") {
+                SetFieldActionHint(button, "Clear text");
+            }
             if (button.Name == "RevealButton" && button is ToggleButton eye) {
                 var icon = new FontIcon { Glyph = "\uE890", FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 14 };
                 eye.Content = icon;

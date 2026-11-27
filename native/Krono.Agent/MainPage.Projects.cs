@@ -10,6 +10,62 @@ public sealed partial class MainPage
     StackPanel? projectRows;
     readonly Dictionary<string, (string Name, Grid Row)> projectRowById = [];
     readonly TextBlock emptyProjects = new() { Text = "No projects created." };
+    const string NewChatProjectMode = "native.newChatProjectMode";
+    const string FixedNewChatProject = "native.newChatProjectId";
+    const string LastActiveProject = "native.lastActiveProject";
+
+    void RememberActiveProject(string project)
+    {
+        if (workspace.Setting(LastActiveProject) != project)
+            workspace.SetSetting(LastActiveProject, project);
+    }
+
+    string? ResolveNewChatProject()
+    {
+        var id = workspace.Setting(NewChatProjectMode) switch {
+            "none" => null,
+            "current" => ComposerProject,
+            "fixed" => workspace.Setting(FixedNewChatProject),
+            _ => workspace.Setting(LastActiveProject) is { Length: > 0 } last ? last :
+                workspace.Query("""
+                    SELECT p.id FROM projects p JOIN chats c ON c.project_id=p.id
+                    WHERE p.account_id=$p0 AND p.deleted_at IS NULL AND c.deleted_at IS NULL
+                      AND NOT EXISTS (SELECT 1 FROM side_chats sc WHERE sc.chat_id=c.id)
+                    ORDER BY c.updated_at DESC,c.id LIMIT 1
+                    """, workspace.AccountId).FirstOrDefault()?["id"]?.ToString()
+        };
+        if (string.IsNullOrEmpty(id) || workspace.Query(
+            "SELECT id FROM projects WHERE id=$p0 AND account_id=$p1 AND deleted_at IS NULL", id, workspace.AccountId).Count == 0)
+            return null;
+        return id;
+    }
+
+    void AddNewChatProjectSettings(StackPanel panel)
+    {
+        var modes = new[] { ("last", "Last active project"), ("none", "No project"),
+            ("current", "Current project"), ("fixed", "Choose a project") };
+        var projects = OrderedProjects();
+        var selected = Array.FindIndex(modes, mode => mode.Item1 == workspace.Setting(NewChatProjectMode));
+        var fixedProject = new KronoComboBox {
+            Header = "Default project", PlaceholderText = "Choose a project",
+            ItemsSource = projects.Select(project => project.Name).ToArray(),
+            SelectedIndex = projects.FindIndex(project => project.Id == workspace.Setting(FixedNewChatProject)),
+            Visibility = selected == 3 ? Visibility.Visible : Visibility.Collapsed
+        };
+        AutomationProperties.SetAutomationId(fixedProject, "FixedNewChatProject");
+        fixedProject.SelectionChanged += (_, _) => {
+            if (fixedProject.SelectedIndex >= 0)
+                workspace.SetSetting(FixedNewChatProject, projects[fixedProject.SelectedIndex].Id);
+        };
+        var picker = Choices("New chat project", modes.Select(mode => mode.Item2).ToArray(),
+            modes[Math.Max(0, selected)].Item2, name => {
+                var mode = modes.First(item => item.Item2 == name).Item1;
+                workspace.SetSetting(NewChatProjectMode, mode);
+                fixedProject.Visibility = mode == "fixed" ? Visibility.Visible : Visibility.Collapsed;
+            });
+        panel.Children.Add(picker);
+        panel.Children.Add(fixedProject);
+    }
 
     List<(string Id, string Name)> OrderedProjects()
     {

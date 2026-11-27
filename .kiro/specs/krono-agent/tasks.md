@@ -1300,3 +1300,9 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Merge duplicate listings from an automatically detected local server and its direct provider.
 - Load the default provider catalog, keep password actions on the right, preserve pasted text, and test provider connections without saving keys.
 - Separate Google callback parsing from the PKCE exchange and keep full Windows distribution checks in the release workflow.
+
+## Input actions and default chat project
+
+- Share flat input actions and their tooltips. Show clear actions for populated single-line text, and keep password reveal available when empty.
+- Release text focus on outside clicks. Allow the standard Windows text input panel while editing an explicitly revealed credential.
+- Open new drafts in the last active project by default. Allow the current project, a fixed project, or new drafts without a project.
