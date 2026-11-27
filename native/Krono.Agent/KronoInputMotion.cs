@@ -612,6 +612,8 @@ internal static class KronoInputMotion
             if (button.Name is "DeleteButton" or "CloseButton")
                 button.Content = new FontIcon { Glyph = "\uE894", FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 14 };
             if (button.Name == "DeleteButton") {
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(button,
+                    Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Control);
                 SetFieldActionHint(button, "Clear text");
             }
             if (button.Name == "RevealButton" && button is ToggleButton eye) {
