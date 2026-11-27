@@ -241,6 +241,8 @@ function SelectConfiguredModel([string]$Name) {
     OpenAdvancedModel
     SelectChoice 'ChatModelPicker' $Name
     Invoke 'Apply' -ByName
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((FindOptional 'ChatModelPicker') -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
     Find $Name -ByName | Out-Null
 }
 function OpenAdvancedModel {
@@ -1526,10 +1528,7 @@ public static class PluginFixture {
     Invoke 'Move' -ByName
     WaitForChatProject 'Native fixture project'
     if ($env:KRONO_SMOKE_SCOPE -eq 'account-ui') {
-        OpenAdvancedModel
-        SelectChoice 'ChatModelPicker' 'gpt-5-mini'
-        Invoke 'Apply' -ByName
-        Find 'gpt-5-mini' -ByName | Out-Null
+        SelectConfiguredModel 'gpt-5-mini'
         Invoke 'ComposerModelButton'
         $effort = (Find 'Reasoning effort' -ByName).GetCurrentPattern([Windows.Automation.RangeValuePattern]::Pattern)
         $effort.SetValue($effort.Current.Maximum)
