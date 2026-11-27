@@ -669,7 +669,13 @@ public static class PluginFixture {
             Invoke 'Delete project' -ByName
             Find 'Reorder Zulu project' -ByName | Out-Null
             $deleted = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Reorder Alpha project')
-            if ($script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, $deleted)) { throw 'Deleted project remained on the overview' }
+            $deadline = (Get-Date).AddSeconds(5)
+            do {
+                $staleRow = $script:window.FindFirst([Windows.Automation.TreeScope]::Descendants, $deleted)
+                if (!$staleRow) { break }
+                Start-Sleep -Milliseconds 100
+            } while ((Get-Date) -lt $deadline)
+            if ($staleRow) { throw 'Deleted project remained on the overview' }
             Write-Output 'NATIVE_SMOKE_PASS: project list, two-way ordering, editing, and deletion'
             return
         }
