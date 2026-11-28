@@ -70,7 +70,8 @@ public static partial class NativeMarkdown
                 TextAlignment = input.TextAlignment, TextReadingOrder = input.TextReadingOrder,
                 HorizontalAlignment = input.HorizontalAlignment, VerticalAlignment = input.VerticalAlignment,
                 VerticalContentAlignment = VerticalAlignment.Top,
-                IsSpellCheckEnabled = false, IsTextPredictionEnabled = false, InputScope = source.InputScope,
+                IsSpellCheckEnabled = false, IsTextPredictionEnabled = false,
+                InputScope = new InputScope { Names = { new InputScopeName(InputScopeNameValue.Default) } },
                 Visibility = Visibility.Collapsed
             };
             AutomationProperties.SetAutomationId(Rich, AutomationProperties.GetAutomationId(input));
