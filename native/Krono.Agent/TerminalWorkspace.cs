@@ -137,7 +137,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
                 args.NewText.AsSpan(args.NewText.Length - suffix).SequenceEqual(original.AsSpan(end))) {
                 var inserted = args.NewText.Substring(start, args.NewText.Length - start - suffix)
                     .Replace("\r\n", "\r").Replace('\n', '\r');
-                DispatcherQueue.TryEnqueue(async () => await Write(id, terminal, inserted));
+                _ = Write(id, terminal, inserted);
             }
         };
         async Task Paste()
