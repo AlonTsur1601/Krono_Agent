@@ -1,3 +1,4 @@
+using Windows.Foundation;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -124,30 +125,20 @@ public sealed class TerminalWorkspace : Grid, IDisposable
         var terminal = NewSession(id, "PowerShell");
         terminal.StartupInput = new();
         var screen = terminal.Screen;
-        screen.BeforeTextChanging += (sender, args) => {
-            if (terminal.Rendering) return;
-            args.Cancel = true;
-            // Route keyboard, emoji, and IME text through the PTY without editing its transcript.
-            var original = screen.Text;
-            var start = screen.SelectionStart;
-            var end = start + screen.SelectionLength;
-            var suffix = original.Length - end;
-            if (args.NewText.Length > start + suffix &&
-                args.NewText.AsSpan(0, start).SequenceEqual(original.AsSpan(0, start)) &&
-                args.NewText.AsSpan(args.NewText.Length - suffix).SequenceEqual(original.AsSpan(end))) {
-                var inserted = args.NewText.Substring(start, args.NewText.Length - start - suffix)
-                    .Replace("\r\n", "\r").Replace('\n', '\r');
-                _ = Write(id, terminal, inserted);
-            }
-        };
+        screen.BeforeTextChanging += (_, args) => args.Cancel = !terminal.Rendering;
+        screen.AddHandler(UIElement.CharacterReceivedEvent, new TypedEventHandler<UIElement, CharacterReceivedRoutedEventArgs>(async (_, args) => {
+            if (char.IsControl(args.Character)) return;
+            args.Handled = true;
+            await Write(id, terminal, args.Character.ToString());
+        }), true);
         async Task Paste()
         {
             try {
-                var clipboard = Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
-                if (clipboard.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text))
+                if (KronoInputUndo.TryReadClipboard(out var clipboard))
                     await Write(id, terminal, (await clipboard.GetTextAsync()).Replace("\r\n", "\r").Replace('\n', '\r'));
             } catch (Exception error) { ShowError(terminal, error); }
         }
+        screen.Paste += async (_, args) => { args.Handled = true; await Paste(); };
         screen.PreviewKeyDown += async (_, args) => {
             var ctrl = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control).HasFlag(CoreVirtualKeyStates.Down);
             var shift = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift).HasFlag(CoreVirtualKeyStates.Down);
