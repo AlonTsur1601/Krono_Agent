@@ -8,7 +8,7 @@ namespace Krono_Agent;
 public sealed partial class MainWindow
 {
     const uint AppCommandMessage = 0x0319;
-    const uint XButtonUp = 0x020C, NonClientXButtonUp = 0x00AC;
+    const uint XButtonUp = 0x020C;
     const nuint NavigationSubclass = 2;
     NavigationWindowProc? navigationWindowProc;
     MessageHook? navigationMouseHook;
@@ -27,21 +27,30 @@ public sealed partial class MainWindow
         navigationWindowProc = HandleNavigationCommand;
         if (SetWindowSubclass(window, navigationWindowProc, NavigationSubclass, 0))
             Closed += (_, _) => RemoveWindowSubclass(window, navigationWindowProc, NavigationSubclass);
-        navigationMouseHook = (code, operation, address) => {
-            if (code >= 0 && operation == 1 && (uint)Marshal.ReadInt32(address, IntPtr.Size) is XButtonUp or NonClientXButtonUp) {
-                var message = Marshal.PtrToStructure<NativeMessage>(address);
-                if (message.Window == window || IsChild(window, message.Window)) {
-                    var button = (message.WParam >> 16) & 0xffff;
-                    if (button is 1 or 2 && QueueNavigation(button == 1 ? -1 : 1)) {
-                        // Consume the release before WinUI or DefWindowProc can handle it a second time.
-                        Marshal.WriteInt32(address, IntPtr.Size, 0);
-                    }
-                }
+        navigationMouseHook = (code, message, address) => {
+            if (code >= 0 && message == XButtonUp && GetForegroundWindow() == window) {
+                var click = Marshal.PtrToStructure<MouseHookData>(address);
+                var button = click.MouseData >> 16;
+                var target = WindowFromPoint(click.Position);
+                if (button is 1 or 2 && (target == window || IsChild(window, target)) &&
+                    QueueNavigation(button == 1 ? -1 : 1)) return 1;
             }
-            return CallNextHookEx(0, code, operation, address);
+            return CallNextHookEx(0, code, message, address);
         };
-        var hook = SetWindowsHookExW(3, navigationMouseHook, 0, GetCurrentThreadId()); // WH_GETMESSAGE, this UI thread only
-        if (hook != 0) Closed += (_, _) => UnhookWindowsHookEx(hook);
+        // WinUI may consume extended mouse messages before forwarding an app command.
+        // Listen only while this window is active, and leave clicks in all other windows alone.
+        nint hook = 0;
+        void RemoveMouseHook()
+        {
+            if (hook == 0) return;
+            UnhookWindowsHookEx(hook);
+            hook = 0;
+        }
+        Activated += (_, args) => {
+            if (args.WindowActivationState == WindowActivationState.Deactivated) RemoveMouseHook();
+            else if (hook == 0) hook = SetWindowsHookExW(14, navigationMouseHook, GetModuleHandleW(null), 0);
+        };
+        Closed += (_, _) => RemoveMouseHook();
     }
 
     void AddShortcut(UIElement root, VirtualKey key, int direction)
@@ -80,15 +89,16 @@ public sealed partial class MainWindow
     [DllImport("comctl32.dll")] static extern nint DefSubclassProc(nint window, uint message, nuint wParam, nint lParam);
 
     [StructLayout(LayoutKind.Sequential)]
-    struct NativeMessage
+    struct NativePoint { public int X, Y; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct MouseHookData
     {
-        public nint Window;
-        public uint Id;
-        public nuint WParam;
-        public nint LParam;
+        public NativePoint Position;
+        public uint MouseData;
+        public uint Flags;
         public uint Time;
-        public int X, Y;
-        public uint Private;
+        public nuint ExtraInfo;
     }
 
     delegate nint MessageHook(int code, nuint wParam, nint lParam);
@@ -96,5 +106,7 @@ public sealed partial class MainWindow
     [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(nint hook);
     [DllImport("user32.dll")] static extern nint CallNextHookEx(nint hook, int code, nuint wParam, nint lParam);
     [DllImport("user32.dll")] static extern bool IsChild(nint parent, nint child);
-    [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] static extern nint GetForegroundWindow();
+    [DllImport("user32.dll")] static extern nint WindowFromPoint(NativePoint point);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)] static extern nint GetModuleHandleW(string? module);
 }
