@@ -1318,3 +1318,10 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Keep bot difficulty inside the game card with a reserved footer of equal height across the catalog.
 - Focus the standard Windows text editor after revealing a credential. Keep the native password control while masked.
 - Exercise scheduled execution in the Windows release smoke test, including opt-in, one completed run, conversation navigation, and preservation of a separate draft.
+
+## Input consistency and navigation
+
+- Share grouped undo and text paste across the normal editors, including numeric and credential fields. Use Markdown for long-form prompts and instructions and reserve image paste for the main composer.
+- Use standard Windows input scope on text editors, including revealed credentials. The masked Windows password field retains its password input scope.
+- Move editing and project chat preferences to Conversations. Use the space above the score for the bot slider and start the sidebar width animation concurrently with text.
+- Navigate recently visited app screens with title bar arrows, Alt+Left/Right, and Windows Back/Forward device commands.

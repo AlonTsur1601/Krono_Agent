@@ -177,10 +177,11 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
         try { if (workspace.Setting("native.gameFavorites") is { Length: > 0 } json) favorites.UnionWith(System.Text.Json.JsonSerializer.Deserialize<string[]>(json) ?? []); } catch (System.Text.Json.JsonException) { }
         for (var i = 0; i < names.Length; i++) {
             var index = i;
-            const double difficultyHeight = 72;
-            var card = new StackPanel { Spacing = 10, Padding = new Thickness(0, 0, 0, difficultyHeight) };
+            const double difficultyHeight = 34;
+            var card = new StackPanel { Spacing = 8 };
             card.Children.Add(new TextBlock { Text = names[i], FontFamily = (FontFamily)Application.Current.Resources["KronoDisplayFont"], FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(14, 0, 14, 0) });
-            card.Children.Add(new TextBlock { Text = descriptions[i], FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.Normal, Opacity = .72, TextWrapping = TextWrapping.Wrap, Height = 48, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(14, 0, 14, 6) });
+            card.Children.Add(new TextBlock { Text = descriptions[i], FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.Normal, Opacity = .72, TextWrapping = TextWrapping.Wrap, Height = 30, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(14, 0, 14, 0) });
+            card.Children.Add(new Grid { Height = difficultyHeight });
             var saveLabel = new TextBlock { Text = BestCaptionText(bestScores.GetValueOrDefault(names[i])), FontFamily = KronoDesign.CodeFont, FontSize = 10, CharacterSpacing = 85, Foreground = ReadableAccent, Margin = new Thickness(14, 0, 14, 14) }; saveLabels.Add(saveLabel); card.Children.Add(saveLabel);
             var button = new Button { Style = (Style)Application.Current.Resources["KronoButton"], Content = card, Padding = new Thickness(0),
                 CornerRadius = new CornerRadius(16), HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -208,11 +209,11 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
             if (index is 1 or 4 or 7 or 12 or MazeChase) {
                 var difficulty = KronoDesign.DiscreteSlider("Bot difficulty", BotLevels, Difficulty(index),
                     value => workspace.SetSetting("native.gameBotDifficulty." + names[index], value.ToString(System.Globalization.CultureInfo.InvariantCulture)),
-                    automationId: "GameDifficulty" + index);
+                    automationId: "GameDifficulty" + index, compact: true);
                 // Keep the slider independent of the play button's pointer and keyboard handling.
                 difficulty.VerticalAlignment = VerticalAlignment.Bottom;
                 difficulty.Height = difficultyHeight;
-                difficulty.Margin = new Thickness(14, 0, 14, 4);
+                difficulty.Margin = new Thickness(14, 0, 14, 40);
                 cardFrame.Children.Add(difficulty);
             }
             buttons.Add(cardFrame);

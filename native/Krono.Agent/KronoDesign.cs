@@ -549,7 +549,7 @@ public static class KronoDesign
         visual.StartAnimation("Opacity", fade);
     }
 
-    internal static FrameworkElement DiscreteSlider(string name, string[] labels, int selected, Action<int> change, string? automationId = null)
+    internal static FrameworkElement DiscreteSlider(string name, string[] labels, int selected, Action<int> change, string? automationId = null, bool compact = false)
     {
         var title = new TextBlock { FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
         var slider = new Slider { Minimum = 0, Maximum = labels.Length - 1, Value = selected, StepFrequency = 1,
@@ -568,7 +568,10 @@ public static class KronoDesign
             slider.Resources["SliderOuterThumbBackground"] = ThemeBrush("KronoSurface", slider.ActualTheme);
             slider.Resources["SliderThumbBorderBrush"] = ThemeBrush("KronoBorder", slider.ActualTheme);
         }
-        void Refresh(int index) => title.Text = name + " · " + labels[index];
+        void Refresh(int index) {
+            title.Text = compact ? labels[index] : name + " · " + labels[index];
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(slider, labels[index]);
+        }
         Palette();
         slider.ActualThemeChanged += (_, _) => Palette();
         Refresh(selected);
@@ -579,6 +582,18 @@ public static class KronoDesign
         PaintTrack();
         track.ActualThemeChanged += (_, _) => PaintTrack();
         KronoInputMotion.RegisterPaletteRefresh(track, () => { Palette(); PaintTrack(); });
+        if (compact) {
+            title.FontSize = 11;
+            title.TextWrapping = TextWrapping.NoWrap;
+            title.VerticalAlignment = VerticalAlignment.Center;
+            var row = new Grid { ColumnSpacing = 8 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(48) });
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            Grid.SetColumn(track, 1);
+            row.Children.Add(title);
+            row.Children.Add(track);
+            return row;
+        }
         return new StackPanel { Spacing = 5, Children = { title, track } };
     }
 

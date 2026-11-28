@@ -31,6 +31,7 @@ public sealed partial class MainWindow : Window
             presenter.Maximize();
 
         RootFrame.Navigate(typeof(MainPage));
+        InitializeAppNavigation();
         AppWindow.Closing += (_, args) => {
             if (closeApproved || !tray.IsAvailable || Environment.GetEnvironmentVariable("KRONO_SMOKE_CLOSE_WINDOW") == "1") return;
             args.Cancel = true;

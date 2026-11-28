@@ -66,7 +66,7 @@ public sealed partial class MainPage
             WorkspaceSurface.CornerRadius = new CornerRadius(0);
         }
         if (new UISettings().AnimationsEnabled && (show || wasVisible)) {
-            const int duration = 175;
+            const int duration = 160;
             var motion = visual.Compositor.CreateVector3KeyFrameAnimation();
             if (show && !wasVisible) motion.InsertKeyFrame(0, new(-24, 0, 0));
             else motion.InsertExpressionKeyFrame(0, "this.StartingValue");
@@ -76,10 +76,9 @@ public sealed partial class MainPage
             visual.StartAnimation("Translation", motion);
             var width = new DoubleAnimation {
                 From = startWidth, To = show ? 252 : 0,
-                BeginTime = TimeSpan.FromMilliseconds(show ? 0 : 32),
-                Duration = new Duration(TimeSpan.FromMilliseconds(show ? duration : duration - 32)),
+                Duration = new Duration(TimeSpan.FromMilliseconds(duration)),
                 EnableDependentAnimation = true,
-                EasingFunction = new CubicEase { EasingMode = show ? EasingMode.EaseOut : EasingMode.EaseIn }
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
             };
             var storyboard = new Storyboard();
             Storyboard.SetTarget(width, ContextRail);

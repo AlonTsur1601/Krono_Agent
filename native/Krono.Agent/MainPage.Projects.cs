@@ -77,6 +77,7 @@ public sealed partial class MainPage
 
     void ShowProjects(string? selectedProject = null, bool editing = false)
     {
+        RememberNavigation(new("projects", selectedProject, Editing: editing));
         if (backToChats is not null) backToChats.Visibility = Visibility.Visible;
         SetSideChatVisible(false);
         var page = new StackPanel { Spacing = 14 };

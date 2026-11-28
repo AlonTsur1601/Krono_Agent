@@ -79,6 +79,7 @@ public sealed class KronoTextBox : TextBox
     internal bool ClearActionEnabled { get; init; } = true;
     public KronoTextBox()
     {
+        InputScope = new InputScope { Names = { new InputScopeName(InputScopeNameValue.Default) } };
         KronoInputMotion.Attach(this, "KronoTextInput");
         void AlignText()
         {
@@ -90,7 +91,7 @@ public sealed class KronoTextBox : TextBox
         void AttachUndo(object sender, RoutedEventArgs args)
         {
             Loaded -= AttachUndo;
-            if (SurfaceFeedbackEnabled && ClearActionEnabled) KronoInputUndo.Attach(this);
+            if (SurfaceFeedbackEnabled && !IsReadOnly) KronoInputUndo.Attach(this, sensitive: !ClearActionEnabled);
         }
         AlignText();
     }
@@ -333,6 +334,7 @@ internal static class KronoInputMotion
     {
         if (field is NumberBox && Descendants(field).OfType<TextBox>().FirstOrDefault() is { } editor) {
             editor.ApplyTemplate();
+            KronoInputUndo.Attach(editor);
             AlignTextContent(editor);
             return;
         }
@@ -370,7 +372,8 @@ internal static class KronoInputMotion
         bool hover = false, pressed = false;
         long pressStarted = 0;
         var pressFeedback = new DispatcherTimer();
-        bool PressMotionEnabled() => animatePress && field is not KronoTextBox { PressMotionEnabled: false };
+        bool PressMotionEnabled() => animatePress && field is not
+            (KronoTextBox { PressMotionEnabled: false } or TextBox { AcceptsReturn: true } or RichEditBox);
         bool IsLargeEditor() => field is (TextBox { AcceptsReturn: true } or RichEditBox) && field.ActualHeight >= 100;
         bool NativeTextEditor() => field is TextBox or RichEditBox;
         ButtonBase? clearAction = null;
@@ -542,6 +545,7 @@ internal static class KronoInputMotion
 
     internal static TextBox StylePasswordReveal(Grid host, PasswordBox field, ToggleButton button, FontIcon icon)
     {
+        KronoInputUndo.Attach(field);
         var editor = new KronoTextBox {
             Padding = field.Padding, Visibility = Visibility.Collapsed, IsSpellCheckEnabled = false,
             IsTextPredictionEnabled = false, ClearActionEnabled = false,

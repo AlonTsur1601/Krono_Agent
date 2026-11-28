@@ -319,6 +319,7 @@ public sealed partial class MainPage : Page
                 case "games": games ??= new GamesWorkspace(workspace); KronoDesign.Present(Body, games); break;
                 case "schedule": ShowSchedules(); break;
             }
+            if (section is "browser" or "terminal" or "games" or "schedule") RememberNavigation(new(section));
             UpdateActivityVisibility();
         } catch (Exception error) { Error(error); }
     }
@@ -334,6 +335,7 @@ public sealed partial class MainPage : Page
         sessionTimer.Stop(); worker?.Dispose(); worker = null; browser?.Dispose(); browser = null; terminal?.Dispose(); terminal = null; games?.Dispose(); games = null;
         try { await workspace.Logout(allDevices); }
         finally {
+            ResetNavigationHistory();
             chatId = runId = loadedContext = approvalId = draftProject = null; Body.Content = null;
             loadingChatHistory = true;
             try { chatRailEntries.Clear(); }
@@ -574,6 +576,7 @@ public sealed partial class MainPage : Page
     void LoadChat()
     {
         var project = ComposerProject;
+        if (ReferenceEquals(Body.Content, chatView)) RememberNavigation(new("chats", chatId, Project: chatId is null ? project : null));
         if (chatId is not null && project is not null) RememberActiveProject(project);
         if (chatProjectButton is not null)
             chatProjectButton.Content = (project is null ? null : workspace.Query(
@@ -1017,6 +1020,7 @@ public sealed partial class MainPage : Page
         }
         AttachSize(textSize, "native.textSize", 11, 28);
         AttachSize(codeSize, "native.codeSize", 10, 26);
+        panel = AddCategory("Conversations");
         var liveMarkdown = KronoDesign.Toggle("Live Markdown while editing", workspace.Setting(NativeMarkdown.LiveEditorSetting) == "true");
         AutomationProperties.SetAutomationId(liveMarkdown, "LiveMarkdownEditing");
         liveMarkdown.Toggled += (_, _) => {
@@ -1064,6 +1068,7 @@ public sealed partial class MainPage : Page
                 AddPluginSettings(pages[selected]);
             }
             KronoDesign.Present(page, views[selected]);
+            RememberNavigation(new("settings", selected));
         };
         if (category is null) categories.SelectedIndex = 0;
         else categories.SelectedItem = category;

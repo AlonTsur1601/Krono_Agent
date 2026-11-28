@@ -43,6 +43,8 @@ public static class KronoWindowCapture {
     [DllImport("user32.dll")]
     public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
     [DllImport("user32.dll")]
+    public static extern IntPtr SendMessageW(IntPtr hwnd, uint message, UIntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")]
     public static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
     [DllImport("user32.dll")]
     public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
@@ -145,7 +147,7 @@ function TestLiveMarkdown {
     Invoke 'Edit global instructions' -ByName
     SetValue 'GlobalInstructions' $markdown
     Invoke 'Save instructions' -ByName
-    SelectSettingsCategory 'Appearance'
+    SelectSettingsCategory 'Conversations'
     SetToggle 'LiveMarkdownEditing' On
     SelectSettingsCategory 'Instructions'
     Invoke 'Edit global instructions' -ByName
@@ -214,7 +216,7 @@ function TestLiveMarkdown {
     if (!$typed) { throw 'The character after a trailing space moved in the Hebrew Markdown line' }
     $markdown = $markdown.Replace($rtlWord, $rtlWord + ' 7')
     Invoke 'Save instructions' -ByName
-    SelectSettingsCategory 'Appearance'
+    SelectSettingsCategory 'Conversations'
     SetToggle 'LiveMarkdownEditing' Off
     SelectSettingsCategory 'Instructions'
     Invoke 'Edit global instructions' -ByName
@@ -314,13 +316,13 @@ function TestLiveMarkdown {
     }
     TestInputUndo
     Invoke 'Cancel' -ByName
-    SelectSettingsCategory 'Appearance'
+    SelectSettingsCategory 'Conversations'
     SetToggle 'LiveMarkdownEditing' On
     SelectSettingsCategory 'Instructions'
     Invoke 'Edit global instructions' -ByName
     TestInputUndo
     Invoke 'Cancel' -ByName
-    SelectSettingsCategory 'Appearance'
+    SelectSettingsCategory 'Conversations'
     SetToggle 'LiveMarkdownEditing' Off
     SelectSettingsCategory 'Instructions'
     Invoke 'Edit global instructions' -ByName
@@ -767,7 +769,7 @@ public static class PluginFixture {
                 Invoke '+ New chat' -ByName
                 if ((Find 'ChatProjectButton').Current.Name -ne 'Zulu project') { throw 'New chat did not default to the last active project' }
                 SelectNav 'Settings'
-                SelectSettingsCategory 'Appearance'
+                SelectSettingsCategory 'Conversations'
                 SelectChoice 'Newchatproject' 'No project'
                 SelectNav 'Chats'
                 Invoke '+ New chat' -ByName
@@ -783,14 +785,14 @@ public static class PluginFixture {
                 if ($effort.Current.Value -ne $expectedEffort) { throw 'Project reasoning effort was not retained' }
                 Invoke 'ComposerModelButton'
                 SelectNav 'Settings'
-                SelectSettingsCategory 'Appearance'
+                SelectSettingsCategory 'Conversations'
                 SelectChoice 'Newchatproject' 'Choose a project'
                 SelectChoice 'FixedNewChatProject' 'Alpha project'
                 SelectNav 'Chats'
                 Invoke '+ New chat' -ByName
                 if ((Find 'ChatProjectButton').Current.Name -ne 'Alpha project') { throw 'New chat did not use the configured project' }
                 SelectNav 'Settings'
-                SelectSettingsCategory 'Appearance'
+                SelectSettingsCategory 'Conversations'
                 SelectChoice 'Newchatproject' 'Current project'
                 SelectNav 'Chats'
                 Invoke 'New chat in Zulu project' -ByName
@@ -862,19 +864,19 @@ public static class PluginFixture {
             Find 'Most recent project message' -ByName | Out-Null
             if ((ProjectBounds 'Alpha second').Top -ge (ProjectBounds 'Alpha first').Top) { throw 'Default project chat order was not recent activity' }
             SelectNav 'Settings'
-            SelectSettingsCategory 'Appearance'
+            SelectSettingsCategory 'Conversations'
             SelectChoice 'Projectconversationorder' 'Manual'
             SelectNav 'Chats'
             if ((ProjectBounds 'Alpha second').Top -ge (ProjectBounds 'Alpha first').Top) { throw 'Switching to manual changed the current order' }
             DragProject (ProjectBounds 'Alpha first') (ProjectBounds 'Alpha second') $true 'native-project-chat-drag.png'
             if ((ProjectBounds 'Alpha first').Top -ge (ProjectBounds 'Alpha second').Top) { throw 'Chat drag did not change its order' }
             SelectNav 'Settings'
-            SelectSettingsCategory 'Appearance'
+            SelectSettingsCategory 'Conversations'
             SelectChoice 'Projectconversationorder' 'Recent activity'
             SelectNav 'Chats'
             if ((ProjectBounds 'Alpha second').Top -ge (ProjectBounds 'Alpha first').Top) { throw 'Recent activity did not restore chronological order' }
             SelectNav 'Settings'
-            SelectSettingsCategory 'Appearance'
+            SelectSettingsCategory 'Conversations'
             SelectChoice 'Projectconversationorder' 'Manual'
             SelectNav 'Chats'
             DragProject (ProjectBounds 'Outside project') (ProjectBounds 'Alpha first') $true
@@ -1629,6 +1631,12 @@ public static class PluginFixture {
     Invoke-RestMethod -Method Post ($Fixture + '/seed-memory') | Out-Null
     SelectNav 'Settings'
     SelectSettingsCategory 'Appearance'
+    Invoke 'AppBack'
+    [KronoWindowCapture]::SendMessageW($script:process.MainWindowHandle, 0x0319, [UIntPtr]::Zero, [IntPtr]0x80010000L) | Out-Null
+    Find 'New project' -ByName | Out-Null
+    Invoke 'AppForward'
+    [KronoWindowCapture]::SendMessageW($script:process.MainWindowHandle, 0x0319, [UIntPtr]::Zero, [IntPtr]0x00020000L) | Out-Null
+    Find 'Appearance' | Out-Null
     foreach ($appearance in @('dark','halloween','light','system')) {
         SelectChoice 'Appearance' $appearance
         if ($appearance -eq 'system') { continue }

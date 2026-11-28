@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using System.Runtime.CompilerServices;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 using Windows.UI.Core;
@@ -11,6 +12,7 @@ internal sealed class KronoInputUndo
     internal sealed record State(string Text, int Start, int End);
     enum Kind { Separate, Typing, Backspace, Delete }
     readonly List<State> undo = [], redo = [];
+    static readonly ConditionalWeakTable<TextBox, KronoInputUndo> attached = new();
     State? beforeEdit;
     Kind editKind, groupKind;
     int groupCaret = -1;
@@ -85,16 +87,18 @@ internal sealed class KronoInputUndo
     internal static bool KeyDown(VirtualKey key) =>
         Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
 
-    internal static void Attach(TextBox field)
+    internal static void Attach(TextBox field, bool sensitive = false)
     {
+        if (attached.TryGetValue(field, out _)) return;
         var history = new KronoInputUndo();
+        attached.Add(field, history);
         var previous = field.Text;
         var restoring = false;
         State Capture() => new(field.Text, field.SelectionStart, field.SelectionStart + field.SelectionLength);
         field.PreviewKeyDown += (_, args) => history.PrepareKey(Capture(), args.Key);
         field.Paste += (_, _) => history.Separate(Capture());
         field.PointerPressed += (_, _) => history.BreakGroup();
-        field.LostFocus += (_, _) => history.BreakGroup();
+        field.LostFocus += (_, _) => { if (sensitive) history.Clear(); else history.BreakGroup(); };
         field.BeforeTextChanging += (_, _) => {
             if (!restoring && field.FocusState != FocusState.Unfocused)
                 history.PrepareIfNone(new(previous, field.SelectionStart, field.SelectionStart + field.SelectionLength));
@@ -135,6 +139,30 @@ internal sealed class KronoInputUndo
                 } finally { restoring = false; previous = field.Text; }
             } catch (System.Runtime.InteropServices.COMException) { }
         }
+    }
+
+    internal static void Attach(PasswordBox field)
+    {
+        var history = new KronoInputUndo();
+        var previous = field.Password;
+        var restoring = false;
+        State Capture() => new(field.Password, field.Password.Length, field.Password.Length);
+        field.PreviewKeyDown += (_, args) => history.PrepareKey(Capture(), args.Key);
+        field.Paste += (_, _) => history.Separate(Capture());
+        field.PointerPressed += (_, _) => history.BreakGroup();
+        field.LostFocus += (_, _) => history.Clear();
+        field.PasswordChanged += (_, _) => {
+            if (!restoring) {
+                if (field.FocusState != FocusState.Unfocused) history.Record(new(previous, previous.Length, previous.Length), field.Password);
+                else history.Clear();
+            }
+            previous = field.Password;
+        };
+        history.BindShortcuts(field, () => field.IsEnabled, Capture, step => {
+            restoring = true;
+            try { field.Password = step.Text; }
+            finally { restoring = false; }
+        });
     }
 
     internal static bool TryReadClipboard(out DataPackageView view)
