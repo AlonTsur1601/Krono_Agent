@@ -1737,6 +1737,12 @@ public static class PluginFixture {
     SelectSettingsCategory 'Models'
     SelectChoice 'Provider' 'Ollama'
     Invoke 'Configure optional server token' -ByName
+    (Find 'Show password' -ByName).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
+    $editor = Find 'ProviderKeyRevealed'
+    $deadline = (Get-Date).AddSeconds(3)
+    while (!$editor.Current.HasKeyboardFocus -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 50 }
+    if (!$editor.Current.HasKeyboardFocus) { throw 'Revealing the API key did not focus its text editor' }
+    (Find 'Hide password' -ByName).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
     SetValue 'ProviderKey' 'fixture-local-placeholder'
     Invoke 'Save key' -ByName
     Start-Sleep -Milliseconds 500
@@ -1868,6 +1874,13 @@ public static class PluginFixture {
     if ((Find 'GameStatus').Current.Name -notmatch '^Paused') { throw 'Returning to chat did not pause the active game' }
     Invoke 'GameLibraryBack'
     AssertGameCards @(0..23 | ForEach-Object { 'GameTile' + $_ }) 'catalog'
+    $botCard = WaitForBounds 'GameTile1'
+    $regularCard = WaitForBounds 'GameTile0'
+    $difficulty = WaitForBounds 'GameDifficulty1'
+    if ([Math]::Abs($botCard.Height - $regularCard.Height) -gt 2 -or
+        $difficulty.Top -lt $botCard.Top -or $difficulty.Bottom -gt $botCard.Bottom + 2) {
+        throw 'The bot difficulty control is not inside a same-height game card'
+    }
     if (FindOptional 'GameSaveChoice') { throw 'A save dialog appeared before selecting a game' }
     TestGamePreviews
     OpenGameTile 1 'Cancel' -RequireChoice

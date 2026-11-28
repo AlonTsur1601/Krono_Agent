@@ -544,7 +544,8 @@ internal static class KronoInputMotion
     {
         var editor = new KronoTextBox {
             Padding = field.Padding, Visibility = Visibility.Collapsed, IsSpellCheckEnabled = false,
-            IsTextPredictionEnabled = false, ClearActionEnabled = false
+            IsTextPredictionEnabled = false, ClearActionEnabled = false,
+            InputScope = new InputScope { Names = { new InputScopeName(InputScopeNameValue.Default) } }
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(editor,
             Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(field));
@@ -573,11 +574,18 @@ internal static class KronoInputMotion
             var label = revealed ? "Hide password" : "Show password";
             SetFieldActionHint(button, label);
         }
-        button.Checked += (_, _) => { Refresh(); editor.Focus(FocusState.Programmatic); editor.Select(editor.Text.Length, 0); };
-        button.Unchecked += (_, _) => {
+        button.AllowFocusOnInteraction = false;
+        button.Checked += async (_, _) => {
+            Refresh();
+            host.UpdateLayout();
+            var focus = await FocusManager.TryFocusAsync(editor, FocusState.Programmatic);
+            if (focus.Succeeded && editor.Visibility == Visibility.Visible) editor.Select(editor.Text.Length, 0);
+        };
+        button.Unchecked += async (_, _) => {
             if (editor.Visibility == Visibility.Visible) field.Password = editor.Text;
             Refresh();
-            field.Focus(FocusState.Programmatic);
+            host.UpdateLayout();
+            await FocusManager.TryFocusAsync(field, FocusState.Programmatic);
         };
         StyleFieldAction(button);
         Refresh();

@@ -1312,3 +1312,9 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Follow the system color setting while running, and reconcile window, dialog, and cached input colors on activation and tray restore.
 - Clear editor focus on blank clicks without selecting another editor, and keep composer hover and focus feedback without press scaling.
 - Record text and selection as one undo step for paste and selected deletion in plain and live Markdown editors. Group adjacent typing and deletion with time boundaries.
+
+## Game cards, credential focus, and scheduled runs
+
+- Keep bot difficulty inside the game card with a reserved footer of equal height across the catalog.
+- Focus the standard Windows text editor after revealing a credential. Keep the native password control while masked.
+- Exercise scheduled execution in the Windows release smoke test, including opt-in, one completed run, conversation navigation, and preservation of a separate draft.
