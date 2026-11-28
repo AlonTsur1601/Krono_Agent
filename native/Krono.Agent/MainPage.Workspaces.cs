@@ -274,6 +274,10 @@ public sealed partial class MainPage
             CornerRadius = new CornerRadius(5),
             Content = new Border { Width = user ? 13 : 8, Height = 3, CornerRadius = new CornerRadius(2),
                 Background = KronoDesign.ThemeBrush(user ? "KronoAccentForeground" : "KronoMuted", ActualTheme) } };
+        void PaintMark() => ((Border)mark.Content).Background =
+            KronoDesign.ThemeBrush(user ? "KronoAccentForeground" : "KronoMuted", mark.ActualTheme);
+        mark.ActualThemeChanged += (_, _) => PaintMark();
+        KronoInputMotion.RegisterPaletteRefresh(mark, PaintMark);
         KronoInputMotion.AttachFlatHover(mark);
         AutomationProperties.SetName(mark, preview.Length > 0 ? preview : "Message");
         ToolTipService.SetToolTip(mark, preview);

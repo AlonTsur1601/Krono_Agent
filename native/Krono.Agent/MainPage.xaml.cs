@@ -29,7 +29,7 @@ public sealed partial class MainPage : Page
     readonly StackPanel messages = new() { Spacing = 20, MaxWidth = 850, HorizontalAlignment = HorizontalAlignment.Left, FlowDirection = FlowDirection.LeftToRight };
     readonly Grid welcomeChat = new() { ColumnSpacing = 12, MaxWidth = 520, Margin = new Thickness(20, 0, 20, 0),
         HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
-    readonly KronoTextBox composer = new() { PlaceholderText = "Message Krono…", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80, MaxHeight = 180 };
+    readonly KronoTextBox composer = new() { PlaceholderText = "Message Krono…", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80, MaxHeight = 180, PressMotionEnabled = false };
     readonly ScrollViewer transcript;
     readonly TextBlock progress = new() { Text = "", TextWrapping = TextWrapping.Wrap, Opacity = .7 };
     readonly ProgressRing progressPulse = new() { Width = 15, Height = 15, IsActive = false, Visibility = Visibility.Collapsed };
@@ -52,6 +52,7 @@ public sealed partial class MainPage : Page
         KronoInputMotion.Attach(PasswordInput, "KronoPasswordInput");
         revealedAuthPassword = KronoInputMotion.StylePasswordReveal(AuthPasswordField, PasswordInput, PasswordVisibility, PasswordEye);
         AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(ReleaseInputFocusOnOutsidePress), true);
+        DismissedInputFocus.LostFocus += (_, _) => DismissedInputFocus.IsTabStop = false;
         BrowserNavigation.Icon = BrowserWorkspace.BrowserTabIcon();
         UpdateButton.Icon = KronoDesign.NavigationIcon(Symbol.Download);
         UpdateButton.Icon.Foreground = KronoDesign.ThemeBrush("KronoAccentForeground", ActualTheme);
@@ -84,6 +85,7 @@ public sealed partial class MainPage : Page
             finally { refreshingSession = false; }
         };
         Loaded += async (_, _) => {
+            ApplyTheme("system");
             try { if (await workspace.Restore()) Enter(); }
             catch (Exception error) { Error(error); }
             finally { StartupProgress.IsActive = false; StartupProgress.Visibility = Visibility.Collapsed; if (Nav.Visibility != Visibility.Visible) SignIn.Visibility = Visibility.Visible; }
@@ -151,7 +153,9 @@ public sealed partial class MainPage : Page
         for (var source = args.OriginalSource as DependencyObject; source is not null; source = VisualTreeHelper.GetParent(source))
             if (ReferenceEquals(source, focused) || source is ButtonBase) return;
         DispatcherQueue.TryEnqueue(() => {
-            if (ReferenceEquals(FocusManager.GetFocusedElement(root), focused)) Focus(FocusState.Programmatic);
+            if (!ReferenceEquals(FocusManager.GetFocusedElement(root), focused)) return;
+            DismissedInputFocus.IsTabStop = true;
+            if (!DismissedInputFocus.Focus(FocusState.Programmatic)) DismissedInputFocus.IsTabStop = false;
         });
     }
     async Task Authenticate(bool register)
@@ -701,23 +705,46 @@ public sealed partial class MainPage : Page
         var dialog = new KronoDialog { XamlRoot = XamlRoot, Title = "Action details", Content = details, CloseButtonText = "Close details" }; approvalDialog = dialog;
         try { await dialog.ShowAsync(); } catch (Exception error) { Error(error); } finally { if (ReferenceEquals(approvalDialog, dialog)) approvalDialog = null; }
     }
+    string themePreference = "system";
+    (ElementTheme Theme, bool Halloween)? appearanceTarget;
     int themeTransition;
+
+    internal void RefreshSystemAppearance()
+    {
+        if (themePreference == "system") ApplyTheme(themePreference, animate: true);
+    }
+
     async void ApplyTheme(string value, bool animate = false)
     {
+        themePreference = value is "light" or "dark" or "halloween" ? value : "system";
+        var window = MainWindow.Instance;
+        var root = window?.Content as FrameworkElement ?? this;
+        var halloween = themePreference == "halloween";
+        var theme = themePreference switch {
+            "light" => ElementTheme.Light, "dark" or "halloween" => ElementTheme.Dark,
+            _ => window?.SystemAppearance ?? ActualTheme
+        };
+        if (appearanceTarget == (theme, halloween)) return;
+        appearanceTarget = (theme, halloween);
         var transition = ++themeTransition;
         var session = sessionGeneration;
-        if (animate) await KronoDesign.BeginThemeChange(this);
+        if (animate && window?.AppWindow.IsVisible == true) await KronoDesign.BeginThemeChange(root);
         if (transition != themeTransition) return;
-        if (session != sessionGeneration) { KronoDesign.FinishThemeChange(this); return; }
-        KronoDesign.ApplyPalette(value == "halloween");
-        RequestedTheme = value == "light" ? ElementTheme.Light : value is "dark" or "halloween" ? ElementTheme.Dark : ElementTheme.Default;
-        if (MainWindow.Instance?.Content is FrameworkElement root) root.RequestedTheme = RequestedTheme;
-        HalloweenPumpkin.Visibility = HalloweenCorner.Visibility = value == "halloween" ? Visibility.Visible : Visibility.Collapsed;
+        if (session != sessionGeneration) { appearanceTarget = null; KronoDesign.FinishThemeChange(root); return; }
+        KronoDesign.ApplyPalette(halloween);
+        root.RequestedTheme = theme;
+        HalloweenPumpkin.Visibility = HalloweenCorner.Visibility = halloween ? Visibility.Visible : Visibility.Collapsed;
         foreach (var backdrop in WorkspacePattern.Children.OfType<GameBackdrop>().Concat(LoginPattern.Children.OfType<GameBackdrop>()))
-            backdrop.SetHalloween(value == "halloween");
-        MainWindow.Instance?.ShowHalloween(value == "halloween");
-        KronoInputMotion.RefreshPalette(this);
-        KronoDesign.FinishThemeChange(this);
+            backdrop.SetHalloween(halloween);
+        void Finish()
+        {
+            if (transition != themeTransition) return;
+            KronoDesign.ApplyControlAccents(root);
+            window?.ShowHalloween(halloween);
+            KronoInputMotion.RefreshPalette(root);
+            KronoDesign.FinishThemeChange(root);
+        }
+        if (!DispatcherQueue.TryEnqueue(Finish)) Finish();
     }
     bool CompatibleEndpoint => ProviderCatalog.Compatible(provider);
     string ProviderEndpoint => workspace.Setting("native.endpoint." + provider) is { Length: > 0 } endpoint ? endpoint : ProviderCatalog.Endpoint(provider);

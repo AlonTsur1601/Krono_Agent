@@ -359,13 +359,13 @@ internal static class KronoInputMotion
         SolidColorBrush? rim = null;
         GradientStop? shade = null, fill = null;
         (Windows.UI.Color Rim, Windows.UI.Color Shade, Windows.UI.Color Fill)? surfaceColors = null;
+        Storyboard? colorMotion = null;
         (float Scale, float Lift)? surfaceMotion = null;
         bool hover = false, pressed = false;
         long pressStarted = 0;
         var pressFeedback = new DispatcherTimer();
         bool PressMotionEnabled() => animatePress && field is not KronoTextBox { PressMotionEnabled: false };
-        bool IsLargeEditor() => field is (TextBox { AcceptsReturn: true } or RichEditBox)
-            && (!PressMotionEnabled() || field.ActualHeight >= 100);
+        bool IsLargeEditor() => field is (TextBox { AcceptsReturn: true } or RichEditBox) && field.ActualHeight >= 100;
         bool NativeTextEditor() => field is TextBox or RichEditBox;
         ButtonBase? clearAction = null;
         void UpdateClearAction()
@@ -397,6 +397,8 @@ internal static class KronoInputMotion
             var faceName = field is KronoComboBox ? "Background" : "BorderElement";
             var face = Descendants(field).OfType<Border>().FirstOrDefault(border => border.Name == faceName);
             if (face is not null && face != inputFace && !new AccessibilitySettings().HighContrast && field.BorderThickness.Top > 0) {
+                colorMotion?.Stop();
+                colorMotion = null;
                 inputFace = face;
                 shade = new GradientStop { Offset = 0 };
                 fill = new GradientStop { Offset = 1 };
@@ -454,7 +456,9 @@ internal static class KronoInputMotion
             });
         if (field.IsLoaded) StyleParts();
 
-        void Refresh()
+        void Refresh() => RefreshInput(animateColors: true);
+
+        void RefreshInput(bool animateColors)
         {
             if (field is KronoTextBox { SurfaceFeedbackEnabled: false }) return;
             var focused = field.FocusState != FocusState.Unfocused ||
@@ -476,20 +480,21 @@ internal static class KronoInputMotion
             var face = ((SolidColorBrush)KronoDesign.ThemeBrush("KronoInputFace", theme)).Color;
             var shadow = field.IsEnabled ? ((SolidColorBrush)KronoDesign.ThemeBrush("KronoInputShade", theme)).Color : face;
             var colors = (border, shadow, face);
-            if (surfaceColors == colors) return;
-            if (surfaceColors is null) {
-                rim.Color = border;
-                shade.Color = shadow;
-                fill.Color = face;
-                surfaceColors = colors;
-                return;
-            }
+            if (animateColors && surfaceColors == colors) return;
+            var from = (rim.Color, shade.Color, fill.Color);
+            var animate = animateColors && surfaceColors is not null && new UISettings().AnimationsEnabled;
+            colorMotion?.Stop();
+            colorMotion = null;
+            rim.Color = border;
+            shade.Color = shadow;
+            fill.Color = face;
             surfaceColors = colors;
-            var storyboard = new Storyboard();
-            AddColorAnimation(storyboard, rim, border);
-            AddColorAnimation(storyboard, shade, shadow);
-            AddColorAnimation(storyboard, fill, face);
-            storyboard.Begin();
+            if (!animate) return;
+            colorMotion = new Storyboard { FillBehavior = FillBehavior.Stop };
+            AddColorAnimation(colorMotion, rim, from.Item1, border);
+            AddColorAnimation(colorMotion, shade, from.Item2, shadow);
+            AddColorAnimation(colorMotion, fill, from.Item3, face);
+            colorMotion.Begin();
         }
         field.PointerEntered += (_, _) => { hover = true; Refresh(); };
         void ReleasePress()
@@ -516,11 +521,13 @@ internal static class KronoInputMotion
         };
         field.GotFocus += (_, _) => field.DispatcherQueue.TryEnqueue(Refresh);
         field.ActualThemeChanged += (_, _) => field.DispatcherQueue.TryEnqueue(Refresh);
-        RegisterPaletteRefresh(field, Refresh);
+        RegisterPaletteRefresh(field, () => RefreshInput(animateColors: false));
         field.LostFocus += (_, _) => field.DispatcherQueue.TryEnqueue(Refresh);
         field.IsEnabledChanged += (_, _) => { hover = pressed = false; pressFeedback.Stop(); Refresh(); };
         field.Unloaded += (_, _) => {
             hover = pressed = false;
+            colorMotion?.Stop();
+            colorMotion = null;
             pressFeedback.Stop();
             if (surfaceMotion is not null) AnimateSurface(field, 1, companion);
             surfaceMotion = null;
@@ -561,7 +568,11 @@ internal static class KronoInputMotion
             SetFieldActionHint(button, label);
         }
         button.Checked += (_, _) => { Refresh(); editor.Focus(FocusState.Programmatic); editor.Select(editor.Text.Length, 0); };
-        button.Unchecked += (_, _) => { Refresh(); field.Focus(FocusState.Programmatic); };
+        button.Unchecked += (_, _) => {
+            if (editor.Visibility == Visibility.Visible) field.Password = editor.Text;
+            Refresh();
+            field.Focus(FocusState.Programmatic);
+        };
         StyleFieldAction(button);
         Refresh();
         return editor;
@@ -738,10 +749,10 @@ internal static class KronoInputMotion
         storyboard.Begin();
     }
 
-    static void AddColorAnimation(Storyboard storyboard, DependencyObject target, Windows.UI.Color color)
+    static void AddColorAnimation(Storyboard storyboard, DependencyObject target, Windows.UI.Color from, Windows.UI.Color color)
     {
-        var animation = new ColorAnimation { To = color, EnableDependentAnimation = true,
-            Duration = new Duration(TimeSpan.FromMilliseconds(new UISettings().AnimationsEnabled ? 180 : 0)) };
+        var animation = new ColorAnimation { From = from, To = color, EnableDependentAnimation = true,
+            Duration = new Duration(TimeSpan.FromMilliseconds(180)) };
         Storyboard.SetTarget(animation, target);
         Storyboard.SetTargetProperty(animation, "Color");
         storyboard.Children.Add(animation);

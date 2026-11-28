@@ -1306,3 +1306,9 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Share flat input actions and their tooltips. Show clear actions for populated single-line text, and keep password reveal available when empty.
 - Release text focus on outside clicks. Allow the standard Windows text input panel while editing an explicitly revealed credential.
 - Open new drafts in the last active project by default. Allow the current project, a fixed project, or new drafts without a project.
+
+## Appearance refresh and editor history
+
+- Follow the system color setting while running, and reconcile window, dialog, and cached input colors on activation and tray restore.
+- Clear editor focus on blank clicks without selecting another editor, and keep composer hover and focus feedback without press scaling.
+- Record Markdown text and selection as one undo step for paste and selected deletion. Group adjacent typing and deletion with time boundaries.

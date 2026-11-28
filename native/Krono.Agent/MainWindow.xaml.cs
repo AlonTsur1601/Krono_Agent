@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Windows.UI.ViewManagement;
 
 namespace Krono_Agent;
 
@@ -6,6 +7,7 @@ public sealed partial class MainWindow : Window
 {
     public static MainWindow? Instance { get; private set; }
     readonly TrayIcon tray;
+    readonly UISettings systemColors = new();
     bool confirmingClose;
     bool closeApproved;
     public MainWindow()
@@ -35,19 +37,39 @@ public sealed partial class MainWindow : Window
             if (RootFrame.Content is MainPage page) page.PauseGames("Krono was hidden to the tray");
             AppWindow.Hide();
         };
-        Activated += (_, args) => { if (args.WindowActivationState == WindowActivationState.Deactivated && RootFrame.Content is MainPage page) page.PauseGames("Krono lost window focus"); };
+        systemColors.ColorValuesChanged += OnSystemColorsChanged;
+        Activated += (_, args) => {
+            if (RootFrame.Content is not MainPage page) return;
+            if (args.WindowActivationState == WindowActivationState.Deactivated) page.PauseGames("Krono lost window focus");
+            else page.RefreshSystemAppearance();
+        };
         Closed += (_, _) => {
+            systemColors.ColorValuesChanged -= OnSystemColorsChanged;
             tray.Dispose();
             if (RootFrame.Content is MainPage page) page.PauseGames("Krono window closed");
         };
     }
     internal void RestoreFromTray()
     {
+        if (RootFrame.Content is MainPage page) page.RefreshSystemAppearance();
         if (!AppWindow.IsVisible) AppWindow.Show();
         if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: Microsoft.UI.Windowing.OverlappedPresenterState.Minimized } presenter)
             presenter.Restore();
         Activate();
     }
+
+    internal ElementTheme SystemAppearance
+    {
+        get {
+            var ink = systemColors.GetColorValue(UIColorType.Foreground);
+            return 5 * ink.G + 2 * ink.R + ink.B > 8 * 128 ? ElementTheme.Dark : ElementTheme.Light;
+        }
+    }
+
+    void OnSystemColorsChanged(UISettings sender, object args) =>
+        DispatcherQueue.TryEnqueue(() => {
+            if (RootFrame.Content is MainPage page) page.RefreshSystemAppearance();
+        });
 
     async void ExitFromTray()
     {

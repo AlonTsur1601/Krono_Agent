@@ -21,6 +21,17 @@ internal sealed class KronoDialog : ContentDialog
         CornerRadius = new CornerRadius(18);
         Loaded += (_, _) => RefreshPalette();
         Opened += (_, _) => {
+            if (MainWindow.Instance?.Content is FrameworkElement host) {
+                void FollowTheme(FrameworkElement sender, object args) => RequestedTheme = sender.ActualTheme;
+                RequestedTheme = host.ActualTheme;
+                host.ActualThemeChanged += FollowTheme;
+                Closed += DetachTheme;
+                void DetachTheme(ContentDialog sender, ContentDialogClosedEventArgs args)
+                {
+                    host.ActualThemeChanged -= FollowTheme;
+                    Closed -= DetachTheme;
+                }
+            }
             // WinUI hosts the dimmed background in a second popup behind the dialog.
             var overlay = VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot)
                 .Select(popup => popup.Child).OfType<Rectangle>().FirstOrDefault();

@@ -28,6 +28,16 @@ public static class KronoWindowCapture {
         }
         return SendInput((uint)entries.Length, entries, Marshal.SizeOf(typeof(Input))) == entries.Length;
     }
+    public static bool PressControlKey(ushort key) {
+        const ushort control = 0x11;
+        var entries = new Input[] {
+            Key(control, 0), Key(key, 0), Key(key, 2), Key(control, 2)
+        };
+        return SendInput((uint)entries.Length, entries, Marshal.SizeOf(typeof(Input))) == entries.Length;
+    }
+    static Input Key(ushort key, uint flags) {
+        return new Input { Type = 1, Data = new InputData { Keyboard = new Keyboard { Key = key, Flags = flags } } };
+    }
     [DllImport("user32.dll")]
     public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")]
@@ -231,6 +241,60 @@ function TestLiveMarkdown {
         Capture 'native-caret-click-failure.png' -Screen
         throw "Instructions caret click at $($marker[0]) in $($editor.Current.BoundingRectangle) produced '$($value.Current.Value)'"
     }
+    SetValue 'GlobalInstructions' 'prefix selected suffix'
+    $editor = Find 'GlobalInstructions'
+    $pattern = $editor.GetCurrentPattern([Windows.Automation.TextPattern]::Pattern)
+    $url = 'https://example.test/undo'
+    Set-Clipboard -Value $url
+    $keys = New-Object -ComObject WScript.Shell
+    if (!$keys.AppActivate($script:process.Id)) { throw 'Could not activate the Markdown editor for paste' }
+    $selected = $pattern.DocumentRange.FindText('selected', $false, $false)
+    $bounds = $selected.GetBoundingRectangles()[0]
+    [KronoWindowCapture]::SetCursorPos([int]($bounds.Left + $bounds.Width / 2), [int]($bounds.Top + $bounds.Height / 2)) | Out-Null
+    [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+    [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 125
+    $selected.Select()
+    Start-Sleep -Milliseconds 200
+    if (![KronoWindowCapture]::PressControlKey(0x56)) { throw 'Could not press Ctrl+V' }
+    $deadline = (Get-Date).AddSeconds(5)
+    while (!$pattern.DocumentRange.FindText($url, $false, $false) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+    if (!$pattern.DocumentRange.FindText($url, $false, $false)) {
+        $focused = [Windows.Automation.AutomationElement]::FocusedElement
+        Capture 'native-markdown-paste-failed.png' -Screen
+        throw ('The undo test link was not pasted. Focus: ' + $focused.Current.AutomationId + '/' + $focused.Current.ClassName +
+            '. App in foreground: ' + ([KronoWindowCapture]::GetForegroundWindow() -eq $script:process.MainWindowHandle) +
+            '. Editor: ' + ($pattern.DocumentRange.GetText(-1) | ConvertTo-Json -Compress))
+    }
+    if (![KronoWindowCapture]::PressControlKey(0x5a)) { throw 'Could not press Ctrl+Z' }
+    Start-Sleep -Milliseconds 200
+    if ($pattern.DocumentRange.FindText($url, $false, $false) -or
+        !$pattern.DocumentRange.FindText('prefix selected suffix', $false, $false) -or
+        $pattern.GetSelection()[0].GetText(-1) -ne 'selected') { throw 'A pasted link and its replaced selection did not undo in one step' }
+    if (![KronoWindowCapture]::PressControlKey(0x59)) { throw 'Could not press Ctrl+Y' }
+    Start-Sleep -Milliseconds 200
+    $link = $pattern.DocumentRange.FindText($url, $false, $false)
+    if (!$link) { throw 'Redo did not restore the pasted link' }
+    $link.Select()
+    $keys.SendKeys('{DELETE}')
+    Start-Sleep -Milliseconds 100
+    if (![KronoWindowCapture]::PressControlKey(0x5a)) { throw 'Could not press Ctrl+Z' }
+    Start-Sleep -Milliseconds 200
+    if ($pattern.GetSelection()[0].GetText(-1) -ne $url) { throw 'Undo did not restore the deleted selection' }
+    SetValue 'GlobalInstructions' 'base'
+    $caret = $pattern.DocumentRange.FindText('base', $false, $false)
+    $caret.MoveEndpointByRange([Windows.Automation.Text.TextPatternRangeEndpoint]::Start, $caret, [Windows.Automation.Text.TextPatternRangeEndpoint]::End)
+    $caret.Select()
+    $keys.SendKeys('ab')
+    Start-Sleep -Milliseconds 700
+    $keys.SendKeys('cd')
+    Start-Sleep -Milliseconds 150
+    if (![KronoWindowCapture]::PressControlKey(0x5a)) { throw 'Could not press Ctrl+Z' }
+    Start-Sleep -Milliseconds 200
+    if ($pattern.DocumentRange.GetText(-1).Trim() -ne 'baseab') { throw 'Undo did not group the most recent typing' }
+    if (![KronoWindowCapture]::PressControlKey(0x5a)) { throw 'Could not press Ctrl+Z' }
+    Start-Sleep -Milliseconds 200
+    if ($pattern.DocumentRange.GetText(-1).Trim() -ne 'base') { throw 'Undo did not preserve the earlier typing group' }
     SetValue 'GlobalInstructions' $markdown
     Invoke 'Save instructions' -ByName
     Capture 'native-markdown-saved.png'
@@ -1067,7 +1131,10 @@ public static class PluginFixture {
             [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
             [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
             Start-Sleep -Milliseconds 150
-            if ($key.Current.HasKeyboardFocus) { throw 'The API key field retained focus after clicking outside' }
+            if ($key.Current.HasKeyboardFocus -or
+                [Windows.Automation.AutomationElement]::FocusedElement.Current.ControlType -eq [Windows.Automation.ControlType]::Edit) {
+                throw 'Clicking outside left an editor focused'
+            }
             Invoke 'Test connection' -ByName
             Find 'OpenAI connection successful.' -ByName | Out-Null
             SelectChoice 'Provider' 'Ollama'

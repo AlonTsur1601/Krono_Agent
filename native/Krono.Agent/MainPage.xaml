@@ -40,6 +40,10 @@
     </DataTemplate>
 </Page.Resources>
 <Grid Background="{ThemeResource KronoBackground}">
+<Button x:Name="DismissedInputFocus" Width="1" Height="1" MinHeight="0" MinWidth="0" IsTabStop="False" IsHitTestVisible="False"
+         UseSystemFocusVisuals="False" AutomationProperties.AccessibilityView="Raw">
+    <Button.Template><ControlTemplate TargetType="Button"><Border /></ControlTemplate></Button.Template>
+</Button>
 <NavigationView x:Name="Nav" Visibility="Collapsed" IsBackButtonVisible="Collapsed" IsSettingsVisible="False" IsPaneOpen="False" IsPaneToggleButtonVisible="False" PaneDisplayMode="LeftCompact" CompactPaneLength="48" Background="{ThemeResource KronoSidebar}" SelectionChanged="Navigate" ItemInvoked="InvokeNavigationAction">
 <NavigationView.Resources>
 <CornerRadius x:Key="NavigationViewContentGridCornerRadius">0</CornerRadius>
