@@ -124,7 +124,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
         var terminal = NewSession(id, "PowerShell");
         terminal.StartupInput = new();
         var screen = terminal.Screen;
-        screen.BeforeTextChanging += (_, args) => {
+        screen.BeforeTextChanging += (sender, args) => {
             if (terminal.Rendering) return;
             args.Cancel = true;
             // Route keyboard, emoji, and IME text through the PTY without editing its transcript.
