@@ -283,16 +283,21 @@ function TestLiveMarkdown {
         if (!$link) { throw 'Redo did not restore the pasted link' }
         $link.Select()
         $keys.SendKeys('{DELETE}')
-        Start-Sleep -Milliseconds 100
+        $deadline = (Get-Date).AddSeconds(3)
+        while ($pattern.DocumentRange.FindText($url, $false, $false) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 75 }
+        if ($pattern.DocumentRange.FindText($url, $false, $false)) { throw 'The selected link was not deleted' }
         if (![KronoWindowCapture]::PressControlKey(0x5a)) { throw 'Could not press Ctrl+Z' }
         Start-Sleep -Milliseconds 200
-        if ($pattern.GetSelection()[0].GetText(-1) -ne $url) { throw 'Undo did not restore the deleted selection' }
+        if ($pattern.GetSelection()[0].GetText(-1) -ne $url) {
+            throw ("Delete undo produced text {0} and selection {1}" -f $pattern.DocumentRange.GetText(-1), $pattern.GetSelection()[0].GetText(-1))
+        }
         $pattern.DocumentRange.Select()
         if (![KronoWindowCapture]::TypeText('base')) { throw 'Could not prepare the typing test' }
         Start-Sleep -Milliseconds 200
         $caret = $pattern.DocumentRange.FindText('base', $false, $false)
         $caret.MoveEndpointByRange([Windows.Automation.Text.TextPatternRangeEndpoint]::Start, $caret, [Windows.Automation.Text.TextPatternRangeEndpoint]::End)
         $caret.Select()
+        Start-Sleep -Milliseconds 650
         if (![KronoWindowCapture]::TypeText('ab')) { throw 'Could not enter the first typing group' }
         Start-Sleep -Milliseconds 700
         if (![KronoWindowCapture]::TypeText('cd')) { throw 'Could not enter the second typing group' }

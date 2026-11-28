@@ -147,7 +147,17 @@ public static partial class NativeMarkdown
                 return true;
             });
             Rich.PreviewKeyDown += (_, args) => {
-                if (!Rich.IsReadOnly && !composing) history.PrepareKey(CaptureEdit(), args.Key);
+                if (Rich.IsReadOnly || composing) return;
+                var before = CaptureEdit();
+                if (before.Start != before.End && args.Key is Windows.System.VirtualKey.Back or Windows.System.VirtualKey.Delete &&
+                    !KronoInputUndo.KeyDown(Windows.System.VirtualKey.Shift) &&
+                    !KronoInputUndo.KeyDown(Windows.System.VirtualKey.Control) &&
+                    !KronoInputUndo.KeyDown(Windows.System.VirtualKey.Menu)) {
+                    args.Handled = true;
+                    ReplaceEdit(before, "");
+                    return;
+                }
+                history.PrepareKey(before, args.Key);
             };
             Rich.Paste += (_, args) => {
                 if (!KronoInputUndo.TryReadClipboard(out var clipboard)) {
@@ -163,15 +173,20 @@ public static partial class NativeMarkdown
                     var text = Normalize(await clipboard.GetTextAsync()).Replace('\n', '\r');
                     if (!Rich.IsEnabled || Rich.IsReadOnly || Rich.Visibility != Visibility.Visible ||
                         Normalize(source.Text) != before.Text) return;
-                    history.Separate(before);
-                    syncing = true;
-                    try {
-                        Rich.Document.GetRange(before.Start, before.End).SetText(TextSetOptions.Unhide | TextSetOptions.Unlink, text);
-                        var caret = before.Start + text.Length;
-                        Rich.Document.Selection.SetRange(caret, caret);
-                    } finally { syncing = false; }
-                    SyncSource();
+                    ReplaceEdit(before, text);
                 } catch (System.Runtime.InteropServices.COMException) { }
+            }
+
+            void ReplaceEdit(KronoInputUndo.State before, string text)
+            {
+                history.Separate(before);
+                syncing = true;
+                try {
+                    Rich.Document.GetRange(before.Start, before.End).SetText(TextSetOptions.Unhide | TextSetOptions.Unlink, text);
+                    var caret = before.Start + text.Length;
+                    Rich.Document.Selection.SetRange(caret, caret);
+                } finally { syncing = false; }
+                SyncSource();
             }
         }
 

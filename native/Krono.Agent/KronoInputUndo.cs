@@ -82,7 +82,7 @@ internal sealed class KronoInputUndo
         };
     }
 
-    static bool KeyDown(VirtualKey key) =>
+    internal static bool KeyDown(VirtualKey key) =>
         Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
 
     internal static void Attach(TextBox field)
