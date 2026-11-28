@@ -1,4 +1,3 @@
-using Windows.Foundation;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -112,7 +111,6 @@ public sealed class TerminalWorkspace : Grid, IDisposable
         var tab = new TabViewItem { Header = name, Tag = id };
         KronoDesign.StyleTabHeader(tab, TerminalSurface);
         var terminal = new Session(tab, screen) { AgentTranscript = agent };
-        screen.BeforeTextChanging += (_, args) => args.Cancel = !terminal.Rendering;
         screen.Loaded += (_, _) => FocusInput(terminal);
         terminals[id] = terminal;
         tabs.TabItems.Add(tab);
@@ -126,11 +124,22 @@ public sealed class TerminalWorkspace : Grid, IDisposable
         var terminal = NewSession(id, "PowerShell");
         terminal.StartupInput = new();
         var screen = terminal.Screen;
-        screen.AddHandler(UIElement.CharacterReceivedEvent, new TypedEventHandler<UIElement, CharacterReceivedRoutedEventArgs>(async (_, args) => {
-            if (char.IsControl(args.Character)) return;
-            args.Handled = true;
-            await Write(id, terminal, args.Character.ToString());
-        }), true);
+        screen.BeforeTextChanging += (_, args) => {
+            if (terminal.Rendering) return;
+            args.Cancel = true;
+            // Route keyboard, emoji, and IME text through the PTY without editing its transcript.
+            var original = screen.Text;
+            var start = screen.SelectionStart;
+            var end = start + screen.SelectionLength;
+            var suffix = original.Length - end;
+            if (args.NewText.Length > start + suffix &&
+                args.NewText.AsSpan(0, start).SequenceEqual(original.AsSpan(0, start)) &&
+                args.NewText.AsSpan(args.NewText.Length - suffix).SequenceEqual(original.AsSpan(end))) {
+                var inserted = args.NewText.Substring(start, args.NewText.Length - start - suffix)
+                    .Replace("\r\n", "\r").Replace('\n', '\r');
+                DispatcherQueue.TryEnqueue(async () => await Write(id, terminal, inserted));
+            }
+        };
         async Task Paste()
         {
             try {
@@ -150,6 +159,7 @@ public sealed class TerminalWorkspace : Grid, IDisposable
             var input = (args.Key, ctrl, shift) switch {
                 (VirtualKey.C, true, _) when screen.SelectionLength == 0 => "\u0003",
                 (VirtualKey.L, true, _) => "\u000c",
+                (VirtualKey.Z, true, false) => "\u001a",
                 (VirtualKey.Enter, false, _) => "\r",
                 (VirtualKey.Back, false, _) => "\u007f",
                 (VirtualKey.Delete, false, _) => "\u001b[3~",

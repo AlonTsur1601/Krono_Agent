@@ -960,10 +960,7 @@ public sealed partial class MainPage : Page
         KronoTextBox FontSizeField(string title, double value) => new() {
             Header = title, Text = value.ToString(System.Globalization.CultureInfo.InvariantCulture),
             MinHeight = 32, Padding = new Thickness(12, 4, 12, 4),
-            Style = (Style)Application.Current.Resources["KronoCompactTextInput"],
-            InputScope = new Microsoft.UI.Xaml.Input.InputScope {
-                Names = { new Microsoft.UI.Xaml.Input.InputScopeName(Microsoft.UI.Xaml.Input.InputScopeNameValue.Number) }
-            }
+            Style = (Style)Application.Current.Resources["KronoCompactTextInput"]
         };
         void AddFontRow(KronoComboBox family, KronoTextBox size)
         {
@@ -1020,7 +1017,6 @@ public sealed partial class MainPage : Page
         }
         AttachSize(textSize, "native.textSize", 11, 28);
         AttachSize(codeSize, "native.codeSize", 10, 26);
-        panel = AddCategory("Conversations");
         var liveMarkdown = KronoDesign.Toggle("Live Markdown while editing", workspace.Setting(NativeMarkdown.LiveEditorSetting) == "true");
         AutomationProperties.SetAutomationId(liveMarkdown, "LiveMarkdownEditing");
         liveMarkdown.Toggled += (_, _) => {
@@ -1028,6 +1024,7 @@ public sealed partial class MainPage : Page
             NativeMarkdown.RefreshEditors(workspace);
         };
         panel.Children.Add(liveMarkdown);
+        panel = AddCategory("Conversations");
         var projectOrder = Choices("Project conversation order", ["Recent activity", "Manual"],
             ManualProjectChats ? "Manual" : "Recent activity",
             choice => SetProjectChatOrder(choice == "Manual" ? "manual" : "activity"));

@@ -147,7 +147,7 @@ function TestLiveMarkdown {
     Invoke 'Edit global instructions' -ByName
     SetValue 'GlobalInstructions' $markdown
     Invoke 'Save instructions' -ByName
-    SelectSettingsCategory 'Conversations'
+    SelectSettingsCategory 'Appearance'
     SetToggle 'LiveMarkdownEditing' On
     SelectSettingsCategory 'Instructions'
     Invoke 'Edit global instructions' -ByName
@@ -216,7 +216,7 @@ function TestLiveMarkdown {
     if (!$typed) { throw 'The character after a trailing space moved in the Hebrew Markdown line' }
     $markdown = $markdown.Replace($rtlWord, $rtlWord + ' 7')
     Invoke 'Save instructions' -ByName
-    SelectSettingsCategory 'Conversations'
+    SelectSettingsCategory 'Appearance'
     SetToggle 'LiveMarkdownEditing' Off
     SelectSettingsCategory 'Instructions'
     Invoke 'Edit global instructions' -ByName
@@ -316,13 +316,13 @@ function TestLiveMarkdown {
     }
     TestInputUndo
     Invoke 'Cancel' -ByName
-    SelectSettingsCategory 'Conversations'
+    SelectSettingsCategory 'Appearance'
     SetToggle 'LiveMarkdownEditing' On
     SelectSettingsCategory 'Instructions'
     Invoke 'Edit global instructions' -ByName
     TestInputUndo
     Invoke 'Cancel' -ByName
-    SelectSettingsCategory 'Conversations'
+    SelectSettingsCategory 'Appearance'
     SetToggle 'LiveMarkdownEditing' Off
     SelectSettingsCategory 'Instructions'
     Invoke 'Edit global instructions' -ByName

@@ -1323,5 +1323,5 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 
 - Share grouped undo and text paste across the normal editors, including numeric and credential fields. Use Markdown for long-form prompts and instructions and reserve image paste for the main composer.
 - Use standard Windows input scope on text editors, including revealed credentials. The masked Windows password field retains its password input scope.
-- Move editing and project chat preferences to Conversations. Use the space above the score for the bot slider and start the sidebar width animation concurrently with text.
+- Move project chat ordering and the default project for new chats to Conversations. Use the space above the score for the bot slider and start the sidebar width animation concurrently with text.
 - Navigate recently visited app screens with title bar arrows, Alt+Left/Right, and Windows Back/Forward device commands.
