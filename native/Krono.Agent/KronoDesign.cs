@@ -549,13 +549,14 @@ public static class KronoDesign
         visual.StartAnimation("Opacity", fade);
     }
 
-    internal static FrameworkElement DiscreteSlider(string name, string[] labels, int selected, Action<int> change)
+    internal static FrameworkElement DiscreteSlider(string name, string[] labels, int selected, Action<int> change, string? automationId = null)
     {
         var title = new TextBlock { FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
         var slider = new Slider { Minimum = 0, Maximum = labels.Length - 1, Value = selected, StepFrequency = 1,
             TickFrequency = 1, TickPlacement = Microsoft.UI.Xaml.Controls.Primitives.TickPlacement.BottomRight,
             IsThumbToolTipEnabled = false, MinHeight = 30, HorizontalAlignment = HorizontalAlignment.Stretch };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(slider, name);
+        if (automationId is not null) Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(slider, automationId);
         void Palette()
         {
             slider.Resources["SliderTrackFill"] = ThemeBrush("KronoInputFace", slider.ActualTheme);

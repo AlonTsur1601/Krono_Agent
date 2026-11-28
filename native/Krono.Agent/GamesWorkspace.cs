@@ -207,8 +207,8 @@ public sealed partial class GamesWorkspace : Grid, IDisposable
             cardFrame.Children.Add(star);
             if (index is 1 or 4 or 7 or 12 or MazeChase) {
                 var difficulty = KronoDesign.DiscreteSlider("Bot difficulty", BotLevels, Difficulty(index),
-                    value => workspace.SetSetting("native.gameBotDifficulty." + names[index], value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(difficulty, "GameDifficulty" + index);
+                    value => workspace.SetSetting("native.gameBotDifficulty." + names[index], value.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                    automationId: "GameDifficulty" + index);
                 // Keep the slider independent of the play button's pointer and keyboard handling.
                 difficulty.VerticalAlignment = VerticalAlignment.Bottom;
                 difficulty.Height = difficultyHeight;
