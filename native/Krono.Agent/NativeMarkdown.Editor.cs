@@ -48,13 +48,7 @@ public static partial class NativeMarkdown
         double formattedSize;
         string formattedFont = "";
         bool syncing, showingSaved, formatQueued, selecting, composing;
-        enum EditKind { Separate, Typing, Backspace, Delete }
-        sealed record EditState(string Text, int Start, int End);
-        readonly List<EditState> undo = [], redo = [];
-        EditState? editStart;
-        EditKind editKind, groupKind;
-        int groupCaret = -1;
-        long groupStarted, lastEdit;
+        readonly KronoInputUndo history = new();
         public Workspace Workspace { get; }
         public Grid View { get; } = new();
         public RichEditBox Rich { get; }
@@ -96,10 +90,7 @@ public static partial class NativeMarkdown
             View.Unloaded += (_, _) => { selecting = composing = false; };
             source.TextChanged += (_, _) => {
                 if (syncing) return;
-                undo.Clear();
-                redo.Clear();
-                editStart = null;
-                groupCaret = -1;
+                history.Clear();
                 if (Rich.Visibility == Visibility.Visible) SetDocument();
             };
             source.IsEnabledChanged += (_, _) => Rich.IsEnabled = source.IsEnabled;
@@ -112,7 +103,7 @@ public static partial class NativeMarkdown
                 Rich.Document.GetText(TextGetOptions.UseLf, out var raw);
                 var text = Normalize(raw);
                 if (text != Normalize(source.Text)) {
-                    RecordEdit(text);
+                    history.Record(CaptureEdit(), text);
                     syncing = true;
                     try { source.Text = text.Length <= source.MaxLength || source.MaxLength == 0 ? text : text[..source.MaxLength]; }
                     finally { syncing = false; }
@@ -124,8 +115,7 @@ public static partial class NativeMarkdown
             Rich.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) =>
             {
                 selecting = args.GetCurrentPoint(Rich).Properties.IsLeftButtonPressed || args.Pointer.IsInContact;
-                groupCaret = -1;
-                editStart = null;
+                history.BreakGroup();
             }), true);
             void FinishSelection() { selecting = false; QueueFormat(); }
             Rich.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, _) => FinishSelection()), true);
@@ -133,8 +123,7 @@ public static partial class NativeMarkdown
             Rich.PointerCanceled += (_, _) => FinishSelection();
             Rich.TextCompositionStarted += (_, _) => {
                 composing = true;
-                editStart = CaptureEdit();
-                editKind = EditKind.Separate;
+                history.Separate(CaptureEdit());
             };
             Rich.TextCompositionEnded += (_, _) => { composing = false; SyncSource(); };
             Rich.SelectionChanged += (_, _) => { if (!syncing) QueueFormat(); };
@@ -146,63 +135,35 @@ public static partial class NativeMarkdown
                 } else QueueFormat();
             };
             Rich.LostFocus += (_, _) => QueueFormat();
-            AddShortcut(Windows.System.VirtualKey.Z, Windows.System.VirtualKeyModifiers.Control, () => {
-                RestoreEdit(undo, redo);
-                return true;
+            history.BindShortcuts(Rich, () => !Rich.IsReadOnly, CaptureEdit, step => {
+                syncing = true;
+                try { source.Text = step.Text; }
+                finally { syncing = false; }
+                SetDocument(step.Start, step.End);
             });
-            AddShortcut(Windows.System.VirtualKey.Y, Windows.System.VirtualKeyModifiers.Control, () => {
-                RestoreEdit(redo, undo);
-                return true;
-            });
-            AddShortcut(Windows.System.VirtualKey.Z, Windows.System.VirtualKeyModifiers.Control | Windows.System.VirtualKeyModifiers.Shift, () => {
-                RestoreEdit(redo, undo);
-                return true;
-            });
-            AddShortcut(Windows.System.VirtualKey.V, Windows.System.VirtualKeyModifiers.Control, () => {
-                if (!TryReadClipboard(out var clipboard)) return pasteImage?.Invoke() == true;
+            KronoInputUndo.Bind(Rich, Windows.System.VirtualKey.V, Windows.System.VirtualKeyModifiers.Control, () => !Rich.IsReadOnly, () => {
+                if (!KronoInputUndo.TryReadClipboard(out var clipboard)) return pasteImage?.Invoke() == true;
                 _ = PasteText(clipboard, CaptureEdit());
                 return true;
             });
-            void AddShortcut(Windows.System.VirtualKey key, Windows.System.VirtualKeyModifiers modifiers, Func<bool> action)
-            {
-                var shortcut = new KeyboardAccelerator { Key = key, Modifiers = modifiers, ScopeOwner = Rich };
-                shortcut.Invoked += (_, args) => {
-                    if (Rich.FocusState != FocusState.Unfocused && !Rich.IsReadOnly) args.Handled = action();
-                };
-                Rich.KeyboardAccelerators.Add(shortcut);
-            }
             Rich.PreviewKeyDown += (_, args) => {
-                var control = IsKeyDown(Windows.System.VirtualKey.Control);
-                if (Rich.IsReadOnly || composing) return;
-                if (args.Key is Windows.System.VirtualKey.Shift or Windows.System.VirtualKey.Control or Windows.System.VirtualKey.Menu)
-                    return;
-                editStart = CaptureEdit();
-                editKind = editStart.Start != editStart.End || control ? EditKind.Separate : args.Key switch {
-                    Windows.System.VirtualKey.Back => EditKind.Backspace,
-                    Windows.System.VirtualKey.Delete => EditKind.Delete,
-                    Windows.System.VirtualKey.Left or Windows.System.VirtualKey.Right or Windows.System.VirtualKey.Up or
-                        Windows.System.VirtualKey.Down or Windows.System.VirtualKey.Home or Windows.System.VirtualKey.End or
-                        Windows.System.VirtualKey.Enter => EditKind.Separate,
-                    _ => EditKind.Typing
-                };
-                if (editKind == EditKind.Separate) groupCaret = -1;
+                if (!Rich.IsReadOnly && !composing) history.PrepareKey(CaptureEdit(), args.Key);
             };
             Rich.Paste += (_, args) => {
-                if (!TryReadClipboard(out var clipboard)) {
+                if (!KronoInputUndo.TryReadClipboard(out var clipboard)) {
                     args.Handled = pasteImage?.Invoke() == true;
                     return;
                 }
                 args.Handled = true;
                 _ = PasteText(clipboard, CaptureEdit());
             };
-            async Task PasteText(DataPackageView clipboard, EditState before)
+            async Task PasteText(DataPackageView clipboard, KronoInputUndo.State before)
             {
                 try {
                     var text = Normalize(await clipboard.GetTextAsync()).Replace('\n', '\r');
                     if (!Rich.IsEnabled || Rich.IsReadOnly || Rich.Visibility != Visibility.Visible ||
                         Normalize(source.Text) != before.Text) return;
-                    editStart = before;
-                    editKind = EditKind.Separate;
+                    history.Separate(before);
                     syncing = true;
                     try {
                         Rich.Document.GetRange(before.Start, before.End).SetText(TextSetOptions.Unhide | TextSetOptions.Unlink, text);
@@ -214,57 +175,10 @@ public static partial class NativeMarkdown
             }
         }
 
-        static bool TryReadClipboard(out DataPackageView view)
-        {
-            view = null!;
-            try {
-                view = Clipboard.GetContent();
-                return view.Contains(StandardDataFormats.Text);
-            } catch (System.Runtime.InteropServices.COMException) { return false; }
-        }
-
-        static bool IsKeyDown(Windows.System.VirtualKey key) =>
-            Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
-
-        EditState CaptureEdit()
+        KronoInputUndo.State CaptureEdit()
         {
             var selection = Rich.Document.Selection;
             return new(Normalize(source.Text), selection.StartPosition, selection.EndPosition);
-        }
-
-        void RecordEdit(string text)
-        {
-            var after = CaptureEdit();
-            var before = editStart ?? after;
-            var kind = editStart is null ? EditKind.Separate : editKind;
-            editStart = null;
-            if (before.Text == text) return;
-            var now = Environment.TickCount64;
-            if (kind == EditKind.Separate || before.Start != groupCaret || kind != groupKind ||
-                now - lastEdit > 500 || now - groupStarted > 1000) {
-                undo.Add(before);
-                if (undo.Count > 100) undo.RemoveAt(0);
-                groupStarted = now;
-            }
-            redo.Clear();
-            groupKind = kind;
-            groupCaret = kind is EditKind.Typing or EditKind.Backspace
-                ? before.End + text.Length - before.Text.Length : before.Start;
-            lastEdit = now;
-        }
-
-        void RestoreEdit(List<EditState> history, List<EditState> opposite)
-        {
-            if (history.Count == 0) return;
-            opposite.Add(CaptureEdit());
-            var step = history[^1];
-            history.RemoveAt(history.Count - 1);
-            editStart = null;
-            groupCaret = -1;
-            syncing = true;
-            try { source.Text = step.Text; }
-            finally { syncing = false; }
-            SetDocument(step.Start, step.End);
         }
 
         public void ShowSaved()

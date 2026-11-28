@@ -1311,4 +1311,4 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 
 - Follow the system color setting while running, and reconcile window, dialog, and cached input colors on activation and tray restore.
 - Clear editor focus on blank clicks without selecting another editor, and keep composer hover and focus feedback without press scaling.
-- Record Markdown text and selection as one undo step for paste and selected deletion. Group adjacent typing and deletion with time boundaries.
+- Record text and selection as one undo step for paste and selected deletion in plain and live Markdown editors. Group adjacent typing and deletion with time boundaries.

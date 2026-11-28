@@ -241,60 +241,84 @@ function TestLiveMarkdown {
         Capture 'native-caret-click-failure.png' -Screen
         throw "Instructions caret click at $($marker[0]) in $($editor.Current.BoundingRectangle) produced '$($value.Current.Value)'"
     }
-    SetValue 'GlobalInstructions' 'prefix selected suffix'
-    $editor = Find 'GlobalInstructions'
-    $pattern = $editor.GetCurrentPattern([Windows.Automation.TextPattern]::Pattern)
-    $url = 'https://example.test/undo'
-    Set-Clipboard -Value $url
-    $keys = New-Object -ComObject WScript.Shell
-    if (!$keys.AppActivate($script:process.Id)) { throw 'Could not activate the Markdown editor for paste' }
-    $selected = $pattern.DocumentRange.FindText('selected', $false, $false)
-    $bounds = $selected.GetBoundingRectangles()[0]
-    [KronoWindowCapture]::SetCursorPos([int]($bounds.Left + $bounds.Width / 2), [int]($bounds.Top + $bounds.Height / 2)) | Out-Null
-    [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
-    [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 125
-    $selected.Select()
-    Start-Sleep -Milliseconds 200
-    if (![KronoWindowCapture]::PressControlKey(0x56)) { throw 'Could not press Ctrl+V' }
-    $deadline = (Get-Date).AddSeconds(5)
-    while (!$pattern.DocumentRange.FindText($url, $false, $false) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
-    if (!$pattern.DocumentRange.FindText($url, $false, $false)) {
-        $focused = [Windows.Automation.AutomationElement]::FocusedElement
-        Capture 'native-markdown-paste-failed.png' -Screen
-        throw ('The undo test link was not pasted. Focus: ' + $focused.Current.AutomationId + '/' + $focused.Current.ClassName +
-            '. App in foreground: ' + ([KronoWindowCapture]::GetForegroundWindow() -eq $script:process.MainWindowHandle) +
-            '. Editor: ' + ($pattern.DocumentRange.GetText(-1) | ConvertTo-Json -Compress))
+    function TestInputUndo {
+        $editor = Find 'GlobalInstructions'
+        $pattern = $editor.GetCurrentPattern([Windows.Automation.TextPattern]::Pattern)
+        $editor.SetFocus()
+        $pattern.DocumentRange.Select()
+        if (![KronoWindowCapture]::TypeText('prefix selected suffix')) { throw 'Could not prepare the undo test editor' }
+        Start-Sleep -Milliseconds 200
+        $url = 'https://example.test/undo'
+        Set-Clipboard -Value $url
+        $keys = New-Object -ComObject WScript.Shell
+        if (!$keys.AppActivate($script:process.Id)) { throw 'Could not activate the Markdown editor for paste' }
+        $selected = $pattern.DocumentRange.FindText('selected', $false, $false)
+        $bounds = $selected.GetBoundingRectangles()[0]
+        [KronoWindowCapture]::SetCursorPos([int]($bounds.Left + $bounds.Width / 2), [int]($bounds.Top + $bounds.Height / 2)) | Out-Null
+        [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+        [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 125
+        $selected.Select()
+        Start-Sleep -Milliseconds 200
+        if (![KronoWindowCapture]::PressControlKey(0x56)) { throw 'Could not press Ctrl+V' }
+        $deadline = (Get-Date).AddSeconds(5)
+        while (!$pattern.DocumentRange.FindText($url, $false, $false) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+        if (!$pattern.DocumentRange.FindText($url, $false, $false)) {
+            $focused = [Windows.Automation.AutomationElement]::FocusedElement
+            Capture 'native-markdown-paste-failed.png' -Screen
+            throw ('The undo test link was not pasted. Focus: ' + $focused.Current.AutomationId + '/' + $focused.Current.ClassName +
+                '. App in foreground: ' + ([KronoWindowCapture]::GetForegroundWindow() -eq $script:process.MainWindowHandle) +
+                '. Editor: ' + ($pattern.DocumentRange.GetText(-1) | ConvertTo-Json -Compress))
+        }
+        if (![KronoWindowCapture]::PressControlKey(0x5a)) { throw 'Could not press Ctrl+Z' }
+        Start-Sleep -Milliseconds 200
+        if ($pattern.DocumentRange.FindText($url, $false, $false) -or
+            !$pattern.DocumentRange.FindText('prefix selected suffix', $false, $false) -or
+            $pattern.GetSelection()[0].GetText(-1) -ne 'selected') {
+            throw ("Paste undo produced text {0} and selection {1}" -f $pattern.DocumentRange.GetText(-1), $pattern.GetSelection()[0].GetText(-1))
+        }
+        if (![KronoWindowCapture]::PressControlKey(0x59)) { throw 'Could not press Ctrl+Y' }
+        Start-Sleep -Milliseconds 200
+        $link = $pattern.DocumentRange.FindText($url, $false, $false)
+        if (!$link) { throw 'Redo did not restore the pasted link' }
+        $link.Select()
+        $keys.SendKeys('{DELETE}')
+        Start-Sleep -Milliseconds 100
+        if (![KronoWindowCapture]::PressControlKey(0x5a)) { throw 'Could not press Ctrl+Z' }
+        Start-Sleep -Milliseconds 200
+        if ($pattern.GetSelection()[0].GetText(-1) -ne $url) { throw 'Undo did not restore the deleted selection' }
+        $pattern.DocumentRange.Select()
+        if (![KronoWindowCapture]::TypeText('base')) { throw 'Could not prepare the typing test' }
+        Start-Sleep -Milliseconds 200
+        $caret = $pattern.DocumentRange.FindText('base', $false, $false)
+        $caret.MoveEndpointByRange([Windows.Automation.Text.TextPatternRangeEndpoint]::Start, $caret, [Windows.Automation.Text.TextPatternRangeEndpoint]::End)
+        $caret.Select()
+        if (![KronoWindowCapture]::TypeText('ab')) { throw 'Could not enter the first typing group' }
+        Start-Sleep -Milliseconds 700
+        if (![KronoWindowCapture]::TypeText('cd')) { throw 'Could not enter the second typing group' }
+        Start-Sleep -Milliseconds 150
+        $beforeUndo = $pattern.DocumentRange.GetText(-1).Trim()
+        if ($beforeUndo -ne 'baseabcd') { throw "The typing test did not enter the expected text: $beforeUndo" }
+        if (![KronoWindowCapture]::PressControlKey(0x5a)) { throw 'Could not press Ctrl+Z' }
+        Start-Sleep -Milliseconds 200
+        $afterUndo = $pattern.DocumentRange.GetText(-1).Trim()
+        if ($afterUndo -ne 'baseab') { throw "Undo did not group the most recent typing: $afterUndo" }
+        if (![KronoWindowCapture]::PressControlKey(0x5a)) { throw 'Could not press Ctrl+Z' }
+        Start-Sleep -Milliseconds 200
+        if ($pattern.DocumentRange.GetText(-1).Trim() -ne 'base') { throw 'Undo did not preserve the earlier typing group' }
     }
-    if (![KronoWindowCapture]::PressControlKey(0x5a)) { throw 'Could not press Ctrl+Z' }
-    Start-Sleep -Milliseconds 200
-    if ($pattern.DocumentRange.FindText($url, $false, $false) -or
-        !$pattern.DocumentRange.FindText('prefix selected suffix', $false, $false) -or
-        $pattern.GetSelection()[0].GetText(-1) -ne 'selected') { throw 'A pasted link and its replaced selection did not undo in one step' }
-    if (![KronoWindowCapture]::PressControlKey(0x59)) { throw 'Could not press Ctrl+Y' }
-    Start-Sleep -Milliseconds 200
-    $link = $pattern.DocumentRange.FindText($url, $false, $false)
-    if (!$link) { throw 'Redo did not restore the pasted link' }
-    $link.Select()
-    $keys.SendKeys('{DELETE}')
-    Start-Sleep -Milliseconds 100
-    if (![KronoWindowCapture]::PressControlKey(0x5a)) { throw 'Could not press Ctrl+Z' }
-    Start-Sleep -Milliseconds 200
-    if ($pattern.GetSelection()[0].GetText(-1) -ne $url) { throw 'Undo did not restore the deleted selection' }
-    SetValue 'GlobalInstructions' 'base'
-    $caret = $pattern.DocumentRange.FindText('base', $false, $false)
-    $caret.MoveEndpointByRange([Windows.Automation.Text.TextPatternRangeEndpoint]::Start, $caret, [Windows.Automation.Text.TextPatternRangeEndpoint]::End)
-    $caret.Select()
-    $keys.SendKeys('ab')
-    Start-Sleep -Milliseconds 700
-    $keys.SendKeys('cd')
-    Start-Sleep -Milliseconds 150
-    if (![KronoWindowCapture]::PressControlKey(0x5a)) { throw 'Could not press Ctrl+Z' }
-    Start-Sleep -Milliseconds 200
-    if ($pattern.DocumentRange.GetText(-1).Trim() -ne 'baseab') { throw 'Undo did not group the most recent typing' }
-    if (![KronoWindowCapture]::PressControlKey(0x5a)) { throw 'Could not press Ctrl+Z' }
-    Start-Sleep -Milliseconds 200
-    if ($pattern.DocumentRange.GetText(-1).Trim() -ne 'base') { throw 'Undo did not preserve the earlier typing group' }
+    TestInputUndo
+    Invoke 'Cancel' -ByName
+    SelectSettingsCategory 'Appearance'
+    SetToggle 'LiveMarkdownEditing' On
+    SelectSettingsCategory 'Instructions'
+    Invoke 'Edit global instructions' -ByName
+    TestInputUndo
+    Invoke 'Cancel' -ByName
+    SelectSettingsCategory 'Appearance'
+    SetToggle 'LiveMarkdownEditing' Off
+    SelectSettingsCategory 'Instructions'
+    Invoke 'Edit global instructions' -ByName
     SetValue 'GlobalInstructions' $markdown
     Invoke 'Save instructions' -ByName
     Capture 'native-markdown-saved.png'

@@ -86,6 +86,12 @@ public sealed class KronoTextBox : TextBox
             if (IsLoaded) KronoInputMotion.AlignTextContent(this);
         }
         RegisterPropertyChangedCallback(AcceptsReturnProperty, (_, _) => AlignText());
+        Loaded += AttachUndo;
+        void AttachUndo(object sender, RoutedEventArgs args)
+        {
+            Loaded -= AttachUndo;
+            if (SurfaceFeedbackEnabled && ClearActionEnabled) KronoInputUndo.Attach(this);
+        }
         AlignText();
     }
 }
