@@ -43,8 +43,6 @@ public static class KronoWindowCapture {
     [DllImport("user32.dll")]
     public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
     [DllImport("user32.dll")]
-    public static extern IntPtr SendMessageW(IntPtr hwnd, uint message, UIntPtr wParam, IntPtr lParam);
-    [DllImport("user32.dll")]
     public static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
     [DllImport("user32.dll")]
     public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
@@ -1631,11 +1629,18 @@ public static class PluginFixture {
     Invoke-RestMethod -Method Post ($Fixture + '/seed-memory') | Out-Null
     SelectNav 'Settings'
     SelectSettingsCategory 'Appearance'
+    $settingsBounds = WaitForBounds 'SettingsCategories'
+    if (!(New-Object -ComObject WScript.Shell).AppActivate($script:process.Id)) { throw 'Could not activate the navigation test window' }
+    [KronoWindowCapture]::SetCursorPos([int]($settingsBounds.Left + 10), [int]($settingsBounds.Top + 10)) | Out-Null
+    [KronoWindowCapture]::mouse_event(0x80, 0, 0, 1, [UIntPtr]::Zero)
+    [KronoWindowCapture]::mouse_event(0x100, 0, 0, 1, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 250
     Invoke 'AppBack'
-    [KronoWindowCapture]::SendMessageW($script:process.MainWindowHandle, 0x0319, [UIntPtr]::Zero, [IntPtr]0x80010000L) | Out-Null
     Find 'New project' -ByName | Out-Null
     Invoke 'AppForward'
-    [KronoWindowCapture]::SendMessageW($script:process.MainWindowHandle, 0x0319, [UIntPtr]::Zero, [IntPtr]0x00020000L) | Out-Null
+    Find 'SettingsCategories' | Out-Null
+    [KronoWindowCapture]::mouse_event(0x80, 0, 0, 2, [UIntPtr]::Zero)
+    [KronoWindowCapture]::mouse_event(0x100, 0, 0, 2, [UIntPtr]::Zero)
     Find 'Appearance' | Out-Null
     foreach ($appearance in @('dark','halloween','light','system')) {
         SelectChoice 'Appearance' $appearance
@@ -1752,6 +1757,15 @@ public static class PluginFixture {
     if (!$editor.Current.HasKeyboardFocus) { throw 'Revealing the API key did not focus its text editor' }
     (Find 'Hide password' -ByName).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
     SetValue 'ProviderKey' 'fixture-local-placeholder'
+    (Find 'ProviderKey').SetFocus()
+    $outside = (Find 'Models' -ByName).Current.BoundingRectangle
+    [KronoWindowCapture]::SetCursorPos([int]($outside.Left + $outside.Width / 2), [int]($outside.Top + $outside.Height / 2)) | Out-Null
+    [KronoWindowCapture]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+    [KronoWindowCapture]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 200
+    if ([Windows.Automation.AutomationElement]::FocusedElement.Current.ControlType -eq [Windows.Automation.ControlType]::Edit) {
+        throw 'Clicking outside the provider key left an editor focused'
+    }
     Invoke 'Save key' -ByName
     Start-Sleep -Milliseconds 500
     SelectConfiguredModel 'local-fixture-model'

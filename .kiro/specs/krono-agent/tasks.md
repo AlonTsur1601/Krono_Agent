@@ -1325,3 +1325,10 @@ The native build, all 36 unit tests, TypeScript checking, and native sync, sched
 - Use standard Windows input scope on text editors, including revealed credentials. The masked Windows password field retains its password input scope.
 - Move project chat ordering and the default project for new chats to Conversations. Use the space above the score for the bot slider and start the sidebar width animation concurrently with text.
 - Navigate recently visited app screens with title bar arrows, Alt+Left/Right, and Windows Back/Forward device commands.
+
+## Sidebar motion and game previews
+
+- Put the shared flat navigation buttons beside the application name and route raw mouse side-button releases from the application’s window.
+- Animate the context sidebar and workspace using compositor translations, with a single layout update at the end of opening.
+- Park focus on blank clicks and recheck it after release so WinUI cannot leave another editor focused.
+- Capture seeded gameplay in higher resolution, keep the complete board centered and extend its palette into the space on either side.

@@ -3,7 +3,8 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Composition;
+using System.Numerics;
 using Windows.UI.ViewManagement;
 
 namespace Krono_Agent;
@@ -16,7 +17,6 @@ public sealed partial class MainPage
     bool contextOpen = true;
     bool contextVisible;
     int contextTransition;
-    Storyboard? contextWidthMotion;
     bool clearContextWhenHidden;
 
     void ShowContext(FrameworkElement? content)
@@ -52,58 +52,61 @@ public sealed partial class MainPage
         contextVisible = show;
         var transition = ++contextTransition;
         var wasVisible = ContextRail.Visibility == Visibility.Visible;
-        var startWidth = wasVisible ? ContextRail.Width : 0;
-        contextWidthMotion?.Stop();
-        ContextRail.Width = startWidth;
-        var visual = ElementCompositionPreview.GetElementVisual(ContextScroll);
-        ElementCompositionPreview.SetIsTranslationEnabled(ContextScroll, true);
-        var railVisual = ElementCompositionPreview.GetElementVisual(ContextRail);
-        railVisual.Clip ??= railVisual.Compositor.CreateInsetClip();
-
+        var hadReservedSpace = ContextColumn.Width.Value > 0;
+        ContextColumn.Width = new GridLength(0);
         ContextRail.IsHitTestVisible = show;
         if (show) {
             ContextRail.Visibility = Visibility.Visible;
             WorkspaceSurface.CornerRadius = new CornerRadius(0);
         }
-        if (new UISettings().AnimationsEnabled && (show || wasVisible)) {
-            const int duration = 160;
-            var motion = visual.Compositor.CreateVector3KeyFrameAnimation();
-            if (show && !wasVisible) motion.InsertKeyFrame(0, new(-24, 0, 0));
-            else motion.InsertExpressionKeyFrame(0, "this.StartingValue");
-            motion.InsertKeyFrame(1, new(show ? 0 : -24, 0, 0),
-                visual.Compositor.CreateCubicBezierEasingFunction(new(.18f, .8f), new(.3f, 1)));
-            motion.Duration = TimeSpan.FromMilliseconds(duration);
-            visual.StartAnimation("Translation", motion);
-            var width = new DoubleAnimation {
-                From = startWidth, To = show ? 252 : 0,
-                Duration = new Duration(TimeSpan.FromMilliseconds(duration)),
-                EnableDependentAnimation = true,
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-            };
-            var storyboard = new Storyboard();
-            Storyboard.SetTarget(width, ContextRail);
-            Storyboard.SetTargetProperty(width, "Width");
-            storyboard.Children.Add(width);
-            contextWidthMotion = storyboard;
-            storyboard.Completed += (_, _) => Finish();
-            storyboard.Begin();
+
+        var rail = TranslationVisual(ContextRail);
+        var workspace = TranslationVisual(WorkspaceSurface);
+        var layout = ElementCompositionPreview.GetElementVisual(WorkspaceLayout);
+        layout.Clip ??= layout.Compositor.CreateInsetClip();
+        if (!new UISettings().AnimationsEnabled || (!show && !wasVisible)) {
+            Finish();
             return;
         }
-        Finish();
+
+        var compositor = rail.Compositor;
+        var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+        Animate(rail, show ? 0 : -ContextRail.Width, !wasVisible ? -ContextRail.Width : null);
+        Animate(workspace, show ? ContextRail.Width : 0,
+            hadReservedSpace ? ContextRail.Width : !wasVisible ? 0 : null);
+        batch.Completed += (_, _) => { Finish(); batch.Dispose(); };
+        batch.End();
+
+        void Animate(Visual visual, double target, double? start)
+        {
+            var animation = compositor.CreateVector3KeyFrameAnimation();
+            if (start is { } offset) animation.InsertKeyFrame(0, new((float)offset, 0, 0));
+            else animation.InsertExpressionKeyFrame(0, "this.StartingValue");
+            animation.InsertKeyFrame(1, new((float)target, 0, 0),
+                compositor.CreateCubicBezierEasingFunction(new(.22f, .72f), new(.32f, 1)));
+            animation.Duration = TimeSpan.FromMilliseconds(165);
+            visual.StartAnimation("Translation", animation);
+        }
 
         void Finish()
         {
             if (transition != contextTransition) return;
-            contextWidthMotion?.Stop();
-            contextWidthMotion = null;
-            ContextRail.Width = show ? 252 : 0;
-            visual.StopAnimation("Translation");
-            visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
+            ContextColumn.Width = new GridLength(show ? ContextRail.Width : 0);
+            foreach (var visual in new[] { rail, workspace }) {
+                visual.StopAnimation("Translation");
+                visual.Properties.InsertVector3("Translation", Vector3.Zero);
+            }
             if (!show) {
                 ContextRail.Visibility = Visibility.Collapsed;
                 WorkspaceSurface.CornerRadius = new CornerRadius(14, 0, 0, 0);
                 if (clearContextWhenHidden) ContextBody.Content = null;
             }
+        }
+
+        static Visual TranslationVisual(UIElement element)
+        {
+            ElementCompositionPreview.SetIsTranslationEnabled(element, true);
+            return ElementCompositionPreview.GetElementVisual(element);
         }
     }
 

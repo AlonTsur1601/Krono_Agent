@@ -14,14 +14,15 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TitleBar FontFamily="{ThemeResource KronoTextFont}" Background="{ThemeResource KronoSidebar}" x:Name="AppTitleBar" Title="Krono Agent" Height="36" MinHeight="0">
-            <TitleBar.IconSource>
-                <ImageIconSource><ImageIconSource.ImageSource><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg" /></ImageIconSource.ImageSource></ImageIconSource>
-            </TitleBar.IconSource>
+        <TitleBar FontFamily="{ThemeResource KronoTextFont}" Background="{ThemeResource KronoSidebar}" x:Name="AppTitleBar" Height="36" MinHeight="0">
             <TitleBar.LeftHeader>
-                <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-                    <Button x:Name="AppBack" Width="32" Height="28" Padding="0" IsEnabled="False" AutomationProperties.AutomationId="AppBack" AutomationProperties.Name="Go back" ToolTipService.ToolTip="Go back (Alt+Left)"><SymbolIcon Symbol="Back"/></Button>
-                    <Button x:Name="AppForward" Width="32" Height="28" Padding="0" IsEnabled="False" AutomationProperties.AutomationId="AppForward" AutomationProperties.Name="Go forward" ToolTipService.ToolTip="Go forward (Alt+Right)"><SymbolIcon Symbol="Forward"/></Button>
+                <StackPanel Orientation="Horizontal" Spacing="12" Margin="15,0,0,0" VerticalAlignment="Center">
+                    <Image Width="14" Height="14" VerticalAlignment="Center"><Image.Source><SvgImageSource UriSource="ms-appx:///Assets/Krono.svg"/></Image.Source></Image>
+                    <TextBlock Text="Krono Agent" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" Spacing="2" Margin="4,0,0,0" TitleBar.IsDragRegion="False">
+                        <Button x:Name="AppBack" Width="28" Height="28" IsEnabled="False" AutomationProperties.AutomationId="AppBack" AutomationProperties.Name="Go back" ToolTipService.ToolTip="Go back (Alt+Left)"><FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE72B;"/></Button>
+                        <Button x:Name="AppForward" Width="28" Height="28" IsEnabled="False" AutomationProperties.AutomationId="AppForward" AutomationProperties.Name="Go forward" ToolTipService.ToolTip="Go forward (Alt+Right)"><FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE72A;"/></Button>
+                    </StackPanel>
                 </StackPanel>
             </TitleBar.LeftHeader>
         </TitleBar>

@@ -302,14 +302,52 @@ public sealed partial class GamesWorkspace
         try {
             if (!scene.IsLoaded) await loaded.Task.WaitAsync(TimeSpan.FromSeconds(1));
             if (disposed || !surface.IsLoaded) return;
-            AutomationProperties.SetItemStatus(card, "Board preview available");
             var bitmap = new RenderTargetBitmap();
-            await bitmap.RenderAsync(scene, 384, 384);
+            await bitmap.RenderAsync(scene, 768, 768);
             if (disposed || bitmap.PixelWidth == 0 || !surface.IsLoaded) return;
-            var picture = new Image { Source = bitmap, Stretch = Stretch.UniformToFill, IsHitTestVisible = false };
+            Windows.Security.Cryptography.CryptographicBuffer.CopyToByteArray(await bitmap.GetPixelsAsync(), out var pixels);
+            if (disposed || !surface.IsLoaded) return;
+            var preview = new Grid();
+            preview.ColumnDefinitions.Add(new ColumnDefinition());
+            preview.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MaxWidth = surface.Height });
+            preview.ColumnDefinitions.Add(new ColumnDefinition());
+            var picture = new Image { Source = bitmap, MaxWidth = surface.Height, Stretch = Stretch.Uniform, IsHitTestVisible = false };
             AutomationProperties.SetAutomationId(picture, "GamePreviewImage" + index);
-            surface.Children[0] = picture;
+            Grid.SetColumn(picture, 1);
+            preview.Children.Add(new Border { Background = PreviewEdge(pixels, bitmap.PixelWidth, bitmap.PixelHeight, fromRight: false) });
+            preview.Children.Add(picture);
+            var right = new Border { Background = PreviewEdge(pixels, bitmap.PixelWidth, bitmap.PixelHeight, fromRight: true) };
+            Grid.SetColumn(right, 2);
+            preview.Children.Add(right);
+            surface.Children[0] = preview;
+            AutomationProperties.SetItemStatus(card, "Board preview available");
         } finally { scene.Loaded -= Ready; }
+    }
+
+    static LinearGradientBrush PreviewEdge(byte[] pixels, int width, int height, bool fromRight)
+    {
+        var gradient = new LinearGradientBrush { StartPoint = new(0, 0), EndPoint = new(0, 1) };
+        const int stops = 8;
+        var edge = fromRight ? width * 7 / 8 : 0;
+        for (var stop = 0; stop <= stops; stop++) {
+            var center = (height - 1) * stop / stops;
+            var radius = height / (2 * stops);
+            var red = 0;
+            var green = 0;
+            var blue = 0;
+            var samples = 0;
+            for (var y = Math.Max(0, center - radius); y <= Math.Min(height - 1, center + radius); y += 6)
+                for (var x = edge; x < Math.Min(width, edge + width / 8); x += 6) {
+                    var offset = 4 * (y * width + x);
+                    blue += pixels[offset];
+                    green += pixels[offset + 1];
+                    red += pixels[offset + 2];
+                    samples++;
+                }
+            var color = Windows.UI.Color.FromArgb(255, (byte)(red / samples), (byte)(green / samples), (byte)(blue / samples));
+            gradient.GradientStops.Add(new GradientStop { Offset = (double)stop / stops, Color = color });
+        }
+        return gradient;
     }
     void SeedPreview()
     {

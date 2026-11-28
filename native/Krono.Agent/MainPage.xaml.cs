@@ -52,6 +52,7 @@ public sealed partial class MainPage : Page
         KronoInputMotion.Attach(PasswordInput, "KronoPasswordInput");
         revealedAuthPassword = KronoInputMotion.StylePasswordReveal(AuthPasswordField, PasswordInput, PasswordVisibility, PasswordEye);
         AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(ReleaseInputFocusOnOutsidePress), true);
+        AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(ReleaseInputFocusOnOutsideRelease), true);
         DismissedInputFocus.LostFocus += (_, _) => DismissedInputFocus.IsTabStop = false;
         BrowserNavigation.Icon = BrowserWorkspace.BrowserTabIcon();
         UpdateButton.Icon = KronoDesign.NavigationIcon(Symbol.Download);
@@ -146,17 +147,37 @@ public sealed partial class MainPage : Page
         HideError();
         EmailInput.Focus(FocusState.Programmatic);
     }
+    uint? outsideInputPointer;
+
     void ReleaseInputFocusOnOutsidePress(object sender, PointerRoutedEventArgs args)
     {
-        if (XamlRoot is not { } root || !args.GetCurrentPoint(this).Properties.IsLeftButtonPressed ||
-            FocusManager.GetFocusedElement(root) is not Control focused || focused is not (TextBox or PasswordBox or RichEditBox)) return;
+        if (!args.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+        outsideInputPointer = IsEditorTarget(args) ? null : args.Pointer.PointerId;
+        if (outsideInputPointer is null) return;
+        ParkInputFocus();
+    }
+
+    void ReleaseInputFocusOnOutsideRelease(object sender, PointerRoutedEventArgs args)
+    {
+        if (outsideInputPointer != args.Pointer.PointerId) return;
+        outsideInputPointer = null;
+        if (!IsEditorTarget(args)) DispatcherQueue.TryEnqueue(ParkInputFocus);
+    }
+
+    static bool IsEditorTarget(PointerRoutedEventArgs args)
+    {
         for (var source = args.OriginalSource as DependencyObject; source is not null; source = VisualTreeHelper.GetParent(source))
-            if (ReferenceEquals(source, focused) || source is ButtonBase) return;
-        DispatcherQueue.TryEnqueue(() => {
-            if (!ReferenceEquals(FocusManager.GetFocusedElement(root), focused)) return;
+            if (source is TextBox or PasswordBox or RichEditBox or ComboBox or NumberBox or ButtonBase) return true;
+        return false;
+    }
+
+    void ParkInputFocus()
+    {
+        if (XamlRoot is { } root && FocusManager.GetFocusedElement(root) is TextBox or PasswordBox or RichEditBox) {
             DismissedInputFocus.IsTabStop = true;
-            if (!DismissedInputFocus.Focus(FocusState.Programmatic)) DismissedInputFocus.IsTabStop = false;
-        });
+            if (!DismissedInputFocus.Focus(FocusState.Programmatic))
+                DismissedInputFocus.IsTabStop = false;
+        }
     }
     async Task Authenticate(bool register)
     {
